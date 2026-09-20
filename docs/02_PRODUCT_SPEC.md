@@ -2210,7 +2210,7 @@ MVP реализует **один управляемый жилищный слу
 
 ## Итоговый статус
 
-# **CANDIDATE FOR APPROVAL AFTER FINAL CLOSURE REVIEW**
+# **APPROVED PRODUCT SPEC v1.0 — READY FOR CREATE**
 
 ---
 
@@ -2275,4 +2275,4 @@ MVP реализует **один управляемый жилищный слу
 | Open SPEC QUESTIONS | **0** |
 | Blocking conflict | **0** |
 
-Следующий шаг по статусу документа — **один независимый final closure review**. До его завершения документ не помечается как `APPROVED`.
+Final Closure Review пройден. Product Spec утверждён. READY FOR CREATE.
