@@ -2,16 +2,20 @@
 
 | Поле | Значение |
 | --- | --- |
-| `PHASE` | `CREATE / PRE-ARCHITECTURE` |
+| `PHASE` | `CREATE / TASK GRAPH` |
 | `PRODUCT_FREEZE` | `APPROVED` |
 | `PRODUCT_SPEC` | `APPROVED` |
-| `ARCHITECTURE` | `NOT YET APPROVED` |
+| `TECHNICAL_ARCHITECTURE` | `APPROVED / PASS` |
+| `DATA_MODEL` | `APPROVED` |
+| `INTERFACE_CONTRACTS` | `APPROVED` |
+| `TASK_GRAPH` | `NOT YET APPROVED` |
 | `IMPLEMENTATION` | `NOT STARTED` |
-| `CURRENT_GATE` | `TECHNICAL ARCHITECTURE` |
+| `CODING` | `BLOCKED` |
+| `CURRENT_GATE` | `TASK GRAPH` |
 
-**Следующая цель:** создать и утвердить техническую архитектуру, модель данных и технические контракты до волн разработки. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
+**Следующая цель:** построить и утвердить Task Graph на основе canonical technical baseline. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
 
-**До утверждения архитектуры заблокированы:** реализация backend, Mini App и Bot, а также волны разработки.
+**До утверждения Task Graph заблокированы:** Task Contracts, реализация backend, Mini App и Bot, а также волны разработки.
 
 ## Известные продуктовые исключения из MVP
 
