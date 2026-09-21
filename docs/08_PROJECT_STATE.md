@@ -2,20 +2,21 @@
 
 | Поле | Значение |
 | --- | --- |
-| `PHASE` | `CREATE / TASK GRAPH` |
+| `PHASE` | `CREATE / TASK CONTRACTS` |
 | `PRODUCT_FREEZE` | `APPROVED` |
 | `PRODUCT_SPEC` | `APPROVED` |
 | `TECHNICAL_ARCHITECTURE` | `APPROVED / PASS` |
 | `DATA_MODEL` | `APPROVED` |
 | `INTERFACE_CONTRACTS` | `APPROVED` |
-| `TASK_GRAPH` | `NOT YET APPROVED` |
+| `TASK_GRAPH` | `APPROVED / PASS` |
+| `TASK_CONTRACTS` | `NOT STARTED` |
 | `IMPLEMENTATION` | `NOT STARTED` |
 | `CODING` | `BLOCKED` |
-| `CURRENT_GATE` | `TASK GRAPH` |
+| `CURRENT_GATE` | `TASK CONTRACTS` |
 
-**Следующая цель:** построить и утвердить Task Graph на основе canonical technical baseline. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
+**Следующая цель:** создать Task Contracts из нового стабильного SHA repository closure. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
 
-**До утверждения Task Graph заблокированы:** Task Contracts, реализация backend, Mini App и Bot, а также волны разработки.
+**До создания и утверждения Task Contracts заблокированы:** реализация backend, Mini App и Bot, а также волны разработки. Утверждение Task Graph не разрешает coding.
 
 ## Известные продуктовые исключения из MVP
 

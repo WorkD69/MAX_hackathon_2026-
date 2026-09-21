@@ -2,7 +2,7 @@
 
 ## Текущий этап
 
-`CREATE / TASK GRAPH`. Product Freeze и Product Spec утверждены. Technical Architecture Gate пройден со статусом `PASS`; модель данных и интерфейсные контракты утверждены. Task Graph ещё не создан и не утверждён. Приложение ещё не реализовано, coding заблокирован. Состояние: [PROJECT_STATE](08_PROJECT_STATE.md).
+`CREATE / TASK CONTRACTS`. Product Freeze и Product Spec утверждены. Technical Architecture Gate и Task Graph Gate пройдены со статусом `PASS`; модель данных и интерфейсные контракты утверждены. Canonical graph: [`tasks/TASK_GRAPH.md`](../tasks/TASK_GRAPH.md) — 35 tasks, 74 direct dependency edges, 17 waves, 4 lanes. Task Contracts ещё не созданы. Приложение ещё не реализовано, coding заблокирован. Состояние: [PROJECT_STATE](08_PROJECT_STATE.md).
 
 ## Утверждено и где читать
 
@@ -11,6 +11,7 @@
 - [Technical Architecture](03_ARCHITECTURE.md): утверждённая canonical architecture.
 - [Data Model](04_DATA_MODEL.md): утверждённая canonical data model.
 - [Interface Contracts](05_INTERFACE_CONTRACTS.md): утверждённые canonical interface contracts.
+- [Task Graph](../tasks/TASK_GRAPH.md): утверждённый canonical graph; `TASK_GRAPH_GATE = PASS`.
 - [Критерии хакатона](09_HACKATHON_CRITERIA.md): официальные внешние требования и правила сдачи.
 - [Краткое введение](00_PROJECT_BRIEF.md): контекст за 2–3 минуты. [Решения](07_DECISIONS.md): принятые ограничения.
 
@@ -20,9 +21,9 @@
 
 Нельзя менять MUST, роли, восемь состояний, переходы, инварианты, критерии приёмки, основной сценарий и границы Product Freeze ради удобства реализации. При конфликте остановить работу, сообщить `SPEC CONFLICT`; изменение возможно только по явному решению команды с записью в [журнале решений](07_DECISIONS.md).
 
-## Первый шаг
+## Первый шаг текущего gate
 
-Выполнить `git status` и `git rev-parse HEAD`, прочитать [правила агентов](../AGENTS.md), [состояние проекта](08_PROJECT_STATE.md), нормативные продуктовые документы и canonical technical baseline. Затем построить Task Graph, не создавая Task Contracts и не начиная разработку приложения до его утверждения.
+Выполнить `git status` и `git rev-parse HEAD`, прочитать [правила агентов](../AGENTS.md), [состояние проекта](08_PROJECT_STATE.md), нормативные продуктовые документы, canonical technical baseline и [Task Graph](../tasks/TASK_GRAPH.md). Затем создать Task Contracts, привязав каждый контракт к конкретному стабильному SHA repository closure. После каждого предусмотренного integration checkpoint следующий контракт обязан использовать новый стабильный baseline. Coding не начинать до создания и разрешения соответствующего Task Contract.
 
 ## Следующий SDD pipeline
 
