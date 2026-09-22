@@ -2,7 +2,7 @@
 
 ## Текущий этап
 
-`CREATE / TG-001 IMPLEMENTATION`. Product Freeze и Product Spec утверждены. Technical Architecture Gate и Task Graph Gate пройдены со статусом `PASS`; модель данных и интерфейсные контракты утверждены. Canonical graph: [`tasks/TASK_GRAPH.md`](../tasks/TASK_GRAPH.md) — 35 tasks, 74 direct dependency edges, 17 waves, 4 lanes. [TG-001 Task Contract](../tasks/TG-001_TASK_CONTRACT.md) канонизирован со статусом `APPROVED / PASS`. TG-001 implementation авторизован, но ещё не начат; coding разрешён только для TG-001 после execution-environment bootstrap. `IC-0` — `PENDING`, WAVE 1 заблокирована. Состояние: [PROJECT_STATE](08_PROJECT_STATE.md).
+`CREATE / WAVE 1 TASK CONTRACTS`. Product Freeze и Product Spec утверждены. Technical Architecture Gate и Task Graph Gate пройдены со статусом `PASS`; модель данных и интерфейсные контракты утверждены. Canonical graph: [`tasks/TASK_GRAPH.md`](../tasks/TASK_GRAPH.md) — 35 tasks, 74 direct dependency edges, 17 waves, 4 lanes. TG-001 implementation commit `588e0aa1de6dbca5118ef1c0378967c8b36b73a6` independently проверен и интегрирован. `IC-0 Workspace = PASS`; TG-001 checkpoint установлен. Task Contracts TG-002–TG-005 разблокированы. Состояние: [PROJECT_STATE](08_PROJECT_STATE.md).
 
 ## Утверждено и где читать
 
@@ -25,7 +25,7 @@
 
 ## Следующий шаг исполнения
 
-Contract / Execution Orchestrator выполняет execution-environment bootstrap по canonical TG-001 Task Contract: local branch `codex/tg-001-workspace-foundation` должна быть создана или безопасно проверена ровно на `1b2206899322ac4416a578a1fa5f50b336d9cab5` с clean worktree. Затем coding-agent выполняет только TG-001. После independent IC-0 verification отдельный Integration Agent merge'ит approved implementation, push'ит stable `main` и возвращает новый `TG-001 CHECKPOINT SHA`. Только этот будущий SHA становится `BASE_SHA` для TG-002–TG-005; contract closure commit им не является.
+Contract Orchestrator параллельно готовит отдельные Task Contracts TG-002, TG-003, TG-004 и TG-005. Их `BASE_SHA` — новый stable `main` SHA, возвращённый как `TG-001 CHECKPOINT SHA` после этой IC-0 closure. Coding TG-002–TG-005 не начинается, пока соответствующий Task Contract не будет отдельно утверждён.
 
 ## Следующий SDD pipeline
 

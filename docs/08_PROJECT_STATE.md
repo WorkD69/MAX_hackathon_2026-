@@ -2,29 +2,31 @@
 
 | Поле | Значение |
 | --- | --- |
-| `PHASE` | `CREATE / TG-001 IMPLEMENTATION` |
+| `PHASE` | `CREATE / WAVE 1 TASK CONTRACTS` |
 | `PRODUCT_FREEZE` | `APPROVED` |
 | `PRODUCT_SPEC` | `APPROVED` |
 | `TECHNICAL_ARCHITECTURE` | `APPROVED / PASS` |
 | `DATA_MODEL` | `APPROVED` |
 | `INTERFACE_CONTRACTS` | `APPROVED` |
 | `TASK_GRAPH` | `APPROVED / PASS` |
-| `TASK_CONTRACTS` | `TG-001 APPROVED / CANONICAL / PASS` |
-| `CURRENT_EXECUTION` | `TG-001 IMPLEMENTATION` |
-| `TG-001_IMPLEMENTATION` | `NOT STARTED` |
+| `TASK_CONTRACTS` | `TG-001 COMPLETE; WAVE 1 UNBLOCKED` |
+| `CURRENT_EXECUTION` | `PARALLEL WAVE-1 TASK CONTRACTS` |
+| `TG-001_IMPLEMENTATION` | `COMPLETE` |
 | `TG-001_IMPLEMENTATION_BRANCH` | `codex/tg-001-workspace-foundation` |
+| `TG-001_IMPLEMENTATION_COMMIT` | `588e0aa1de6dbca5118ef1c0378967c8b36b73a6` |
 | `TG-001_CONTRACT_BASE_SHA` | `1b2206899322ac4416a578a1fa5f50b336d9cab5` |
-| `CODING` | `ALLOWED FOR TG-001 ONLY AFTER EXECUTION-ENVIRONMENT BOOTSTRAP` |
-| `IC-0` | `PENDING` |
-| `WAVE_1` | `BLOCKED` |
-| `TG-002` | `BLOCKED UNTIL IC-0 CHECKPOINT` |
-| `TG-003` | `BLOCKED UNTIL IC-0 CHECKPOINT` |
-| `TG-004` | `BLOCKED UNTIL IC-0 CHECKPOINT` |
-| `TG-005` | `BLOCKED UNTIL IC-0 CHECKPOINT` |
+| `TG-001_CHECKPOINT` | `ESTABLISHED` |
+| `CODING` | `BLOCKED FOR TG-002..TG-005 UNTIL EACH TASK CONTRACT APPROVAL` |
+| `IC-0` | `WORKSPACE / PASS` |
+| `WAVE_1_TASK_CONTRACTS` | `UNBLOCKED` |
+| `TG-002` | `READY FOR TASK CONTRACT` |
+| `TG-003` | `READY FOR TASK CONTRACT` |
+| `TG-004` | `READY FOR TASK CONTRACT` |
+| `TG-005` | `READY FOR TASK CONTRACT` |
 
-**Следующая цель:** выполнить TG-001 implementation по [утверждённому canonical Task Contract](../tasks/TG-001_TASK_CONTRACT.md). До передачи coding-agent Contract / Execution Orchestrator создаёт или безопасно проверяет local branch `codex/tg-001-workspace-foundation` ровно от `TG-001_CONTRACT_BASE_SHA`. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
+**Следующая цель:** параллельно подготовить Task Contracts TG-002, TG-003, TG-004 и TG-005 на новом stable `main` checkpoint SHA. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
 
-**Разрешено только TG-001:** repository foundation после execution-environment bootstrap. TG-001 implementation ещё не начат. `IC-0` не пройден; WAVE 1 и Task Contracts TG-002–TG-005 заблокированы до нового stable `main` checkpoint SHA, созданного Integration Agent.
+TG-001 implementation завершён, independently проверен и интегрирован; `IC-0 Workspace = PASS`, checkpoint установлен. Task Contracts TG-002–TG-005 разблокированы, но coding каждой из этих задач остаётся заблокированным до отдельного утверждения её Task Contract.
 
 ## Известные продуктовые исключения из MVP
 
