@@ -1,0 +1,31 @@
+{
+  "name": "max-smart-city",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.19.0",
+  "engines": {
+    "node": "24.21.0",
+    "npm": "11.19.0"
+  },
+  "workspaces": [
+    "packages/contracts",
+    "packages/domain",
+    "packages/db",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test --workspaces",
+    "test:integration": "node -e \"console.log('NO_SUITE_YET: integration; owner=TG-026; status=NOT_RUN')\"",
+    "test:e2e": "node -e \"console.log('NO_SUITE_YET: e2e; owner=TG-028; status=NOT_RUN')\""
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.0.1",
+    "vite": "8.3.0",
+    "@types/node": "24.13.6"
+  }
+}
