@@ -2,7 +2,7 @@
 
 ## Текущий этап
 
-`CREATE / TASK CONTRACTS`. Product Freeze и Product Spec утверждены. Technical Architecture Gate и Task Graph Gate пройдены со статусом `PASS`; модель данных и интерфейсные контракты утверждены. Canonical graph: [`tasks/TASK_GRAPH.md`](../tasks/TASK_GRAPH.md) — 35 tasks, 74 direct dependency edges, 17 waves, 4 lanes. Task Contracts ещё не созданы. Приложение ещё не реализовано, coding заблокирован. Состояние: [PROJECT_STATE](08_PROJECT_STATE.md).
+`CREATE / TG-001 IMPLEMENTATION`. Product Freeze и Product Spec утверждены. Technical Architecture Gate и Task Graph Gate пройдены со статусом `PASS`; модель данных и интерфейсные контракты утверждены. Canonical graph: [`tasks/TASK_GRAPH.md`](../tasks/TASK_GRAPH.md) — 35 tasks, 74 direct dependency edges, 17 waves, 4 lanes. [TG-001 Task Contract](../tasks/TG-001_TASK_CONTRACT.md) канонизирован со статусом `APPROVED / PASS`. TG-001 implementation авторизован, но ещё не начат; coding разрешён только для TG-001 после execution-environment bootstrap. `IC-0` — `PENDING`, WAVE 1 заблокирована. Состояние: [PROJECT_STATE](08_PROJECT_STATE.md).
 
 ## Утверждено и где читать
 
@@ -12,6 +12,8 @@
 - [Data Model](04_DATA_MODEL.md): утверждённая canonical data model.
 - [Interface Contracts](05_INTERFACE_CONTRACTS.md): утверждённые canonical interface contracts.
 - [Task Graph](../tasks/TASK_GRAPH.md): утверждённый canonical graph; `TASK_GRAPH_GATE = PASS`.
+- [TG-001 Task Contract](../tasks/TG-001_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 1b2206899322ac4416a578a1fa5f50b336d9cab5`, `TASK_CONTRACT_GATE = PASS`.
+- [Final mechanical TG-001 R2 recheck](../FINAL_MECHANICAL_TG-001_R2_RECHECK.md): final gate evidence; `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, все contract findings закрыты.
 - [Критерии хакатона](09_HACKATHON_CRITERIA.md): официальные внешние требования и правила сдачи.
 - [Краткое введение](00_PROJECT_BRIEF.md): контекст за 2–3 минуты. [Решения](07_DECISIONS.md): принятые ограничения.
 
@@ -21,9 +23,9 @@
 
 Нельзя менять MUST, роли, восемь состояний, переходы, инварианты, критерии приёмки, основной сценарий и границы Product Freeze ради удобства реализации. При конфликте остановить работу, сообщить `SPEC CONFLICT`; изменение возможно только по явному решению команды с записью в [журнале решений](07_DECISIONS.md).
 
-## Первый шаг текущего gate
+## Следующий шаг исполнения
 
-Выполнить `git status` и `git rev-parse HEAD`, прочитать [правила агентов](../AGENTS.md), [состояние проекта](08_PROJECT_STATE.md), нормативные продуктовые документы, canonical technical baseline и [Task Graph](../tasks/TASK_GRAPH.md). Затем создать Task Contracts, привязав каждый контракт к конкретному стабильному SHA repository closure. После каждого предусмотренного integration checkpoint следующий контракт обязан использовать новый стабильный baseline. Coding не начинать до создания и разрешения соответствующего Task Contract.
+Contract / Execution Orchestrator выполняет execution-environment bootstrap по canonical TG-001 Task Contract: local branch `codex/tg-001-workspace-foundation` должна быть создана или безопасно проверена ровно на `1b2206899322ac4416a578a1fa5f50b336d9cab5` с clean worktree. Затем coding-agent выполняет только TG-001. После independent IC-0 verification отдельный Integration Agent merge'ит approved implementation, push'ит stable `main` и возвращает новый `TG-001 CHECKPOINT SHA`. Только этот будущий SHA становится `BASE_SHA` для TG-002–TG-005; contract closure commit им не является.
 
 ## Следующий SDD pipeline
 

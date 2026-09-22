@@ -2,21 +2,29 @@
 
 | Поле | Значение |
 | --- | --- |
-| `PHASE` | `CREATE / TASK CONTRACTS` |
+| `PHASE` | `CREATE / TG-001 IMPLEMENTATION` |
 | `PRODUCT_FREEZE` | `APPROVED` |
 | `PRODUCT_SPEC` | `APPROVED` |
 | `TECHNICAL_ARCHITECTURE` | `APPROVED / PASS` |
 | `DATA_MODEL` | `APPROVED` |
 | `INTERFACE_CONTRACTS` | `APPROVED` |
 | `TASK_GRAPH` | `APPROVED / PASS` |
-| `TASK_CONTRACTS` | `NOT STARTED` |
-| `IMPLEMENTATION` | `NOT STARTED` |
-| `CODING` | `BLOCKED` |
-| `CURRENT_GATE` | `TASK CONTRACTS` |
+| `TASK_CONTRACTS` | `TG-001 APPROVED / CANONICAL / PASS` |
+| `CURRENT_EXECUTION` | `TG-001 IMPLEMENTATION` |
+| `TG-001_IMPLEMENTATION` | `NOT STARTED` |
+| `TG-001_IMPLEMENTATION_BRANCH` | `codex/tg-001-workspace-foundation` |
+| `TG-001_CONTRACT_BASE_SHA` | `1b2206899322ac4416a578a1fa5f50b336d9cab5` |
+| `CODING` | `ALLOWED FOR TG-001 ONLY AFTER EXECUTION-ENVIRONMENT BOOTSTRAP` |
+| `IC-0` | `PENDING` |
+| `WAVE_1` | `BLOCKED` |
+| `TG-002` | `BLOCKED UNTIL IC-0 CHECKPOINT` |
+| `TG-003` | `BLOCKED UNTIL IC-0 CHECKPOINT` |
+| `TG-004` | `BLOCKED UNTIL IC-0 CHECKPOINT` |
+| `TG-005` | `BLOCKED UNTIL IC-0 CHECKPOINT` |
 
-**Следующая цель:** создать Task Contracts из нового стабильного SHA repository closure. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
+**Следующая цель:** выполнить TG-001 implementation по [утверждённому canonical Task Contract](../tasks/TG-001_TASK_CONTRACT.md). До передачи coding-agent Contract / Execution Orchestrator создаёт или безопасно проверяет local branch `codex/tg-001-workspace-foundation` ровно от `TG-001_CONTRACT_BASE_SHA`. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
 
-**До создания и утверждения Task Contracts заблокированы:** реализация backend, Mini App и Bot, а также волны разработки. Утверждение Task Graph не разрешает coding.
+**Разрешено только TG-001:** repository foundation после execution-environment bootstrap. TG-001 implementation ещё не начат. `IC-0` не пройден; WAVE 1 и Task Contracts TG-002–TG-005 заблокированы до нового stable `main` checkpoint SHA, созданного Integration Agent.
 
 ## Известные продуктовые исключения из MVP
 
