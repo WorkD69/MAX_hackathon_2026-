@@ -4,6 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2023"],
+    "types": ["node"],
     "rootDir": "src",
     "outDir": "dist",
     "composite": true,
@@ -12,6 +13,6 @@
     "sourceMap": true,
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": ["src/index.ts"],
-  "exclude": ["dist", "node_modules"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules", "src/**/*.test.ts", "src/type-exhaustiveness.ts"]
 }
