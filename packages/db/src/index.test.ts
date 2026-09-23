@@ -1,6 +1,31 @@
 import * as boundary from './index.js';
+import type { DB, Database } from './index.js';
 import { expect, test } from 'vitest';
 
-test('TG-001 structural boundary smoke', () => {
-  expect(Object.keys(boundary)).toEqual([]);
+const databaseKeys: readonly (keyof Database)[] = [
+  'organization',
+  'house',
+  'premises',
+  'app_user',
+  'user_role_binding',
+  'resident_premises_access',
+  'uk_house_access',
+  'max_identity',
+  'category',
+  'contractor',
+  'organization_contractor',
+  'demo_run',
+  'demo_run_actor',
+];
+
+test('TG-005 db boundary surface', () => {
+  expect(typeof boundary.createMigrator).toBe('function');
+  expect(typeof boundary.migrateToLatest).toBe('function');
+  expect(typeof boundary.rollbackAll).toBe('function');
+  expect(typeof boundary.resolveMigrationsDir).toBe('function');
+  expect(typeof boundary.MIGRATIONS_DIR).toBe('string');
+  expect(boundary.MIGRATIONS_DIR.endsWith('migrations')).toBe(true);
+  expect(databaseKeys).toHaveLength(13);
 });
+
+const _dbAlias: DB = null as unknown as Database;
