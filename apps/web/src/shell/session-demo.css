@@ -1,0 +1,123 @@
+.app-shell--session {
+  width: min(100%, 1024px);
+  min-height: 100dvh;
+}
+
+.app-shell--session .app-shell__header {
+  border-bottom: 1px solid #d5dce0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.app-shell--session button {
+  min-height: 44px;
+  border: 1px solid #365766;
+  border-radius: 8px;
+  padding: 8px 14px;
+  background: #fff;
+  color: #173743;
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-shell--session button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.app-shell--session button:focus-visible {
+  outline: 3px solid #007d96;
+  outline-offset: 2px;
+}
+
+.session-state,
+.demo-controls {
+  border: 1px solid #d5dce0;
+  border-radius: 12px;
+  padding: 16px;
+  background: #f6f9fa;
+}
+
+.session-state h1,
+.demo-controls h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+
+.session-state p,
+.demo-controls p {
+  margin: 8px 0;
+}
+
+.session-identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 16px;
+  color: #365766;
+}
+
+.demo-controls {
+  margin-bottom: 20px;
+}
+
+.demo-controls__heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.demo-controls__badge {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: #704514;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.demo-controls__context {
+  overflow-wrap: anywhere;
+}
+
+.demo-controls__context span {
+  display: block;
+}
+
+.demo-controls__roles {
+  min-width: 0;
+  margin-top: 16px;
+  border: 0;
+  padding: 0;
+}
+
+.demo-controls__roles legend {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.demo-controls__role-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.demo-controls__role-list button[aria-pressed='true'] {
+  background: #173743;
+  color: #fff;
+}
+
+@media (max-width: 600px) {
+  .demo-controls__heading {
+    flex-direction: column;
+  }
+
+  .demo-controls__heading > button {
+    width: 100%;
+  }
+
+  .demo-controls__role-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
