@@ -2,7 +2,7 @@
 
 ## Текущий этап
 
-`CREATE / WAVE 1 TASK CONTRACTS`. Product Freeze и Product Spec утверждены. Technical Architecture Gate и Task Graph Gate пройдены со статусом `PASS`; модель данных и интерфейсные контракты утверждены. Canonical graph: [`tasks/TASK_GRAPH.md`](../tasks/TASK_GRAPH.md) — 35 tasks, 74 direct dependency edges, 17 waves, 4 lanes. TG-001 implementation commit `588e0aa1de6dbca5118ef1c0378967c8b36b73a6` independently проверен и интегрирован. `IC-0 Workspace = PASS`; TG-001 checkpoint установлен. TG-002 Task Contract канонизирован со статусом `APPROVED / PASS`; implementation TG-002 завершён и готов к IC-1. TG-004 Task Contract канонизирован со статусом `APPROVED / PASS`, coding разблокирован, implementation ещё не начат. TG-005 Task Contract канонизирован со статусом `APPROVED / PASS`, coding разблокирован, implementation ещё не начат. TG-003 остаётся на стадии contract closure/recheck. Wave 1 и `IC-1` не завершены. Состояние: [PROJECT_STATE](08_PROJECT_STATE.md).
+`CREATE / WAVE 1 TASK CONTRACTS`. Product Freeze и Product Spec утверждены. Technical Architecture Gate и Task Graph Gate пройдены со статусом `PASS`; модель данных и интерфейсные контракты утверждены. Canonical graph: [`tasks/TASK_GRAPH.md`](../tasks/TASK_GRAPH.md) — 35 tasks, 74 direct dependency edges, 17 waves, 4 lanes. TG-001 implementation commit `588e0aa1de6dbca5118ef1c0378967c8b36b73a6` independently проверен и интегрирован. `IC-0 Workspace = PASS`; TG-001 checkpoint установлен. TG-002, TG-003, TG-004 и TG-005 Task Contracts канонизированы со статусом `APPROVED / PASS`; implementation TG-002 завершён и готов к IC-1, coding TG-003/TG-004/TG-005 разблокирован, их implementation ещё не объявлен завершённым. Wave 1 и `IC-1` не завершены. Состояние: [PROJECT_STATE](08_PROJECT_STATE.md).
 
 ## Утверждено и где читать
 
@@ -16,6 +16,8 @@
 - [Final mechanical TG-001 R2 recheck](../FINAL_MECHANICAL_TG-001_R2_RECHECK.md): final gate evidence; `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, все contract findings закрыты.
 - [TG-002 Task Contract](../tasks/TG-002_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99`, `TASK_CONTRACT_GATE = PASS`.
 - [TG-002 targeted recheck](../FINAL_TG-002_TASK_CONTRACT_TARGETED_RECHECK.md): final gate evidence; оба findings закрыты, `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, implementation choices и gaps отсутствуют.
+- [TG-003 Task Contract](../tasks/TG-003_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99`, `TASK_CONTRACT_GATE = PASS`.
+- [TG-003 final targeted recheck](../FINAL_TG-003_TASK_CONTRACT_FINAL_TARGETED_RECHECK.md): final gate evidence; findings TG003-R-001…TG003-R-012 закрыты (`12/12`), `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, implementation choices и gaps отсутствуют.
 - [TG-004 Task Contract](../tasks/TG-004_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99`, `TASK_CONTRACT_GATE = PASS`.
 - [TG-004 targeted closure recheck](../FINAL_TG-004_TASK_CONTRACT_TARGETED_RECHECK.md): final gate evidence; findings F-1…F-4 закрыты, `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, implementation choices и gaps отсутствуют.
 - [TG-005 Task Contract](../tasks/TG-005_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99`, `TASK_CONTRACT_GATE = PASS`.
@@ -31,7 +33,7 @@
 
 ## Следующий шаг исполнения
 
-TG-004 и TG-005 implementation выполняются от `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99` по утверждённым контрактам; repository closure commit не сдвигает implementation baseline. Contract Orchestrator продолжает closure/recheck Task Contract TG-003. Coding TG-003 не начинается до отдельного approval. TG-002 implementation завершён и готов к Wave-1 checkpoint; `IC-1` остаётся будущим integration gate.
+TG-003, TG-004 и TG-005 implementation выполняются от `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99` по утверждённым контрактам; repository closure commit не сдвигает implementation baseline. TG-002 implementation завершён и готов к Wave-1 checkpoint; `IC-1` остаётся будущим integration gate.
 
 ## Следующий SDD pipeline
 

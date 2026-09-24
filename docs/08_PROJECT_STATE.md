@@ -9,26 +9,26 @@
 | `DATA_MODEL` | `APPROVED` |
 | `INTERFACE_CONTRACTS` | `APPROVED` |
 | `TASK_GRAPH` | `APPROVED / PASS` |
-| `TASK_CONTRACTS` | `TG-001 COMPLETE; TG-002, TG-004, TG-005 APPROVED / CANONICAL / PASS; TG-003 REVIEW/FIX IN PROGRESS` |
-| `CURRENT_EXECUTION` | `TG-002 IMPLEMENTATION COMPLETE / IC1 READY; TG-004 IMPLEMENTATION UNBLOCKED; TG-005 TASK CONTRACT APPROVED / CODING UNBLOCKED; TG-003 TASK CONTRACT REVIEW/FIX` |
+| `TASK_CONTRACTS` | `TG-001 COMPLETE; TG-002, TG-003, TG-004, TG-005 APPROVED / CANONICAL / PASS` |
+| `CURRENT_EXECUTION` | `TG-002 IMPLEMENTATION COMPLETE / IC1 READY; TG-003, TG-004, TG-005 IMPLEMENTATION UNBLOCKED` |
 | `TG-001_IMPLEMENTATION` | `COMPLETE` |
 | `TG-001_IMPLEMENTATION_BRANCH` | `codex/tg-001-workspace-foundation` |
 | `TG-001_IMPLEMENTATION_COMMIT` | `588e0aa1de6dbca5118ef1c0378967c8b36b73a6` |
 | `TG-001_CONTRACT_BASE_SHA` | `1b2206899322ac4416a578a1fa5f50b336d9cab5` |
 | `TG-001_CHECKPOINT` | `ESTABLISHED` |
-| `CODING` | `TG-002 IMPLEMENTATION COMPLETE; TG-004, TG-005 UNBLOCKED AFTER REPOSITORY CLOSURE; TG-003 BLOCKED UNTIL TASK CONTRACT APPROVAL` |
+| `CODING` | `TG-002 IMPLEMENTATION COMPLETE; TG-003, TG-004, TG-005 UNBLOCKED AFTER REPOSITORY CLOSURE` |
 | `IC-0` | `WORKSPACE / PASS` |
 | `WAVE_1_TASK_CONTRACTS` | `UNBLOCKED` |
 | `TG-002` | `IMPLEMENTATION COMPLETE / IC1 READY` |
-| `TG-003` | `TASK CONTRACT REVIEW/FIX IN PROGRESS` |
+| `TG-003` | `TASK CONTRACT APPROVED / PASS; CODING UNBLOCKED; IMPLEMENTATION NOT STARTED` |
 | `TG-004` | `TASK CONTRACT APPROVED / PASS; CODING UNBLOCKED; IMPLEMENTATION NOT STARTED` |
 | `TG-005` | `TASK CONTRACT APPROVED / PASS; CODING UNBLOCKED AFTER REPOSITORY CLOSURE; IMPLEMENTATION NOT STARTED` |
 | `WAVE_1` | `NOT COMPLETE` |
 | `IC-1` | `NOT COMPLETE` |
 
-**Следующая цель:** начать TG-004 и TG-005 implementation от неизменного `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99` по [утверждённому контракту](../tasks/TG-004_TASK_CONTRACT.md) и [утверждённому контракту](../tasks/TG-005_TASK_CONTRACT.md); продолжить review/fix Task Contract TG-003. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
+**Следующая цель:** начать TG-003, TG-004 и TG-005 implementation от неизменного `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99` по утверждённым контрактам; TG-002 implementation уже готов к IC-1. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
 
-TG-001 implementation завершён, independently проверен и интегрирован; `IC-0 Workspace = PASS`, checkpoint установлен. TG-002 Task Contract прошёл independent review и targeted recheck, канонизирован со статусом `APPROVED / PASS`; implementation TG-002 завершён и готов к IC-1. TG-004 Task Contract прошёл independent review, one-batch targeted fix и targeted closure recheck, канонизирован со статусом `APPROVED / PASS`; coding TG-004 разблокирован после repository closure, implementation ещё не начат. TG-005 Task Contract прошёл independent review, one-batch targeted fix, final targeted fix и final targeted closure recheck со статусом `PASS`; findings закрыты 10/10 (`BLOCKER / MAJOR / MINOR = 0 / 0 / 0`, implementation choices и gaps отсутствуют), контракт канонизирован со статусом `APPROVED / PASS`; coding TG-005 разблокирован после repository closure, implementation ещё не начат. TG-003 остаётся на стадии closure/recheck контракта; его coding заблокирован до отдельного approval. Wave 1 и `IC-1` не завершены; TG-004 и TG-005 implementation complete не объявляется.
+TG-001 implementation завершён, independently проверен и интегрирован; `IC-0 Workspace = PASS`, checkpoint установлен. TG-002 Task Contract канонизирован со статусом `APPROVED / PASS`; implementation TG-002 завершён и готов к IC-1. TG-003 Task Contract прошёл full independent review, targeted fixes и final targeted recheck со статусом `PASS`; findings закрыты 12/12 (`BLOCKER / MAJOR / MINOR = 0 / 0 / 0`, implementation choices и gaps отсутствуют), контракт канонизирован со статусом `APPROVED / PASS`; coding TG-003 разблокирован, implementation ещё не начат. TG-004 и TG-005 Task Contracts также канонизированы со статусом `APPROVED / PASS`; их coding разблокирован, implementation complete не объявляется. Wave 1 и `IC-1` не завершены.
 
 ## Известные продуктовые исключения из MVP
 
