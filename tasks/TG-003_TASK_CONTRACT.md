@@ -560,8 +560,10 @@ if (@(Invoke-NativeChecked git @('status','--porcelain=v1')).Count -ne 0) { thro
 Invoke-NativeChecked npm @('exec','--','vitest','run',
   'apps/api/src/app','apps/api/src/config','apps/api/src/logging','apps/api/src/modules/health') | Out-Host
 
-$tempConfig = Join-Path ([IO.Path]::GetTempPath()) ('tg003-' + [guid]::NewGuid().ToString('N') + '.json')
+$tempDir = Join-Path $repoRoot ('.tg003-typecheck-' + [guid]::NewGuid().ToString('N'))
+$tempConfig = Join-Path $tempDir 'tsconfig.json'
 try {
+  New-Item -ItemType Directory -Path $tempDir -ErrorAction Stop | Out-Null
   $apiConfig = (Resolve-Path -LiteralPath 'apps/api/tsconfig.json').Path.Replace('\','/')
   $srcRoot = (Resolve-Path -LiteralPath 'apps/api/src').Path.Replace('\','/')
   @{
@@ -576,7 +578,7 @@ try {
   $tsc = Join-Path $repoRoot 'node_modules/.bin/tsc.cmd'
   Invoke-NativeChecked $tsc @('-p',$tempConfig) | Out-Host
 } finally {
-  if (Test-Path -LiteralPath $tempConfig) { Remove-Item -Force -LiteralPath $tempConfig }
+  if (Test-Path -LiteralPath $tempDir) { Remove-Item -Recurse -Force -LiteralPath $tempDir }
 }
 ```
 
