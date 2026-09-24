@@ -377,7 +377,9 @@ $lockAfter = (Get-FileHash -Algorithm SHA256 package-lock.json).Hash
 if ($lockBefore -ne $lockAfter) { throw 'LOCKFILE_CHANGED_DURING_NPM_CI' }
 npm ls react react-dom react-router-dom @tanstack/react-query vite @vitejs/plugin-react @types/react @types/react-dom happy-dom
 git restore -- package-lock.json
-if (git diff --exit-code '200b117bd58f7080c15fba1cfa556d386a085c99' -- package-lock.json) { Write-Output 'LOCKFILE_RESTORED_AFTER_DEPENDENCY_VERIFICATION' } else { throw 'LOCKFILE_NOT_RESTORED_AFTER_DEPENDENCY_VERIFICATION' }
+git diff --exit-code '200b117bd58f7080c15fba1cfa556d386a085c99' -- package-lock.json | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'LOCKFILE_NOT_RESTORED_AFTER_DEPENDENCY_VERIFICATION' }
+Write-Output 'LOCKFILE_RESTORED_AFTER_DEPENDENCY_VERIFICATION'
 ```
 
 ### 16.4 Typecheck / build
@@ -424,7 +426,9 @@ if ($locks.Count -ne 1) { throw 'LOCKFILE_COUNT_MISMATCH' }
 Lockfile уже восстановлен сразу после dependency verification (§ 16.3); повторный `git restore -- package-lock.json` идемпотентен и остаётся финальным proof перед staging (§ 16.9).
 ```powershell
 git restore -- package-lock.json
-if (git diff --exit-code '200b117bd58f7080c15fba1cfa556d386a085c99' -- package-lock.json) { Write-Output 'LOCKFILE_RESTORED' } else { throw 'LOCKFILE_NOT_RESTORED' }
+git diff --exit-code '200b117bd58f7080c15fba1cfa556d386a085c99' -- package-lock.json | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'LOCKFILE_NOT_RESTORED' }
+Write-Output 'LOCKFILE_RESTORED'
 git diff --check
 git diff --stat '200b117bd58f7080c15fba1cfa556d386a085c99'
 git diff '200b117bd58f7080c15fba1cfa556d386a085c99' -- apps/web
