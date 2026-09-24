@@ -1,42 +1,38 @@
-# Передача CREATE-оркестратору
+# Передача оркестратору
 
-## Текущий этап
+## Текущий checkpoint
 
-`CREATE / WAVE 1 TASK CONTRACTS`. Product Freeze и Product Spec утверждены. Technical Architecture Gate и Task Graph Gate пройдены со статусом `PASS`; модель данных и интерфейсные контракты утверждены. Canonical graph: [`tasks/TASK_GRAPH.md`](../tasks/TASK_GRAPH.md) — 35 tasks, 74 direct dependency edges, 17 waves, 4 lanes. TG-001 implementation commit `588e0aa1de6dbca5118ef1c0378967c8b36b73a6` independently проверен и интегрирован. `IC-0 Workspace = PASS`; TG-001 checkpoint установлен. TG-002, TG-003, TG-004 и TG-005 Task Contracts канонизированы со статусом `APPROVED / PASS`; implementation TG-002 завершён и готов к IC-1, coding TG-003/TG-004/TG-005 разблокирован, их implementation ещё не объявлен завершённым. Wave 1 и `IC-1` не завершены. Состояние: [PROJECT_STATE](08_PROJECT_STATE.md).
+Wave 0–1 завершены по прежнему strict SDD и **grandfathered**: TG-001…TG-005 не переписывать и не возвращать в review chains. `IC-0 = PASS`; `IC-1 = PASS`. `IC1_CHECKPOINT_SHA = 56d24135bb30f9f957b4f56b261bb3bd472ee253`. Текущая фаза — `LEAN GOVERNANCE TRANSITION → WAVE 2`. Следующая executable wave: **W2 = TG-006, TG-009, TG-010, TG-020**; эта governance-правка не реализует их. Точный статус — в [PROJECT_STATE](08_PROJECT_STATE.md).
 
-## Утверждено и где читать
+Canonical [Task Graph](../tasks/TASK_GRAPH.md) остаётся неизменным: 35 tasks, 74 direct dependency edges, 17 waves, 4 lanes. Его исторические gate/status-блоки относятся к моменту утверждения графа; текущий статус ведётся здесь и в PROJECT_STATE. [Product Freeze](01_PRODUCT_FREEZE.md), [Product Spec](02_PRODUCT_SPEC.md), [Architecture](03_ARCHITECTURE.md), [Data Model](04_DATA_MODEL.md) и [Interface Contracts](05_INTERFACE_CONTRACTS.md) сохраняют утверждённую семантику.
 
-- [Product Freeze](01_PRODUCT_FREEZE.md): `APPROVED PRODUCT SCOPE`, верхний продуктовый приоритет.
-- [Product Spec](02_PRODUCT_SPEC.md): `APPROVED PRODUCT SPEC v1.0 / READY FOR CREATE`, нормативное поведение.
-- [Technical Architecture](03_ARCHITECTURE.md): утверждённая canonical architecture.
-- [Data Model](04_DATA_MODEL.md): утверждённая canonical data model.
-- [Interface Contracts](05_INTERFACE_CONTRACTS.md): утверждённые canonical interface contracts.
-- [Task Graph](../tasks/TASK_GRAPH.md): утверждённый canonical graph; `TASK_GRAPH_GATE = PASS`.
-- [TG-001 Task Contract](../tasks/TG-001_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 1b2206899322ac4416a578a1fa5f50b336d9cab5`, `TASK_CONTRACT_GATE = PASS`.
-- [Final mechanical TG-001 R2 recheck](../FINAL_MECHANICAL_TG-001_R2_RECHECK.md): final gate evidence; `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, все contract findings закрыты.
-- [TG-002 Task Contract](../tasks/TG-002_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99`, `TASK_CONTRACT_GATE = PASS`.
-- [TG-002 targeted recheck](../FINAL_TG-002_TASK_CONTRACT_TARGETED_RECHECK.md): final gate evidence; оба findings закрыты, `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, implementation choices и gaps отсутствуют.
-- [TG-003 Task Contract](../tasks/TG-003_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99`, `TASK_CONTRACT_GATE = PASS`.
-- [TG-003 final targeted recheck](../FINAL_TG-003_TASK_CONTRACT_FINAL_TARGETED_RECHECK.md): final gate evidence; findings TG003-R-001…TG003-R-012 закрыты (`12/12`), `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, implementation choices и gaps отсутствуют.
-- [TG-004 Task Contract](../tasks/TG-004_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99`, `TASK_CONTRACT_GATE = PASS`.
-- [TG-004 targeted closure recheck](../FINAL_TG-004_TASK_CONTRACT_TARGETED_RECHECK.md): final gate evidence; findings F-1…F-4 закрыты, `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, implementation choices и gaps отсутствуют.
-- [TG-005 Task Contract](../tasks/TG-005_TASK_CONTRACT.md): утверждённый canonical contract; `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99`, `TASK_CONTRACT_GATE = PASS`.
-- [TG-005 final targeted closure recheck](../FINAL_TG-005_TASK_CONTRACT_TARGETED_RECHECK.md): final gate evidence; findings TG005-R-B01/B02/M01–M05/N01 и TG005-TR-01/TR-02 закрыты (`10/10`), `BLOCKER = 0`, `MAJOR = 0`, `MINOR = 0`, implementation choices и gaps отсутствуют.
-- [Критерии хакатона](09_HACKATHON_CRITERIA.md): официальные внешние требования и правила сдачи.
-- [Краткое введение](00_PROJECT_BRIEF.md): контекст за 2–3 минуты. [Решения](07_DECISIONS.md): принятые ограничения.
+## Lean Hackathon SDD с Wave 2
 
-Не читать прежние репозитории и продуктовые исследования. Документ final targeted recheck подтверждает прохождение gate и не задаёт новую продуктовую логику. Live MAX checks остаются будущими integration/delivery evidence и не являются architecture blockers.
+Перед каждой задачей оркестратор назначает класс риска по [BACKLOG](../tasks/BACKLOG.md):
 
-## Запрет на самостоятельные продуктовые изменения
+| Класс | Порядок |
+| --- | --- |
+| **CRITICAL** | Краткий Task Contract → один independent review → implementation → wave integration. При `FIX_REQUIRED`: один полный пакет findings, одно пакетное исправление, только targeted closure. |
+| **STANDARD** | Краткий Task Contract → self-check → canonicalize → implementation → wave integration. Independent contract review нужен только при реальной неустранимой semantic ambiguity или high-risk boundary. |
+| **DELIVERY** | При однозначных canonical docs: implementation/delivery → verification, без отдельного contract/review ради процесса. |
 
-Нельзя менять MUST, роли, восемь состояний, переходы, инварианты, критерии приёмки, основной сценарий и границы Product Freeze ради удобства реализации. При конфликте остановить работу, сообщить `SPEC CONFLICT`; изменение возможно только по явному решению команды с записью в [журнале решений](07_DECISIONS.md).
+Краткий контракт фиксирует **what, boundaries, acceptance** по [шаблону](../tasks/TASK_TEMPLATE.md), без построчного псевдокода и многоступенчатых review-циклов. Для Wave 2+ новые `*_AUTHORING_REPORT.md`, `*_REVIEW.md`, `*_RECHECK.md`, `*_TARGETED_RECHECK.md`, closure matrices, временные internal evidence и review transcripts не коммитятся. Review может проходить вне canonical repository. Существующие артефакты Wave 0–1 сейчас не удалять.
 
-## Следующий шаг исполнения
+## Приоритет исполнения
 
-TG-003, TG-004 и TG-005 implementation выполняются от `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99` по утверждённым контрактам; repository closure commit не сдвигает implementation baseline. TG-002 implementation завершён и готов к Wave-1 checkpoint; `IC-1` остаётся будущим integration gate.
+1. Рабочий обязательный E2E.
+2. Соответствие Product Freeze / Product Spec.
+3. Стабильное демо.
+4. Реальный путь MAX.
+5. Воспроизводимый запуск.
+6. Submission evidence.
+7. Ясность архитектуры.
+8. Internal process artifacts только по необходимости.
 
-## Следующий SDD pipeline
+Partial executable path проверять регулярно по мере сборки, не ждать TG-029. Реальный MAX path обязателен; fake/test adapter не считается его подтверждением. Product, роли, восемь состояний, инварианты и утверждённые контракты не меняются ради скорости. При `SPEC CONFLICT` остановить затронутую работу и вынести решение команде с записью в [DECISIONS](07_DECISIONS.md).
 
-`Task Graph → Task Contracts → Coding Waves → Integration → E2E → Submission hardening`.
+## Git и завершение
 
-Команда — **4 человека**. Доступные ресурсы разработки: **Codex ×3, OpenCode ×1**. Параллелить независимые задачи, но не принятие одного и того же решения. Каждая задача по разработке должна иметь конкретный `base_sha` и контракт по [шаблону](../tasks/TASK_TEMPLATE.md). После каждой параллельной волны отдельный Integration Agent объединяет изменения, проверяет их и создаёт новый стабильный `main` для следующей волны.
+Canonical mutation `main` сериализуется: перед правкой и push сверять актуальный `origin/main`, без force и перезаписи чужих изменений. Feature branches используют конкретный task `BASE_SHA`, когда это предписано контрактом. После параллельной волны Integration Agent объединяет изменения, проверяет их и создаёт стабильный `main`.
+
+**FINAL REPOSITORY HYGIENE** — ближе к TG-034/TG-035: проверить ссылки на существующие review/recheck artifacts, сохранить всё необходимое для официальной сдачи, runtime и документации, удалить только ненужный внутренний process clutter. Сейчас cleanup не выполнять.

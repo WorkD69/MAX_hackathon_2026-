@@ -1,63 +1,51 @@
-# Обязательный контракт задачи
+# Lean Task Contract (Wave 2+)
 
-Заполнить перед выдачей задачи агенту. `BASE_SHA` должен быть конкретным результатом `git rev-parse HEAD` стабильной базы соответствующей волны.
+Использовать для CRITICAL и STANDARD задач по [risk-class workflow](BACKLOG.md). Для DELIVERY при однозначных canonical docs отдельный контракт не обязателен. Контракт фиксирует **WHAT, BOUNDARIES, ACCEPTANCE**, без построчного implementation pseudocode. TG-001…TG-005 сохраняют свои исторические контракты.
 
-## TASK ID
+## 1. Identity / BASE_SHA
 
-<!-- Уникальный идентификатор. -->
+`TASK_ID`, краткое название, `RISK_CLASS`, полный `BASE_SHA` стабильной базы. Перед работой сверить его с `git rev-parse HEAD` выбранной ветки.
 
-## TITLE
+## 2. Goal
 
-<!-- Краткое название. -->
+Проверяемый результат задачи в нескольких предложениях.
 
-## BASE_SHA
+## 3. Canonical sources
 
-<!-- Полный SHA стабильной базы. -->
+Только необходимые нормативные и технические документы/разделы с путями; их приоритет не меняется.
 
-## PURPOSE
+## 4. Dependencies / unlocks
 
-<!-- Цель и проверяемый результат. -->
+Точные `Depends On` и `Unlocks` из [Task Graph](TASK_GRAPH.md); не менять graph semantics.
 
-## REQUIRED CONTEXT
+## 5. Allowed write scope
 
-<!-- Только необходимые нормативные и технические документы с путями. -->
+Разрешённые файлы или пути и владелец shared files.
 
-## IN SCOPE
+## 6. Forbidden scope
 
-<!-- Разрешённый объём работы. -->
+Явные запреты: чужие файлы, Product/Architecture semantics, future task scope и другие важные границы.
 
-## NON-GOALS
+## 7. Required behavior / invariants
 
-<!-- Что исключено из этой задачи. -->
+Наблюдаемое поведение и обязательные инварианты со ссылками на canonical sources; без навязывания построчной реализации.
 
-## DEPENDENCIES
+## 8. Dependency requests
 
-<!-- Предшествующие решения, контракты и задачи. -->
+Нужные пакеты или изменения shared manifests; если не нужны — `NONE`. Указать владельца и маршрут интеграции, не допускать конкурентных правок shared files.
 
-## ALLOWED FILES
+## 9. Acceptance criteria
 
-<!-- Исчерпывающий перечень разрешённых файлов или путей. -->
+Короткие проверяемые условия завершения задачи.
 
-## FORBIDDEN FILES
+## 10. Required tests
 
-<!-- Явные запреты, включая нормативные продуктовые документы. -->
+Необходимые проверки и команды с ожидаемым результатом; тесты соразмерны риску.
 
-## ACCEPTANCE CRITERIA
+## 11. Git / integration handoff
 
-<!-- Наблюдаемые условия приёмки со ссылкой на Product Spec, если применимо. -->
+Ветка и `BASE_SHA` по контракту, commit/push с существующей человеческой Git identity, полный commit SHA, результаты проверок и передача Integration Agent.
 
-## VERIFICATION COMMANDS
+## 12. Blocker protocol
 
-<!-- Команды, которые агент обязан выполнить и показать с результатами. -->
-
-## ESCALATION TRIGGERS
-
-<!-- Включить SPEC CONFLICT, несоответствие BASE_SHA, выход за разрешённые файлы, сломанные контракты. -->
-
-## DELIVERABLE
-
-<!-- Файлы, результат проверки и краткий отчёт. -->
-
-## COMMIT / PUSH REQUIREMENTS
-
-<!-- Commit и push с существующей человеческой Git identity; вернуть полный commit SHA и статус push. -->
+Остановить затронутую работу при `SPEC CONFLICT`, неверном `BASE_SHA`, выходе за write scope или несовместимости утверждённых контрактов; сообщить конкретный blocker ответственному. Для CRITICAL review с `FIX_REQUIRED` — один полный batch findings, один batch fix и targeted closure.

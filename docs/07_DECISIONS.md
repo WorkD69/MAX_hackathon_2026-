@@ -30,3 +30,4 @@
 | ADR-024 | Versioned migrations + idempotent seed | Reproducibility |
 | ADR-025 | No WebSocket/SSE; refetch after command/conflict/focus | MVP simplicity |
 | ADR-026 | Real DB concurrency tests + manual mobile/web MAX gate | Доказательство invariants и platform compatibility |
+| ADR-027 | Lean Hackathon SDD принят начиная с Wave 2; TG-001…TG-005 и IC-1 сохраняются как завершённая история. Для Wave 2+ процесс определяется risk-class workflow в `tasks/BACKLOG.md`. | Wave 0–1 дали стабильную архитектурную основу, но strict multi-review SDD слишком затратен по времени, промптам и лимитам для hackathon delivery. Сокращается process overhead; Product Freeze, Product Spec, утверждённые архитектурные контракты, критические инварианты и quality gates сохраняются. |

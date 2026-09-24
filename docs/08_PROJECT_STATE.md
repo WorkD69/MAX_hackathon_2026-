@@ -2,33 +2,25 @@
 
 | Поле | Значение |
 | --- | --- |
-| `PHASE` | `CREATE / WAVE 1 TASK CONTRACTS` |
+| `PHASE` | `LEAN GOVERNANCE TRANSITION → WAVE 2` |
 | `PRODUCT_FREEZE` | `APPROVED` |
 | `PRODUCT_SPEC` | `APPROVED` |
 | `TECHNICAL_ARCHITECTURE` | `APPROVED / PASS` |
 | `DATA_MODEL` | `APPROVED` |
 | `INTERFACE_CONTRACTS` | `APPROVED` |
-| `TASK_GRAPH` | `APPROVED / PASS` |
-| `TASK_CONTRACTS` | `TG-001 COMPLETE; TG-002, TG-003, TG-004, TG-005 APPROVED / CANONICAL / PASS` |
-| `CURRENT_EXECUTION` | `TG-002 IMPLEMENTATION COMPLETE / IC1 READY; TG-003, TG-004, TG-005 IMPLEMENTATION UNBLOCKED` |
-| `TG-001_IMPLEMENTATION` | `COMPLETE` |
-| `TG-001_IMPLEMENTATION_BRANCH` | `codex/tg-001-workspace-foundation` |
-| `TG-001_IMPLEMENTATION_COMMIT` | `588e0aa1de6dbca5118ef1c0378967c8b36b73a6` |
-| `TG-001_CONTRACT_BASE_SHA` | `1b2206899322ac4416a578a1fa5f50b336d9cab5` |
-| `TG-001_CHECKPOINT` | `ESTABLISHED` |
-| `CODING` | `TG-002 IMPLEMENTATION COMPLETE; TG-003, TG-004, TG-005 UNBLOCKED AFTER REPOSITORY CLOSURE` |
-| `IC-0` | `WORKSPACE / PASS` |
-| `WAVE_1_TASK_CONTRACTS` | `UNBLOCKED` |
-| `TG-002` | `IMPLEMENTATION COMPLETE / IC1 READY` |
-| `TG-003` | `TASK CONTRACT APPROVED / PASS; CODING UNBLOCKED; IMPLEMENTATION NOT STARTED` |
-| `TG-004` | `TASK CONTRACT APPROVED / PASS; CODING UNBLOCKED; IMPLEMENTATION NOT STARTED` |
-| `TG-005` | `TASK CONTRACT APPROVED / PASS; CODING UNBLOCKED AFTER REPOSITORY CLOSURE; IMPLEMENTATION NOT STARTED` |
-| `WAVE_1` | `NOT COMPLETE` |
-| `IC-1` | `NOT COMPLETE` |
+| `TASK_GRAPH` | `APPROVED / PASS; 35 tasks / 74 direct dependency edges / 17 waves / 4 lanes` |
+| `TG-001` | `COMPLETE; IC-0 PASS` |
+| `TG-002` | `COMPLETE` |
+| `TG-003` | `COMPLETE` |
+| `TG-004` | `COMPLETE` |
+| `TG-005` | `COMPLETE` |
+| `WAVE_0_1` | `COMPLETE; GRANDFATHERED` |
+| `IC-1` | `PASS` |
+| `IC1_CHECKPOINT_SHA` | `56d24135bb30f9f957b4f56b261bb3bd472ee253` |
+| `NEXT_EXECUTABLE_WAVE` | `W2: TG-006, TG-009, TG-010, TG-020` |
+| `WAVE_2_IMPLEMENTATION` | `NOT STARTED BY GOVERNANCE TRANSITION` |
 
-**Следующая цель:** начать TG-003, TG-004 и TG-005 implementation от неизменного `BASE_SHA = 200b117bd58f7080c15fba1cfa556d386a085c99` по утверждённым контрактам; TG-002 implementation уже готов к IC-1. Порядок этапов — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md) и [плане этапов](../tasks/BACKLOG.md).
-
-TG-001 implementation завершён, independently проверен и интегрирован; `IC-0 Workspace = PASS`, checkpoint установлен. TG-002 Task Contract канонизирован со статусом `APPROVED / PASS`; implementation TG-002 завершён и готов к IC-1. TG-003 Task Contract прошёл full independent review, targeted fixes и final targeted recheck со статусом `PASS`; findings закрыты 12/12 (`BLOCKER / MAJOR / MINOR = 0 / 0 / 0`, implementation choices и gaps отсутствуют), контракт канонизирован со статусом `APPROVED / PASS`; coding TG-003 разблокирован, implementation ещё не начат. TG-004 и TG-005 Task Contracts также канонизированы со статусом `APPROVED / PASS`; их coding разблокирован, implementation complete не объявляется. Wave 1 и `IC-1` не завершены.
+IC-1 прошёл clean install, typecheck, build, 256 unique tests, real PostgreSQL tests и migrations, catalog/constraint checks, readiness negatives и partial executable smoke. Один canonical root `package-lock.json`; semantic changes и blockers отсутствуют. Lean Hackathon SDD действует только начиная с Wave 2. Операционный порядок — в [передаче оркестратору](ORCHESTRATOR_HANDOFF.md), зависимости — в [Task Graph](../tasks/TASK_GRAPH.md).
 
 ## Известные продуктовые исключения из MVP
 
@@ -39,4 +31,4 @@ TG-001 implementation завершён, independently проверен и инт
 - Автоматическое юридическое определение ответственного; универсальные нормативные SLA; реальные свободные слоты без интеграции; диспетчеризация маршрутов мастеров.
 - Платежи; электронные подписи и юридически значимые акты; заявленная официальная регистрация обращения в ГИС ЖКХ; универсальный API-маркетплейс; обязательный ИИ; отдельные программные процессы для каждой категории.
 
-В этом документе не хранится SHA собственного commit. Каждый агент перед началом работы самостоятельно выполняет `git status` и `git rev-parse HEAD`.
+В этом документе не хранится SHA собственного commit. Каждый агент перед началом работы выполняет `git status` и `git rev-parse HEAD`.
