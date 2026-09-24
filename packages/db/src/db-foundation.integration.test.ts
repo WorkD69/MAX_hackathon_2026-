@@ -1,85 +1,231 @@
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { expect, test } from 'vitest';
+import { migrateToLatest, rollbackAll } from './index.js';
 
-const PG_OPTS = {
-  host: 'tg005-pg',
-  port: 5432,
-  user: 'postgres',
-  password: 'postgres',
-  database: 'max_tg005_test',
-};
+const DATABASE_URL = process.env.TG005_TEST_DATABASE_URL;
+if (!DATABASE_URL) throw new Error('MISSING_TG005_TEST_DATABASE_URL');
 
-test('migration up creates all tables and indexes with correct DDL', async () => {
-  const schema = 'tg005_foundation';
-  // Pool for schema + catalog (like capture script)
-  const pool = new Pool({ ...PG_OPTS, options: `-c search_path=${schema}`, max: 2 });
-  await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
-  await pool.query(`CREATE SCHEMA ${schema}`);
-  
-  // Separate pool for migration (like capture script)
-  const migrationPool = new Pool({ ...PG_OPTS, options: `-c search_path=${schema}`, max: 2 });
-  const db = new Kysely({ dialect: new PostgresDialect({ pool: migrationPool }) });
+const parsed = new URL(DATABASE_URL);
+const DB_NAME = decodeURIComponent(parsed.pathname.slice(1));
+const SCHEMA = 'tg005_foundation';
 
-  // Dynamic import of dist module (like standalone script)
-  const cwd = process.cwd();
-  const m = await import(pathToFileURL(path.join(cwd, 'packages/db/dist/index.js')).href);
+const APP_TABLES = [
+  'organization',
+  'house',
+  'premises',
+  'app_user',
+  'user_role_binding',
+  'resident_premises_access',
+  'uk_house_access',
+  'max_identity',
+  'category',
+  'contractor',
+  'organization_contractor',
+  'demo_run',
+  'demo_run_actor',
+].sort();
 
-  await m.migrateToLatest(db);
+const COMPOSITE_PKS = [
+  'pk_resident_premises_access',
+  'pk_uk_house_access',
+  'pk_organization_contractor',
+  'pk_demo_run_actor',
+];
 
-  // Query constraints via pg catalog using original pool (like capture script)
-  const constraints = await pool.query(
-    `SELECT conname, contype, pg_get_constraintdef(oid) AS def
-       FROM pg_constraint
-      WHERE connamespace = to_regnamespace($1)
-      ORDER BY conname`,
-    [schema],
+const UNIQUE_CONSTRAINTS = [
+  'cq_house_organization_house',
+  'cq_premises_house_premises',
+  'cq_category_organization_category',
+  'uq_demo_run_actor_role_alias',
+];
+
+const CHECK_CONSTRAINTS = [
+  'ck_user_role_binding_role',
+  'ck_user_role_binding_shape',
+  'ck_max_identity_link_status',
+  'ck_max_identity_readiness',
+  'ck_demo_run_status',
+  'ck_demo_run_actor_role',
+  'ck_category_result_requirement',
+];
+
+const FK_CONSTRAINTS = [
+  'fk_house_organization_id',
+  'fk_premises_house_id',
+  'fk_category_organization_id',
+  'fk_category_default_contractor_id',
+  'fk_category_updated_by_user_id',
+  'fk_user_role_binding_app_user_id',
+  'fk_user_role_binding_organization_id',
+  'fk_user_role_binding_contractor_id',
+  'fk_resident_premises_access_app_user_id',
+  'fk_resident_premises_access_premises_id',
+  'fk_uk_house_access_app_user_id',
+  'fk_uk_house_access_house_id',
+  'fk_max_identity_app_user_id',
+  'fk_demo_run_created_by_max_identity_id',
+  'fk_demo_run_notification_recipient_max_identity_id',
+  'fk_demo_run_actor_demo_run_id',
+  'fk_demo_run_actor_app_user_id',
+  'fk_organization_contractor_organization_id',
+  'fk_organization_contractor_contractor_id',
+];
+
+const PARTIAL_INDEXES = [
+  'uq_max_identity_mini_app_user_id',
+  'uq_max_identity_bot_user_id',
+  'uq_max_identity_app_user_id',
+  'uq_demo_run_active_per_identity',
+];
+
+function cfg(schema: string, max = 4) {
+  return {
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : 5432,
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: DB_NAME,
+    max,
+    options: `-c search_path=${schema}`,
+  };
+}
+
+function quoteIdent(id: string): string {
+  return '"' + id.replace(/"/g, '""') + '"';
+}
+
+async function dropAllUserSchemas(pool: Pool) {
+  const { rows } = await pool.query(
+    `SELECT nspname FROM pg_namespace
+      WHERE nspname <> 'public'
+        AND nspname <> 'information_schema'
+        AND nspname NOT LIKE 'pg\\_%'`,
   );
-  const defNames = constraints.rows.map((r) => r.def);
+  for (const row of rows) {
+    await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(row.nspname)} CASCADE`);
+  }
+}
 
-  // 13 primary keys (contype='p')
-  const pkDefs = defNames.filter((d) => d.includes('PRIMARY KEY')).length;
-  expect(pkDefs).toBe(13);
+async function guardDatabase(pool: Pool) {
+  const { rows } = await pool.query('SELECT current_database() AS db');
+  if (!rows[0].db.endsWith('_tg005_test')) throw new Error('UNSAFE_TEST_DATABASE');
+}
 
-  // 4 UNIQUE constraints (contype='u')
-  const uniqueDefs = defNames.filter((d) => d.includes('UNIQUE')).length;
-  expect(uniqueDefs).toBe(4);
+test('clean migrate to latest creates 13 tables with exact catalog; rollback empties; re-up is idempotent', async () => {
+  const adminPool = new Pool(cfg('public', 1));
+  try {
+    await guardDatabase(adminPool);
+    await dropAllUserSchemas(adminPool);
+    await adminPool.query(`CREATE SCHEMA ${quoteIdent(SCHEMA)}`);
+  } finally {
+    await adminPool.end();
+  }
 
-  // 7 CHECK constraints (contype='c')
-  const checkDefs = defNames.filter((d) => d.includes('CHECK')).length;
-  expect(checkDefs).toBe(7);
+  const catPool = new Pool({ ...cfg('public', 2), options: `-c search_path=${SCHEMA}` });
+  const pool = new Pool(cfg(SCHEMA, 4));
+  const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
+  try {
+    const up1 = await migrateToLatest(db);
+    expect(up1.error).toBeUndefined();
 
-  // 19 FK constraints (contype='f')
-  const fkDefs = defNames.filter((d) => d.includes('FOREIGN KEY')).length;
-  expect(fkDefs).toBe(19);
+    const tables = await catPool.query(
+      `SELECT tablename FROM pg_tables WHERE schemaname = $1`,
+      [SCHEMA],
+    );
+    const appTables = tables.rows
+      .map((r) => r.tablename as string)
+      .filter((t) => !t.startsWith('kysely_migration'))
+      .sort();
+    expect(appTables).toEqual(APP_TABLES);
 
-  // Partial unique indexes def strings via pg_get_indexdef
-  const indexes = await pool.query(
-    `SELECT c.relname AS indexname, pg_get_indexdef(c.oid) AS def
-       FROM pg_class c
-       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = $1 AND c.relname IN
-        ('uq_max_identity_mini_app_user_id','uq_max_identity_bot_user_id','uq_max_identity_app_user_id','uq_demo_run_active_per_identity')`,
-    [schema],
-  );
-  const indexDefs = indexes.rows.map((r) => r.def);
+    const constraints = await catPool.query(
+      `SELECT con.conname AS name, con.contype AS type, pg_get_constraintdef(con.oid) AS def
+         FROM pg_constraint con
+         JOIN pg_class c ON c.oid = con.conrelid
+        WHERE con.connamespace = to_regnamespace($1)
+          AND c.relname NOT IN ('kysely_migration', 'kysely_migration_lock')`,
+      [SCHEMA],
+    );
+    const types = constraints.rows.map((r) => r.type as string);
+    const names = constraints.rows.map((r) => r.name as string);
+    expect(types.filter((t) => t === 'p')).toHaveLength(13);
+    expect(types.filter((t) => t === 'u')).toHaveLength(4);
+    expect(types.filter((t) => t === 'c')).toHaveLength(7);
+    expect(types.filter((t) => t === 'f')).toHaveLength(19);
+    expect(names).toEqual(expect.arrayContaining(COMPOSITE_PKS));
+    expect(names).toEqual(expect.arrayContaining(UNIQUE_CONSTRAINTS));
+    expect(names).toEqual(expect.arrayContaining(CHECK_CONSTRAINTS));
+    expect(names).toEqual(expect.arrayContaining(FK_CONSTRAINTS));
 
-  expect(indexDefs).toHaveLength(4);
-  expect(indexDefs).toContain(
-    "CREATE UNIQUE INDEX uq_max_identity_mini_app_user_id ON max_identity USING btree (mini_app_user_id) WHERE (mini_app_user_id IS NOT NULL)",
-  );
-  expect(indexDefs).toContain(
-    "CREATE UNIQUE INDEX uq_max_identity_bot_user_id ON max_identity USING btree (bot_user_id) WHERE (bot_user_id IS NOT NULL)",
-  );
-  expect(indexDefs).toContain(
-    "CREATE UNIQUE INDEX uq_max_identity_app_user_id ON max_identity USING btree (app_user_id) WHERE (app_user_id IS NOT NULL)",
-  );
-  expect(indexDefs).toContain(
-    "CREATE UNIQUE INDEX uq_demo_run_active_per_identity ON demo_run USING btree (created_by_max_identity_id) WHERE (status = 'ACTIVE'::text)",
-  );
+    const indexes = await catPool.query(
+      `SELECT c.relname AS name, pg_get_indexdef(i.indexrelid) AS def
+         FROM pg_index i
+         JOIN pg_class c ON c.oid = i.indexrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = $1 AND c.relname = ANY($2::text[])`,
+      [SCHEMA, PARTIAL_INDEXES],
+    );
+    const indexDefs = Object.fromEntries(indexes.rows.map((r) => [r.name as string, r.def as string]));
+    expect(indexDefs['uq_max_identity_mini_app_user_id']).toBe(
+      `CREATE UNIQUE INDEX uq_max_identity_mini_app_user_id ON ${SCHEMA}.max_identity USING btree (mini_app_user_id) WHERE (mini_app_user_id IS NOT NULL)`,
+    );
+    expect(indexDefs['uq_max_identity_bot_user_id']).toBe(
+      `CREATE UNIQUE INDEX uq_max_identity_bot_user_id ON ${SCHEMA}.max_identity USING btree (bot_user_id) WHERE (bot_user_id IS NOT NULL)`,
+    );
+    expect(indexDefs['uq_max_identity_app_user_id']).toBe(
+      `CREATE UNIQUE INDEX uq_max_identity_app_user_id ON ${SCHEMA}.max_identity USING btree (app_user_id) WHERE (app_user_id IS NOT NULL)`,
+    );
+    expect(indexDefs['uq_demo_run_active_per_identity']).toBe(
+      `CREATE UNIQUE INDEX uq_demo_run_active_per_identity ON ${SCHEMA}.demo_run USING btree (created_by_max_identity_id) WHERE (status = 'ACTIVE'::text)`,
+    );
 
-  await pool.end();
-}, 30000);
+    const down = await rollbackAll(db);
+    expect(down.error).toBeUndefined();
+
+    const afterDownTables = await catPool.query(
+      `SELECT tablename FROM pg_tables WHERE schemaname = $1`,
+      [SCHEMA],
+    );
+    const afterDownApps = afterDownTables.rows
+      .map((r) => r.tablename as string)
+      .filter((t) => !t.startsWith('kysely_migration'));
+    expect(afterDownApps).toHaveLength(0);
+
+    const afterDownIndexes = await catPool.query(
+      `SELECT c.relname AS name
+         FROM pg_index i
+         JOIN pg_class c ON c.oid = i.indexrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = $1 AND c.relname = ANY($2::text[])`,
+      [SCHEMA, PARTIAL_INDEXES],
+    );
+    expect(afterDownIndexes.rows).toHaveLength(0);
+
+    const up2 = await migrateToLatest(db);
+    expect(up2.error).toBeUndefined();
+
+    const afterUpTables = await catPool.query(
+      `SELECT tablename FROM pg_tables WHERE schemaname = $1`,
+      [SCHEMA],
+    );
+    const afterUpApps = afterUpTables.rows
+      .map((r) => r.tablename as string)
+      .filter((t) => !t.startsWith('kysely_migration'))
+      .sort();
+    expect(afterUpApps).toEqual(APP_TABLES);
+
+    for (const table of APP_TABLES) {
+      const { rows } = await catPool.query(
+        `SELECT count(*)::int AS c FROM ${quoteIdent(SCHEMA)}.${quoteIdent(table)}`,
+      );
+      expect(rows[0].c).toBe(0);
+    }
+
+    const up3 = await migrateToLatest(db);
+    expect(up3.error).toBeUndefined();
+  } finally {
+    await db.destroy();
+    await catPool.end();
+  }
+}, 60000);
