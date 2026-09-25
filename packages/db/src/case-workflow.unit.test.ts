@@ -34,11 +34,14 @@ test('TG-006 migration contains deferred circular FK declarations', async () => 
   expect(normalized).toContain('fk_demo_run_primary_case');
 });
 
-test('TG-006 migration contains no state-machine triggers or lifecycle stacks', async () => {
+test('TG-006 migration uses triggers only for immutability, not lifecycle transitions', async () => {
   const text = await fs.readFile(new URL('../migrations/0002_case_workflow.ts', import.meta.url), 'utf8');
   const normalized = text.replace(/\s+/g, ' ');
   const triggerMatches = normalized.match(/CREATE TRIGGER/g) ?? [];
-  expect(triggerMatches.length).toBe(0);
+  expect(triggerMatches.length).toBe(3);
+  expect(normalized).toContain('tg006_reject_immutable_change');
+  expect(normalized).toContain('tg006_guard_assignment');
+  expect(normalized).toContain('tg006_guard_case_origin');
   expect(normalized).toContain('CREATE TABLE case_table');
   expect(normalized).toContain('CREATE TABLE case_iteration');
   expect(normalized).toContain('CREATE TABLE contractor_selection');
