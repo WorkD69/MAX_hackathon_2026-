@@ -1,0 +1,62 @@
+.contractor-case {
+  box-sizing: border-box;
+  width: min(100%, 72rem);
+  margin-inline: auto;
+  padding: clamp(1rem, 3vw, 2rem);
+  display: grid;
+  gap: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.contractor-case > header,
+.contractor-case__list li button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.contractor-case h1,
+.contractor-case h2,
+.contractor-case h3,
+.contractor-case p { margin-block: 0 0.75rem; }
+
+.contractor-case__details,
+.contractor-case__activity,
+.contractor-case__panel {
+  min-width: 0;
+  padding: clamp(1rem, 2vw, 1.5rem);
+  border: 1px solid var(--border, #d4d8df);
+  border-radius: 1rem;
+  background: var(--surface, #fff);
+}
+
+.contractor-case__details dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 0;
+}
+
+.contractor-case__details dt { font-size: 0.8rem; opacity: 0.7; }
+.contractor-case__details dd { margin: 0.2rem 0 0; }
+.contractor-case__field { display: grid; gap: 0.55rem; margin-block: 1rem; }
+.contractor-case__field textarea { min-height: 6rem; width: 100%; box-sizing: border-box; resize: vertical; }
+.contractor-case__field input[type="file"] { max-width: 100%; }
+.contractor-case button { min-height: 2.75rem; cursor: pointer; }
+.contractor-case button:disabled { cursor: not-allowed; opacity: 0.55; }
+.contractor-case__material { display: flex; align-items: center; gap: 0.5rem; margin-block: 0.5rem; }
+.contractor-case__activity ol,
+.contractor-case__list ul { margin: 0; padding-inline-start: 1.25rem; }
+.contractor-case__activity li { padding-block: 0.6rem; }
+.contractor-case__activity small { display: block; opacity: 0.7; }
+.contractor-case__list li { margin-block: 0.75rem; }
+.contractor-case__list li button { width: 100%; text-align: start; }
+
+@media (max-width: 42rem) {
+  .contractor-case { padding: 0.75rem; }
+  .contractor-case > header { align-items: start; }
+  .contractor-case__field button,
+  .contractor-case__panel > button { width: 100%; }
+}
