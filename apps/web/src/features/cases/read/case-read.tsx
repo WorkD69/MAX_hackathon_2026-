@@ -1,13 +1,43 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ActivityItemOutput, AllowedActionOutput, CaseSnapshotOutput, RoleOutput } from '@max-smart-city/contracts';
+import type {
+  ActivityItemOutput, AllowedActionOutput, CaseSnapshotOutput, RoleOutput,
+  AcceptCaseRequestInput, SelectContractorRequestInput, SendAssignmentRequestInput,
+  AcceptAssignmentRequestInput, RejectAssignmentRequestInput, AddResultMaterialPayloadInput,
+  SubmitResultRequestInput, ResidentConfirmationRequestInput, ResidentRemarkPayloadInput,
+  RecordNoResidentFeedbackRequestInput, RequestClarificationRequestInput,
+  ReturnToReworkRequestInput, CompleteCaseRequestInput, CompleteWithExplanationRequestInput,
+  AddCommentPayloadInput,
+} from '@max-smart-city/contracts';
 import { usePlatform } from '../../../platform/platform-context.js';
 import { statusLabel, responsibilityLabel } from './presentation.js';
 import type { CaseReadTransport } from './read-transport.js';
 import './case-read.css';
 
-export type ActionRenderers = Partial<Record<AllowedActionOutput['code'],
-  (action: AllowedActionOutput, submit: () => Promise<void>) => ReactNode>>;
+export interface ActionPayloadByCode {
+  ACCEPT_CASE: AcceptCaseRequestInput;
+  SELECT_CONTRACTOR: SelectContractorRequestInput;
+  SEND_ASSIGNMENT: SendAssignmentRequestInput;
+  ACCEPT_ASSIGNMENT: AcceptAssignmentRequestInput;
+  REJECT_ASSIGNMENT: RejectAssignmentRequestInput;
+  ADD_RESULT_MATERIAL: AddResultMaterialPayloadInput;
+  SUBMIT_RESULT: SubmitResultRequestInput;
+  RESIDENT_CONFIRM: ResidentConfirmationRequestInput;
+  RESIDENT_REMARK: ResidentRemarkPayloadInput;
+  RECORD_NO_RESIDENT_FEEDBACK: RecordNoResidentFeedbackRequestInput;
+  REQUEST_CLARIFICATION: RequestClarificationRequestInput;
+  RETURN_TO_REWORK: ReturnToReworkRequestInput;
+  COMPLETE_CASE: CompleteCaseRequestInput;
+  COMPLETE_WITH_EXPLANATION: CompleteWithExplanationRequestInput;
+  ADD_COMMENT: AddCommentPayloadInput;
+}
+
+type ActionCode = AllowedActionOutput['code'];
+export type ActionPayload = ActionPayloadByCode[ActionCode];
+export type ActionRenderers = Partial<{ [K in ActionCode]: (
+  action: Extract<AllowedActionOutput, { code: K }>,
+  submit: (payload: ActionPayloadByCode[K]) => Promise<void>,
+) => ReactNode }>;
 
 const STALE_MESSAGE = 'Случай изменился с момента открытия. Данные обновлены.';
 const LIST_KEY = ['case-read', 'list'] as const;
@@ -97,7 +127,7 @@ interface CaseDetailsViewProps {
   role: RoleOutput;
   transport: CaseReadTransport;
   contextKey: string;
-  executeAction?: (action: AllowedActionOutput) => Promise<unknown>;
+  executeAction?: (action: AllowedActionOutput, payload: ActionPayload) => Promise<unknown>;
   actionRenderers?: ActionRenderers;
 }
 
@@ -114,13 +144,13 @@ export function CaseDetailsView({ caseId, role, transport, contextKey, executeAc
   const refresh = useCallback(() => { void query.refetch(); }, [query.refetch]);
   useForegroundRefresh(refresh);
 
-  const run = useCallback(async (action: AllowedActionOutput) => {
+  const run = useCallback(async (action: AllowedActionOutput, payload: ActionPayload) => {
     if (!executeAction || active.current) return;
     active.current = true;
     setPending(true);
     setCommandError(null);
     try {
-      await executeAction(action);
+      await executeAction(action, payload);
       setStale(false);
       await queryClient.invalidateQueries({ queryKey: LIST_KEY, refetchType: 'none' });
       await queryClient.invalidateQueries({ queryKey, refetchType: 'none' });
@@ -155,7 +185,7 @@ function CaseDetailsContent({ snapshot, executeAction, actionRenderers, run }: {
   snapshot: CaseSnapshotOutput;
   executeAction: CaseDetailsViewProps['executeAction'];
   actionRenderers: ActionRenderers;
-  run: (action: AllowedActionOutput) => Promise<void>;
+  run: (action: AllowedActionOutput, payload: ActionPayload) => Promise<void>;
 }) {
   const value = snapshot.case;
   const next = responsibilityLabel(value.responsibility);
@@ -178,9 +208,11 @@ function CaseDetailsContent({ snapshot, executeAction, actionRenderers, run }: {
     <section aria-label="Доступные действия" className="case-actions"><h2>Доступные действия</h2>
       {value.allowed_actions.length === 0 ? <p>Сейчас действий нет.</p>
         : <ul>{value.allowed_actions.map((action, index) => {
-          const renderer = actionRenderers[action.code];
+          const renderer = actionRenderers[action.code] as
+            ((value: AllowedActionOutput, submit: (payload: ActionPayload) => Promise<void>) => ReactNode) | undefined;
           return <li key={`${action.code}-${index}`}>
-            {renderer && executeAction ? renderer(action, () => run(action)) : <span>{ACTION_LABELS[action.code]}</span>}
+            {renderer && executeAction ? renderer(action, (payload) => run(action, payload))
+              : <span>{ACTION_LABELS[action.code]}</span>}
           </li>;
         })}</ul>}
     </section>

@@ -121,8 +121,9 @@ test('allowed action registry renders only server actions and 409 refetches with
   const api = transport(initial);
   api.snapshot = vi.fn().mockResolvedValueOnce(initial).mockResolvedValue(fresh);
   const execute = vi.fn().mockRejectedValue(Object.assign(new Error('stale'), { status: 409 }));
+  const payload = { assignment_id: eventA };
   const renderers: ActionRenderers = { ACCEPT_ASSIGNMENT: (value, submit) =>
-    <button type="button" data-testid="accept-action" onClick={() => { void submit(); }}>{value.code}</button> };
+    <button type="button" data-testid="accept-action" onClick={() => { void submit(payload); }}>{value.code}</button> };
   const view = renderReactTree(<CaseDetailsView caseId={caseId} role="CONTRACTOR_EMPLOYEE"
     transport={api} contextKey="contractor-run" executeAction={execute} actionRenderers={renderers} />, { adapter });
   try {
@@ -132,9 +133,31 @@ test('allowed action registry renders only server actions and 409 refetches with
     await flush();
     expect(view.container.textContent).toContain('Случай изменился с момента открытия. Данные обновлены.');
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute).toHaveBeenCalledWith(action);
+    expect(execute).toHaveBeenCalledWith(action, payload);
     expect(api.snapshot).toHaveBeenCalledTimes(2);
     expect(view.container.textContent).toContain('Исполнение');
+  } finally { view.unmount(); }
+});
+
+test('form payload with exact target reaches executor and success refetches', async () => {
+  const action: AllowedActionOutput = { code: 'SELECT_CONTRACTOR', target: { iteration_id: iterationId }, input: {} };
+  const initial = fixture('ACCEPTED_BY_UK'); initial.case.allowed_actions = [action];
+  const fresh = fixture('ACCEPTED_BY_UK'); fresh.case.allowed_actions = [];
+  const api = transport(initial);
+  api.snapshot = vi.fn().mockResolvedValueOnce(initial).mockResolvedValue(fresh);
+  const payload = { contractor_id: eventA, iteration_id: iterationId };
+  const execute = vi.fn().mockResolvedValue({});
+  const renderers: ActionRenderers = { SELECT_CONTRACTOR: (_value, submit) =>
+    <button type="button" data-testid="select-contractor" onClick={() => { void submit(payload); }}>Выбрать</button> };
+  const view = renderReactTree(<CaseDetailsView caseId={caseId} role="UK_EMPLOYEE"
+    transport={api} contextKey="select-run" executeAction={execute} actionRenderers={renderers} />, { adapter });
+  try {
+    await flush();
+    await act(async () => { (view.container.querySelector('[data-testid="select-contractor"]') as HTMLButtonElement).click(); });
+    await flush();
+    expect(execute).toHaveBeenCalledExactlyOnceWith(action, payload);
+    expect(api.snapshot).toHaveBeenCalledTimes(2);
+    expect(view.container.querySelector('[data-testid="select-contractor"]')).toBeNull();
   } finally { view.unmount(); }
 });
 
@@ -163,7 +186,7 @@ test('command success leaves business state unchanged until authoritative refetc
   let finish!: () => void;
   const execute = vi.fn().mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
   const renderers: ActionRenderers = { ACCEPT_CASE: (_value, submit) =>
-    <button type="button" data-testid="accept-case" onClick={() => { void submit(); }}>Принять</button> };
+    <button type="button" data-testid="accept-case" onClick={() => { void submit({}); }}>Принять</button> };
   const view = renderReactTree(<CaseDetailsView caseId={caseId} role="UK_EMPLOYEE"
     transport={api} contextKey="success-run" executeAction={execute} actionRenderers={renderers} />, { adapter });
   try {
