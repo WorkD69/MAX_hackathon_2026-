@@ -2,12 +2,12 @@ import type { AppRouteModule } from '../../../app/routes.js';
 import type { AllowedActionOutput } from '@max-smart-city/contracts';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSession } from '../../session/session-provider.js';
-import { CaseDetailsView, CaseListView, type ActionRenderers } from './case-read.js';
+import { CaseDetailsView, CaseListView, type ActionPayload, type ActionRenderers } from './case-read.js';
 import { createHttpCaseReadTransport } from './read-transport.js';
 
 interface CaseReadIntegration {
   readonly actionRenderers?: ActionRenderers;
-  readonly executeAction?: (action: AllowedActionOutput, context: {
+  readonly executeAction?: (action: AllowedActionOutput, payload: ActionPayload, context: {
     caseId: string;
     authorizedFetch: (path: string, init?: RequestInit) => Promise<Response>;
   }) => Promise<unknown>;
@@ -40,8 +40,8 @@ export function createCaseReadRouteModule(integration: CaseReadIntegration = {})
     return <CaseDetailsView caseId={caseId} role={session.session.effective_actor.role}
       contextKey={contextKey(session)} transport={createHttpCaseReadTransport(session.authorizedFetch)}
       {...(integration.actionRenderers ? { actionRenderers: integration.actionRenderers } : {})}
-      {...(executor ? { executeAction: (action: AllowedActionOutput) =>
-        executor(action, { caseId, authorizedFetch: session.authorizedFetch }) } : {})} />;
+      {...(executor ? { executeAction: (action: AllowedActionOutput, payload: ActionPayload) =>
+        executor(action, payload, { caseId, authorizedFetch: session.authorizedFetch }) } : {})} />;
   }
 
   return { id: 'case-read', routes: [
