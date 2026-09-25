@@ -1,0 +1,68 @@
+.resident-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.resident-feedback__branch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+}
+
+.resident-feedback__branch label {
+  font-weight: 600;
+}
+
+.resident-feedback__branch textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 0.5rem 0.625rem;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+  border: 1px solid #6b7280;
+  border-radius: 0.375rem;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.resident-feedback__branch button {
+  align-self: flex-start;
+  min-height: 48px;
+  padding: 0.75rem 1.25rem;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: #1d4ed8;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.resident-feedback__branch button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.resident-feedback__branch textarea:focus-visible,
+.resident-feedback__branch button:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.resident-feedback__stale {
+  padding: 0.625rem 0.75rem;
+  border-left: 4px solid #b91c1c;
+  background: #fef2f2;
+}
+
+@media (min-width: 48rem) {
+  .resident-feedback__branch {
+    max-width: 32rem;
+  }
+}
