@@ -1,0 +1,76 @@
+.resident-create-case {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.resident-create-case__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.resident-create-case__field label {
+  font-weight: 600;
+}
+
+.resident-create-case__field select,
+.resident-create-case__field textarea,
+.resident-create-case__field input[type='file'] {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.625rem;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+  border: 1px solid #6b7280;
+  border-radius: 0.375rem;
+  box-sizing: border-box;
+}
+
+.resident-create-case__field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.resident-create-case__field select:focus-visible,
+.resident-create-case__field textarea:focus-visible,
+.resident-create-case__field input:focus-visible,
+.resident-create-case button:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.resident-create-case__field small {
+  color: #4b5563;
+}
+
+.resident-create-case button {
+  min-height: 48px;
+  padding: 0.75rem 1.25rem;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: #1d4ed8;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.resident-create-case button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.resident-create-case__error,
+.resident-create-case__stale {
+  padding: 0.625rem 0.75rem;
+  border-left: 4px solid #b91c1c;
+  background: #fef2f2;
+}
+
+@media (min-width: 48rem) {
+  .resident-create-case__field {
+    max-width: 32rem;
+  }
+}

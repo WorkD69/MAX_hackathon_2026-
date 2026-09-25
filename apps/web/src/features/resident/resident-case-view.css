@@ -1,0 +1,40 @@
+.resident-case {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.resident-case__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.resident-case__header button {
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: #fff;
+  border: 1px solid #1d4ed8;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.resident-case__header button:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.resident-case__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+}
