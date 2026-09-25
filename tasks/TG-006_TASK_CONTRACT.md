@@ -358,7 +358,7 @@ fk_result_author_user_id              Result(author_user_id) → AppUser(app_use
 uq_feedback_result_id                 UNIQUE(result_id)
 cq_feedback_case_feedback             UNIQUE(case_id, feedback_id)                                        # M01: composite candidate key
 ck_feedback_type                      CHECK type IN ('CONFIRMATION','REMARK')
-ck_feedback_remark                    CHECK (type='REMARK' AND length(remark_text) > 0) OR (type='CONFIRMATION' AND remark_text IS NULL)
+ck_feedback_remark                    CHECK (type='REMARK' AND length(remark_text) > 0) OR (type='CONFIRMATION' AND (remark_text IS NULL OR remark_text = ''))
 fk_feedback_case_id                   ResidentFeedback(case_id) → Case(case_id)
 fk_feedback_iteration_id              ResidentFeedback(case_id, iteration_id) → CaseIteration(case_id, iteration_id)
 fk_feedback_result_id                 ResidentFeedback(case_id, result_id) → Result(case_id, result_id)
@@ -499,10 +499,12 @@ TG-005 работает только в своей БД (`*_tg005_test`), поэ
    same-case composite FKs на sibling pointers (`fk_event_*`, `fk_comment_*`, `fk_feedback_*`,
    `fk_iteration_source_*`, `fk_iteration_started_by_event_id`) — cross-Case вставка → 23503.
 4. **closed-domain CHECK fixtures:** каждый новый CHECK из § 7.13 имеет реальный-PostgreSQL negative
-   фикстуру, ожидающую SQLSTATE `23514` и имя constraint в `DETAIL`; для `ck_case_closure_consistency`
-   отдельный **disputed-with-empty-explanation** negative (DISPUTED_WITH_EXPLANATION + `closure_explanation = ''`)
-   → 23514 + имя constraint; CONFIRMED_RESULT / NO_RESIDENT_FEEDBACK с произвольным
-   `closure_explanation` остаются валидными (canonical docs не ограничивают — не negative).
+    фикстуру, ожидающая SQLSTATE `23514` и имя constraint в `DETAIL`; для `ck_case_closure_consistency`
+    отдельный **disputed-with-empty-explanation** negative (DISPUTED_WITH_EXPLANATION + `closure_explanation = ''`)
+    → 23514 + имя constraint; CONFIRMED_RESULT / NO_RESIDENT_FEEDBACK с произвольным
+    `closure_explanation` остаются валидными (canonical docs не ограничивают — не negative).
+    **`ck_feedback_remark` regression test (M02 fix):** PASS — CONFIRMATION + `remark_text IS NULL`;
+    PASS — CONFIRMATION + `remark_text = ''`; FAIL — CONFIRMATION + non-empty `remark_text` → 23514.
 5. **uniqueness:** второй Result на iteration → 23505; второй feedback на Result → 23505; duplicate
     `(case_id,event_seq)` → 23505; duplicate `(case_id,iteration_no)`, `(case_id,selection_no)`,
     `(case_id,assignment_no)` → 23505; second Assignment на тот же Selection → 23505; duplicate
