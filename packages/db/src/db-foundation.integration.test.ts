@@ -24,6 +24,14 @@ const APP_TABLES = [
   'organization_contractor',
   'demo_run',
   'demo_run_actor',
+  'case_table',
+  'case_iteration',
+  'contractor_selection',
+  'assignment',
+  'result',
+  'resident_feedback',
+  'comment',
+  'case_event',
 ].sort();
 
 const COMPOSITE_PKS = [
@@ -79,6 +87,120 @@ const PARTIAL_INDEXES = [
   'uq_demo_run_active_per_identity',
 ];
 
+const TG006_CHECK_CONSTRAINTS = [
+  'ck_case_current_state',
+  'ck_case_result_requirement_snapshot',
+  'ck_case_closure_kind',
+  'ck_case_closure_consistency',
+  'ck_case_revision',
+  'ck_case_last_event_seq',
+  'ck_iteration_number',
+  'ck_iteration_start_reason',
+  'ck_assignment_decision',
+  'ck_result_description_not_empty',
+  'ck_feedback_type',
+  'ck_feedback_remark',
+  'ck_comment_kind',
+  'ck_comment_actor_role_snapshot',
+  'ck_event_type',
+  'ck_event_actor_role_snapshot',
+  'ck_event_from_state',
+  'ck_event_to_state',
+  'ck_event_evt015_result',
+];
+
+const TG006_UNIQUE_CONSTRAINTS = [
+  'cq_iteration_case_iteration',
+  'cq_iteration_case_no',
+  'cq_selection_case_selection',
+  'cq_selection_case_no',
+  'cq_assignment_case_assignment',
+  'cq_assignment_case_no',
+  'uq_assignment_selection_id',
+  'cq_result_case_result',
+  'cq_feedback_case_feedback',
+  'cq_comment_case_comment',
+  'cq_event_case_event',
+];
+
+const TG006_PK_CONSTRAINTS = [
+  'pk_case_table',
+  'pk_case_iteration',
+  'pk_contractor_selection',
+  'pk_assignment',
+  'pk_result',
+  'pk_resident_feedback',
+  'pk_comment',
+  'pk_case_event',
+];
+
+const TG006_FK_CONSTRAINTS = [
+  'fk_case_organization_house',
+  'fk_case_house_premises',
+  'fk_case_organization_category',
+  'fk_case_demo_run_id',
+  'fk_case_current_iteration',
+  'fk_case_current_selection',
+  'fk_case_current_assignment',
+  'fk_case_current_result',
+  'fk_case_resident_user_id',
+  'fk_case_category_id',
+  'fk_case_created_by_user_id',
+  'fk_case_default_contractor_snapshot_id',
+  'fk_case_closed_by_user_id',
+  'fk_case_current_executor_contractor_id',
+  'fk_iteration_case_id',
+  'fk_iteration_started_by_user_id',
+  'fk_iteration_source_result_id',
+  'fk_iteration_source_feedback_id',
+  'fk_iteration_started_by_event_id',
+  'fk_selection_case_id',
+  'fk_selection_created_iteration_id',
+  'fk_selection_contractor_id',
+  'fk_selection_selected_by_user_id',
+  'fk_assignment_case_id',
+  'fk_assignment_selection_id',
+  'fk_assignment_created_iteration_id',
+  'fk_assignment_contractor_id',
+  'fk_assignment_sent_by_user_id',
+  'fk_assignment_accepted_by_user_id',
+  'fk_assignment_rejected_by_user_id',
+  'fk_result_case_id',
+  'fk_result_iteration_id',
+  'fk_result_assignment_id',
+  'fk_result_contractor_id',
+  'fk_result_author_user_id',
+  'fk_feedback_case_id',
+  'fk_feedback_iteration_id',
+  'fk_feedback_result_id',
+  'fk_feedback_resident_user_id',
+  'fk_comment_case_id',
+  'fk_comment_iteration_id',
+  'fk_comment_author_user_id',
+  'fk_comment_context_result_id',
+  'fk_comment_context_feedback_id',
+  'fk_comment_in_reply_to_comment_id',
+  'fk_event_case_id',
+  'fk_event_iteration_id',
+  'fk_event_selection_id',
+  'fk_event_assignment_id',
+  'fk_event_result_id',
+  'fk_event_feedback_id',
+  'fk_event_comment_id',
+  'fk_event_caused_by_event_id',
+  'fk_event_actor_user_id',
+  'fk_demo_run_primary_case',
+];
+
+const TG006_PARTIAL_INDEXES = [
+  'uq_case_display_number',
+  'uq_case_demo_run_case',
+  'uq_result_iteration_id',
+  'uq_feedback_result_id',
+  'uq_event_case_seq',
+  'uq_evt015_per_result',
+];
+
 function cfg(schema: string, max = 4) {
   return {
     host: parsed.hostname,
@@ -112,7 +234,7 @@ async function guardDatabase(pool: Pool) {
   if (!rows[0].db.endsWith('_tg005_test')) throw new Error('UNSAFE_TEST_DATABASE');
 }
 
-test('clean migrate to latest creates 13 tables with exact catalog; rollback empties; re-up is idempotent', async () => {
+test('clean migrate to latest creates 21 tables with exact catalog; rollback empties; re-up is idempotent', async () => {
   const adminPool = new Pool(cfg('public', 1));
   try {
     await guardDatabase(adminPool);
@@ -149,22 +271,24 @@ test('clean migrate to latest creates 13 tables with exact catalog; rollback emp
     );
     const types = constraints.rows.map((r) => r.type as string);
     const names = constraints.rows.map((r) => r.name as string);
-    expect(types.filter((t) => t === 'p')).toHaveLength(13);
-    expect(types.filter((t) => t === 'u')).toHaveLength(4);
-    expect(types.filter((t) => t === 'c')).toHaveLength(7);
-    expect(types.filter((t) => t === 'f')).toHaveLength(19);
-    expect(names).toEqual(expect.arrayContaining(COMPOSITE_PKS));
-    expect(names).toEqual(expect.arrayContaining(UNIQUE_CONSTRAINTS));
-    expect(names).toEqual(expect.arrayContaining(CHECK_CONSTRAINTS));
-    expect(names).toEqual(expect.arrayContaining(FK_CONSTRAINTS));
+    expect(types.filter((t) => t === 'p')).toHaveLength(21);
+    const allCheckNames = [...CHECK_CONSTRAINTS, ...TG006_CHECK_CONSTRAINTS];
+    const allUniqueNames = [...UNIQUE_CONSTRAINTS, ...TG006_UNIQUE_CONSTRAINTS];
+    const allFkNames = [...FK_CONSTRAINTS, ...TG006_FK_CONSTRAINTS];
+    const allPkNames = [...COMPOSITE_PKS, ...TG006_PK_CONSTRAINTS];
+    for (const n of allCheckNames) expect(names).toContain(n);
+    for (const n of allUniqueNames) expect(names).toContain(n);
+    for (const n of allFkNames) expect(names).toContain(n);
+    for (const n of allPkNames) expect(names).toContain(n);
 
+    const allPartialIndexes = [...PARTIAL_INDEXES, ...TG006_PARTIAL_INDEXES];
     const indexes = await catPool.query(
       `SELECT c.relname AS name, pg_get_indexdef(i.indexrelid) AS def
          FROM pg_index i
          JOIN pg_class c ON c.oid = i.indexrelid
          JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = $1 AND c.relname = ANY($2::text[])`,
-      [SCHEMA, PARTIAL_INDEXES],
+      [SCHEMA, allPartialIndexes],
     );
     const indexDefs = Object.fromEntries(indexes.rows.map((r) => [r.name as string, r.def as string]));
     expect(indexDefs['uq_max_identity_mini_app_user_id']).toBe(
@@ -179,6 +303,7 @@ test('clean migrate to latest creates 13 tables with exact catalog; rollback emp
     expect(indexDefs['uq_demo_run_active_per_identity']).toBe(
       `CREATE UNIQUE INDEX uq_demo_run_active_per_identity ON ${SCHEMA}.demo_run USING btree (created_by_max_identity_id) WHERE (status = 'ACTIVE'::text)`,
     );
+    expect(indexDefs['uq_evt015_per_result']).toBeDefined();
 
     const down = await rollbackAll(db);
     expect(down.error).toBeUndefined();
@@ -198,7 +323,7 @@ test('clean migrate to latest creates 13 tables with exact catalog; rollback emp
          JOIN pg_class c ON c.oid = i.indexrelid
          JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = $1 AND c.relname = ANY($2::text[])`,
-      [SCHEMA, PARTIAL_INDEXES],
+      [SCHEMA, allPartialIndexes],
     );
     expect(afterDownIndexes.rows).toHaveLength(0);
 

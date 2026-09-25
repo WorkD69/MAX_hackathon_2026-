@@ -3,10 +3,13 @@ import path from 'node:path';
 import type { ColumnType, Generated } from 'kysely';
 import type { Migration } from 'kysely/migration';
 import * as foundation from '../dist/migrations/0001_foundation.js';
+import * as caseWorkflow from '../dist/migrations/0002_case_workflow.js';
 import { resolveMigrationsDir } from './index.js';
 import type {
   AppUserTable,
   CategoryTable,
+  CaseTable,
+  CaseEventTable,
   Database,
   DemoRunStatus,
   MaxIdentityLinkStatus,
@@ -19,6 +22,12 @@ test('TG-005 foundation migration exports up and down as migration functions', (
   expect(typeof foundation.up).toBe('function');
   expect(typeof foundation.down).toBe('function');
   expectTypeOf(foundation).toMatchTypeOf<Migration>();
+});
+
+test('TG-006 case-workflow migration exports up and down as migration functions', () => {
+  expect(typeof caseWorkflow.up).toBe('function');
+  expect(typeof caseWorkflow.down).toBe('function');
+  expectTypeOf(caseWorkflow).toMatchTypeOf<Migration>();
 });
 
 test('TG-005 foundation migration declares exactly the 13 canonical tables', async () => {
@@ -45,6 +54,25 @@ test('TG-005 foundation migration declares exactly the 13 canonical tables', asy
   }
 });
 
+test('TG-006 case-workflow migration declares exactly the 8 new tables', async () => {
+  const text = await fs.readFile(new URL('../migrations/0002_case_workflow.ts', import.meta.url), 'utf8');
+  const createTableCount = (text.match(/\bCREATE TABLE\b/g) ?? []).length;
+  expect(createTableCount).toBe(8);
+  const normalized = text.replace(/\s+/g, ' ');
+  for (const table of [
+    'case_table',
+    'case_iteration',
+    'contractor_selection',
+    'assignment',
+    'result',
+    'resident_feedback',
+    'comment',
+    'case_event',
+  ]) {
+    expect(normalized).toContain(`CREATE TABLE ${table} (`);
+  }
+});
+
 test('TG-005 foundation migration declares exactly the 4 partial unique indexes with exact predicates', async () => {
   const text = await fs.readFile(new URL('../migrations/0001_foundation.ts', import.meta.url), 'utf8');
   const normalized = text.replace(/\s+/g, ' ');
@@ -54,6 +82,13 @@ test('TG-005 foundation migration declares exactly the 4 partial unique indexes 
   expect(normalized).toContain('CREATE UNIQUE INDEX uq_max_identity_bot_user_id ON max_identity (bot_user_id) WHERE bot_user_id IS NOT NULL');
   expect(normalized).toContain('CREATE UNIQUE INDEX uq_max_identity_app_user_id ON max_identity (app_user_id) WHERE app_user_id IS NOT NULL');
   expect(normalized).toContain("CREATE UNIQUE INDEX uq_demo_run_active_per_identity ON demo_run (created_by_max_identity_id) WHERE status = 'ACTIVE'");
+});
+
+test('TG-006 case-workflow migration declares exact partial unique indexes', async () => {
+  const text = await fs.readFile(new URL('../migrations/0002_case_workflow.ts', import.meta.url), 'utf8');
+  const normalized = text.replace(/\s+/g, ' ');
+  expect(normalized).toContain('CREATE UNIQUE INDEX uq_case_display_number ON case_table (display_number) WHERE display_number IS NOT NULL');
+  expect(normalized).toContain('CREATE UNIQUE INDEX uq_evt015_per_result ON case_event (result_id, event_type) WHERE event_type = \'EVT_015\'');
 });
 
 test('TG-005 resolveMigrationsDir src and dist anchors', () => {
@@ -78,6 +113,14 @@ test('TG-005 exact Kysely type surface', () => {
     | 'organization_contractor'
     | 'demo_run'
     | 'demo_run_actor'
+    | 'case_table'
+    | 'case_iteration'
+    | 'contractor_selection'
+    | 'assignment'
+    | 'result'
+    | 'resident_feedback'
+    | 'comment'
+    | 'case_event'
   >();
   expectTypeOf<Role>().toEqualTypeOf<'RESIDENT' | 'UK_EMPLOYEE' | 'UK_ADMIN' | 'CONTRACTOR_EMPLOYEE'>();
   expectTypeOf<ResultRequirement>().toEqualTypeOf<'NONE' | 'PHOTO' | 'FILE'>();
