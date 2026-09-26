@@ -3,8 +3,8 @@ import type { DestinationStream } from 'pino';
 import {
   AuthMaxRequestSchema, AuthMaxSuccessSchema, ErrorResponseSchema, SessionReadResponseSchema,
 } from '@max-smart-city/contracts';
+import fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
-import { buildApp } from '../../app/app.js';
 import { loadConfig } from '../../config/load-config.js';
 import { createRuntimeLogger } from '../../logging/logger.js';
 import { canonicalizeMaxInitData } from './init-data.js';
@@ -12,6 +12,7 @@ import type { ValidatedMaxLaunch } from './init-data.js';
 import type {
   DemoActorRow, DemoRunRow, MaxIdentityRepository, MaxIdentityRow, NormalActorRow,
 } from '../max-identity/repository.js';
+import { registerAuthRoutes } from './plugin.js';
 
 const now = 1771409719;
 const botToken = 'TG010_TEST_BOT_TOKEN_2026';
@@ -62,11 +63,9 @@ async function fixture(repository = new FakeRepository(), demo = false) {
   const clock = { value: now };
   const runtime = config(demo);
   const pair = createRuntimeLogger(runtime, { write: (line: string) => { lines.push(line); return true; } } as DestinationStream);
-  const app = await buildApp({
-    config: runtime, logger: pair.loggerInstance, events: pair.events,
-    readiness: { snapshot: () => ({ databaseReachable: true, migrationsCurrent: true, applicationInitialized: true }) },
-    auth: { repository, nowSeconds: () => clock.value },
-  });
+  const app = fastify({ loggerInstance: pair.loggerInstance });
+  registerAuthRoutes(app, runtime, { repository, nowSeconds: () => clock.value });
+  await app.ready();
   return { app, repository, lines, runtime, clock };
 }
 

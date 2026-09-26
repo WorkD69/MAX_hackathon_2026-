@@ -110,6 +110,7 @@ const TG006_CHECK_CONSTRAINTS = [
 ];
 
 const TG006_UNIQUE_CONSTRAINTS = [
+  'uq_case_demo_run_case',
   'cq_iteration_case_iteration',
   'cq_iteration_case_no',
   'cq_selection_case_selection',
@@ -117,9 +118,12 @@ const TG006_UNIQUE_CONSTRAINTS = [
   'cq_assignment_case_assignment',
   'cq_assignment_case_no',
   'uq_assignment_selection_id',
+  'uq_result_iteration_id',
   'cq_result_case_result',
+  'uq_feedback_result_id',
   'cq_feedback_case_feedback',
   'cq_comment_case_comment',
+  'uq_event_case_seq',
   'cq_event_case_event',
 ];
 
@@ -276,10 +280,13 @@ test('clean migrate to latest creates 21 tables with exact catalog; rollback emp
     const allUniqueNames = [...UNIQUE_CONSTRAINTS, ...TG006_UNIQUE_CONSTRAINTS];
     const allFkNames = [...FK_CONSTRAINTS, ...TG006_FK_CONSTRAINTS];
     const allPkNames = [...COMPOSITE_PKS, ...TG006_PK_CONSTRAINTS];
-    for (const n of allCheckNames) expect(names).toContain(n);
-    for (const n of allUniqueNames) expect(names).toContain(n);
-    for (const n of allFkNames) expect(names).toContain(n);
-    for (const n of allPkNames) expect(names).toContain(n);
+    expect(types.filter((t) => t === 'u')).toHaveLength(allUniqueNames.length);
+    expect(types.filter((t) => t === 'c')).toHaveLength(allCheckNames.length);
+    expect(types.filter((t) => t === 'f')).toHaveLength(allFkNames.length);
+    expect(names).toEqual(expect.arrayContaining(allCheckNames));
+    expect(names).toEqual(expect.arrayContaining(allUniqueNames));
+    expect(names).toEqual(expect.arrayContaining(allFkNames));
+    expect(names).toEqual(expect.arrayContaining(allPkNames));
 
     const allPartialIndexes = [...PARTIAL_INDEXES, ...TG006_PARTIAL_INDEXES];
     const indexes = await catPool.query(
