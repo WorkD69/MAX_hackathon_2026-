@@ -4,7 +4,7 @@ import { UuidSchema, type AllowedActionOutput, type CaseSnapshotOutput } from '@
 import { renderReactTree } from '../../app/test-render.js';
 import { queryClient } from '../../app/query-client.js';
 import type { PlatformAdapter } from '../../platform/platform-adapter.js';
-import type { CaseReadTransport } from '../cases/read/read-transport.js';
+import { createHttpCaseReadTransport, type CaseReadTransport } from '../cases/read/read-transport.js';
 import { UkActionControl, UkWorkflowCaseView, UkWorkflowFacts,
   noFeedbackEventId } from './uk-workflow.js';
 
@@ -236,6 +236,41 @@ test('semantic rejection is visible and does not change business state', async (
     expect(api.snapshot).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledTimes(1);
   } finally { view.unmount(); }
+});
+
+test('A loses live read after reassignment while B gets pending then current actions', async () => {
+  const pending = snapshot('SENT_TO_CONTRACTOR');
+  pending.case.current_iteration.number = 3;
+  pending.case.assignment = { assignment_id: id(8), contractor: { contractor_id: contractorId, name: 'Б' },
+    decision: 'PENDING' };
+  pending.case.allowed_actions = [action('ACCEPT_ASSIGNMENT', { assignment_id: id(8) }),
+    action('REJECT_ASSIGNMENT', { assignment_id: id(8) })];
+  const execution = snapshot('EXECUTION');
+  execution.case.current_iteration.number = 3;
+  execution.case.assignment = { ...pending.case.assignment, decision: 'ACCEPTED' };
+  execution.case.current_executor = { contractor_id: contractorId, name: 'Б' };
+  execution.case.allowed_actions = [action('ADD_RESULT_MATERIAL', { assignment_id: id(8), iteration_id: iterationId }),
+    action('SUBMIT_RESULT', { assignment_id: id(8), iteration_id: iterationId })];
+  let actor: 'A' | 'B' = 'A';
+  let phase: 'selected' | 'sent' | 'accepted' = 'selected';
+  const fetch = vi.fn().mockImplementation(async () => {
+    if (actor === 'A' || phase === 'selected') return new Response('', { status: 404 });
+    return Response.json(phase === 'sent' ? pending : execution);
+  });
+  const transport = createHttpCaseReadTransport(fetch);
+  await expect(transport.snapshot(caseId, 'CONTRACTOR_EMPLOYEE')).rejects.toMatchObject({ status: 404 });
+  actor = 'B';
+  await expect(transport.snapshot(caseId, 'CONTRACTOR_EMPLOYEE')).rejects.toMatchObject({ status: 404 });
+  phase = 'sent';
+  const pendingView = await transport.snapshot(caseId, 'CONTRACTOR_EMPLOYEE');
+  expect(pendingView.case.current_iteration.number).toBe(3);
+  expect(pendingView.case.allowed_actions.map((item) => item.code)).toEqual(['ACCEPT_ASSIGNMENT', 'REJECT_ASSIGNMENT']);
+  phase = 'accepted';
+  const acceptedView = await transport.snapshot(caseId, 'CONTRACTOR_EMPLOYEE');
+  expect(acceptedView.case.current_executor?.name).toBe('Б');
+  expect(acceptedView.case.allowed_actions.map((item) => item.code)).toEqual(['ADD_RESULT_MATERIAL', 'SUBMIT_RESULT']);
+  actor = 'A';
+  await expect(transport.snapshot(caseId, 'CONTRACTOR_EMPLOYEE')).rejects.toMatchObject({ status: 404 });
 });
 
 test('409 refetch removes stale form and never retries or retargets it', async () => {
