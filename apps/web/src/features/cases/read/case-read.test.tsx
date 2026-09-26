@@ -127,14 +127,15 @@ test('allowed action registry renders only server actions and 409 refetches with
   const view = renderReactTree(<CaseDetailsView caseId={caseId} role="CONTRACTOR_EMPLOYEE"
     transport={api} contextKey="contractor-run" executeAction={execute} actionRenderers={renderers} />, { adapter });
   try {
-    await flush();
-    expect(view.container.querySelectorAll('[data-testid="accept-action"]')).toHaveLength(1);
+    await vi.waitFor(() =>
+      expect(view.container.querySelectorAll('[data-testid="accept-action"]')).toHaveLength(1));
     await act(async () => { (view.container.querySelector('[data-testid="accept-action"]') as HTMLButtonElement).click(); });
-    await flush();
-    expect(view.container.textContent).toContain('Случай изменился с момента открытия. Данные обновлены.');
+    await vi.waitFor(() => {
+      expect(view.container.textContent).toContain('Случай изменился с момента открытия. Данные обновлены.');
+      expect(api.snapshot).toHaveBeenCalledTimes(2);
+    });
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute).toHaveBeenCalledWith(action, payload);
-    expect(api.snapshot).toHaveBeenCalledTimes(2);
     expect(view.container.textContent).toContain('Исполнение');
   } finally { view.unmount(); }
 });
@@ -152,11 +153,11 @@ test('form payload with exact target reaches executor and success refetches', as
   const view = renderReactTree(<CaseDetailsView caseId={caseId} role="UK_EMPLOYEE"
     transport={api} contextKey="select-run" executeAction={execute} actionRenderers={renderers} />, { adapter });
   try {
-    await flush();
+    await vi.waitFor(() =>
+      expect(view.container.querySelector('[data-testid="select-contractor"]')).not.toBeNull());
     await act(async () => { (view.container.querySelector('[data-testid="select-contractor"]') as HTMLButtonElement).click(); });
-    await flush();
+    await vi.waitFor(() => expect(api.snapshot).toHaveBeenCalledTimes(2));
     expect(execute).toHaveBeenCalledExactlyOnceWith(action, payload);
-    expect(api.snapshot).toHaveBeenCalledTimes(2);
     expect(view.container.querySelector('[data-testid="select-contractor"]')).toBeNull();
   } finally { view.unmount(); }
 });
@@ -190,15 +191,17 @@ test('command success leaves business state unchanged until authoritative refetc
   const view = renderReactTree(<CaseDetailsView caseId={caseId} role="UK_EMPLOYEE"
     transport={api} contextKey="success-run" executeAction={execute} actionRenderers={renderers} />, { adapter });
   try {
-    await flush();
+    await vi.waitFor(() =>
+      expect(view.container.querySelector('[data-testid="accept-case"]')).not.toBeNull());
     await act(async () => { (view.container.querySelector('[data-testid="accept-case"]') as HTMLButtonElement).click(); });
     expect(view.container.querySelector('[data-testid="case-status"]')?.textContent).toBe('Создано');
     expect(view.container.textContent).toContain('Выполняется действие');
     expect(api.snapshot).toHaveBeenCalledTimes(1);
     await act(async () => { finish(); });
-    await flush();
-    expect(view.container.querySelector('[data-testid="case-status"]')?.textContent).toBe('Принято УК');
-    expect(api.snapshot).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => {
+      expect(view.container.querySelector('[data-testid="case-status"]')?.textContent).toBe('Принято УК');
+      expect(api.snapshot).toHaveBeenCalledTimes(2);
+    });
     expect(execute).toHaveBeenCalledTimes(1);
   } finally { view.unmount(); }
 });
