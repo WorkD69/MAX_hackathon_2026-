@@ -41,6 +41,8 @@ test('TG-005 db boundary surface', () => {
   expect(typeof boundary.rollbackAll).toBe('function');
   expect(typeof boundary.resolveMigrationsDir).toBe('function');
   expect(typeof boundary.createOperationalRepositories).toBe('function');
+  expect(typeof boundary.createCommandExecutionRepository).toBe('function');
+  expect(typeof boundary.CommandTransactionKernel).toBe('function');
   expect(typeof boundary.MIGRATIONS_DIR).toBe('string');
   expect(boundary.MIGRATIONS_DIR.endsWith('migrations')).toBe(true);
   expect(databaseKeys).toHaveLength(30);

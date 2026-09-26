@@ -2,14 +2,13 @@ import { sql } from 'kysely';
 import type { Insertable, Kysely, Selectable } from 'kysely';
 import type {
   AttachmentTable,
-  CommandExecutionTable,
   ConfigurationChangeTable,
   Database,
   NotificationIntentTable,
 } from './index.js';
+import { createCommandExecutionRepository } from './transactions/command-execution.js';
 
 export type AttachmentRecord = Selectable<AttachmentTable>;
-export type CommandExecutionRecord = Selectable<CommandExecutionTable>;
 export type NotificationIntentRecord = Selectable<NotificationIntentTable>;
 export type ConfigurationChangeRecord = Selectable<ConfigurationChangeTable>;
 
@@ -51,33 +50,7 @@ export function createOperationalRepositories(db: Kysely<Database>) {
       },
     },
 
-    commandExecutions: {
-      async reserve(values: Insertable<CommandExecutionTable>): Promise<CommandExecutionRecord> {
-        return db.insertInto('command_execution').values(values).returningAll().executeTakeFirstOrThrow();
-      },
-
-      async findById(commandId: string): Promise<CommandExecutionRecord | undefined> {
-        return db.selectFrom('command_execution').selectAll().where('command_id', '=', commandId).executeTakeFirst();
-      },
-
-      async succeed(
-        commandId: string,
-        response: { httpStatus: number; responseBody: unknown; completedAt: Date },
-      ): Promise<CommandExecutionRecord | undefined> {
-        return db
-          .updateTable('command_execution')
-          .set({
-            execution_status: 'SUCCEEDED',
-            http_status: response.httpStatus,
-            response_body: response.responseBody,
-            completed_at: response.completedAt,
-          })
-          .where('command_id', '=', commandId)
-          .where('execution_status', '=', 'IN_PROGRESS')
-          .returningAll()
-          .executeTakeFirst();
-      },
-    },
+    commandExecutions: createCommandExecutionRepository(db),
 
     notificationIntents: {
       async create(values: Insertable<NotificationIntentTable>): Promise<NotificationIntentRecord> {
