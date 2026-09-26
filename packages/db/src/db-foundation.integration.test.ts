@@ -32,6 +32,15 @@ const APP_TABLES = [
   'resident_feedback',
   'comment',
   'case_event',
+  'attachment',
+  'case_initial_attachment',
+  'work_material_attachment',
+  'result_attachment',
+  'feedback_attachment',
+  'comment_attachment',
+  'command_execution',
+  'notification_intent',
+  'configuration_change',
 ].sort();
 
 const COMPOSITE_PKS = [
@@ -205,6 +214,80 @@ const TG006_PARTIAL_INDEXES = [
   'uq_evt015_per_result',
 ];
 
+const TG007_CHECK_CONSTRAINTS = [
+  'ck_command_execution_principal_type',
+  'ck_command_execution_principal_shape',
+  'ck_command_execution_status',
+  'ck_command_execution_response_shape',
+  'ck_command_execution_http_status',
+  'ck_attachment_file_name',
+  'ck_attachment_mime_type',
+  'ck_attachment_byte_size',
+  'ck_attachment_sha256',
+  'ck_notification_intent_kind',
+  'ck_notification_intent_status',
+  'ck_notification_intent_counters',
+  'ck_notification_intent_status_shape',
+  'ck_notification_intent_lease',
+  'ck_configuration_change_entity_type',
+  'ck_configuration_change_action',
+];
+
+const TG007_UNIQUE_CONSTRAINTS = [
+  'cq_attachment_case_attachment',
+  'uq_notification_intent_dedupe_key',
+  'uq_notification_intent_result_kind',
+];
+
+const TG007_PK_CONSTRAINTS = [
+  'pk_attachment',
+  'pk_case_initial_attachment',
+  'pk_work_material_attachment',
+  'pk_result_attachment',
+  'pk_feedback_attachment',
+  'pk_comment_attachment',
+  'pk_command_execution',
+  'pk_notification_intent',
+  'pk_configuration_change',
+];
+
+const TG007_FK_CONSTRAINTS = [
+  'fk_command_execution_app_user',
+  'fk_command_execution_max_identity',
+  'fk_command_execution_case',
+  'fk_attachment_case',
+  'fk_attachment_uploaded_by_user',
+  'fk_case_initial_attachment_case',
+  'fk_case_initial_attachment_attachment',
+  'fk_work_material_attachment_case',
+  'fk_work_material_attachment_attachment',
+  'fk_work_material_attachment_iteration',
+  'fk_work_material_attachment_assignment',
+  'fk_work_material_attachment_event',
+  'fk_result_attachment_case',
+  'fk_result_attachment_result',
+  'fk_result_attachment_attachment',
+  'fk_feedback_attachment_case',
+  'fk_feedback_attachment_feedback',
+  'fk_feedback_attachment_attachment',
+  'fk_comment_attachment_case',
+  'fk_comment_attachment_comment',
+  'fk_comment_attachment_attachment',
+  'fk_notification_intent_case',
+  'fk_notification_intent_result',
+  'fk_notification_intent_recipient',
+  'fk_configuration_change_organization',
+  'fk_configuration_change_actor',
+  'fk_configuration_change_command',
+  'fk_event_command_id',
+  'fk_event_attachment_id',
+];
+
+const TG007_PARTIAL_INDEXES = [
+  'uq_command_execution_app_user_key',
+  'uq_command_execution_max_identity_key',
+];
+
 function cfg(schema: string, max = 4) {
   return {
     host: parsed.hostname,
@@ -238,7 +321,7 @@ async function guardDatabase(pool: Pool) {
   if (!rows[0].db.endsWith('_tg005_test')) throw new Error('UNSAFE_TEST_DATABASE');
 }
 
-test('clean migrate to latest creates 21 tables with exact catalog; rollback empties; re-up is idempotent', async () => {
+test('clean migrate to latest creates 30 tables with exact catalog; rollback empties; re-up is idempotent', async () => {
   const adminPool = new Pool(cfg('public', 1));
   try {
     await guardDatabase(adminPool);
@@ -275,11 +358,11 @@ test('clean migrate to latest creates 21 tables with exact catalog; rollback emp
     );
     const types = constraints.rows.map((r) => r.type as string);
     const names = constraints.rows.map((r) => r.name as string);
-    expect(types.filter((t) => t === 'p')).toHaveLength(21);
-    const allCheckNames = [...CHECK_CONSTRAINTS, ...TG006_CHECK_CONSTRAINTS];
-    const allUniqueNames = [...UNIQUE_CONSTRAINTS, ...TG006_UNIQUE_CONSTRAINTS];
-    const allFkNames = [...FK_CONSTRAINTS, ...TG006_FK_CONSTRAINTS];
-    const allPkNames = [...COMPOSITE_PKS, ...TG006_PK_CONSTRAINTS];
+    expect(types.filter((t) => t === 'p')).toHaveLength(30);
+    const allCheckNames = [...CHECK_CONSTRAINTS, ...TG006_CHECK_CONSTRAINTS, ...TG007_CHECK_CONSTRAINTS];
+    const allUniqueNames = [...UNIQUE_CONSTRAINTS, ...TG006_UNIQUE_CONSTRAINTS, ...TG007_UNIQUE_CONSTRAINTS];
+    const allFkNames = [...FK_CONSTRAINTS, ...TG006_FK_CONSTRAINTS, ...TG007_FK_CONSTRAINTS];
+    const allPkNames = [...COMPOSITE_PKS, ...TG006_PK_CONSTRAINTS, ...TG007_PK_CONSTRAINTS];
     expect(types.filter((t) => t === 'u')).toHaveLength(allUniqueNames.length);
     expect(types.filter((t) => t === 'c')).toHaveLength(allCheckNames.length);
     expect(types.filter((t) => t === 'f')).toHaveLength(allFkNames.length);
@@ -288,7 +371,7 @@ test('clean migrate to latest creates 21 tables with exact catalog; rollback emp
     expect(names).toEqual(expect.arrayContaining(allFkNames));
     expect(names).toEqual(expect.arrayContaining(allPkNames));
 
-    const allPartialIndexes = [...PARTIAL_INDEXES, ...TG006_PARTIAL_INDEXES];
+    const allPartialIndexes = [...PARTIAL_INDEXES, ...TG006_PARTIAL_INDEXES, ...TG007_PARTIAL_INDEXES];
     const indexes = await catPool.query(
       `SELECT c.relname AS name, pg_get_indexdef(i.indexrelid) AS def
          FROM pg_index i

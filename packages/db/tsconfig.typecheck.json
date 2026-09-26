@@ -4,6 +4,6 @@
     "composite": false,
     "noEmit": true
   },
-  "include": ["src/index.ts", "src/types.typecheck.ts"],
+  "include": ["src/index.ts", "src/operational-repositories.ts", "src/types.typecheck.ts"],
   "exclude": ["dist", "node_modules"]
 }

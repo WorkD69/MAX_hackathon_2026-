@@ -13,6 +13,6 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo",
     "types": ["node"]
   },
-  "include": ["src/index.ts"],
+  "include": ["src/index.ts", "src/operational-repositories.ts"],
   "exclude": ["dist", "node_modules"]
 }

@@ -1,7 +1,7 @@
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool, PoolClient } from 'pg';
 import { expect, test } from 'vitest';
-import { migrateToLatest, rollbackAll } from './index.js';
+import { createMigrator, rollbackAll } from './index.js';
 
 const DATABASE_URL = process.env.TG006_TEST_DATABASE_URL;
 if (!DATABASE_URL) throw new Error('MISSING_TG006_TEST_DATABASE_URL');
@@ -83,6 +83,12 @@ async function queryOne(pool: Pool, sql: string, params: unknown[] = []): Promis
   return rows[0];
 }
 
+async function migrateThroughTg006(db: Kysely<any>) {
+  const { error, results } = await createMigrator(db).migrateTo('0002_case_workflow');
+  if (error) throw error;
+  return results === undefined ? {} : { results };
+}
+
 async function expectBlockedMutation(
   client: PoolClient,
   table: string,
@@ -114,7 +120,7 @@ test('clean migrate: 21 tables, exact catalog, rollback, idempotent re-up', asyn
   const pool = new Pool(cfg(SCHEMA, 4));
   const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
   try {
-    const up = await migrateToLatest(db);
+    const up = await migrateThroughTg006(db);
     expect(up.error).toBeUndefined();
 
     const tables = await catPool.query(
@@ -230,7 +236,7 @@ test('clean migrate: 21 tables, exact catalog, rollback, idempotent re-up', asyn
 
     const compiled = await import('../dist/index.js');
     expect(compiled.MIGRATIONS_DIR).toContain('dist');
-    const up2 = await compiled.migrateToLatest(db);
+    const up2 = await compiled.createMigrator(db).migrateTo('0002_case_workflow');
     expect(up2.error).toBeUndefined();
     const afterUp = await catPool.query(
       `SELECT count(*)::int AS c FROM pg_tables WHERE schemaname = $1 AND tablename NOT LIKE 'kysely_migration%'`,
@@ -257,7 +263,7 @@ test('deferred FK bootstrap: Case+Iteration#1 commit works; no Iteration#1 fails
   const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
   let client: PoolClient | undefined;
   try {
-    await migrateToLatest(db);
+    await migrateThroughTg006(db);
     const ORG = uuid(1);
     const HOUSE = uuid(2);
     const PREM = uuid(3);
@@ -318,7 +324,7 @@ test('cross-Case negative matrix: foreign keys reject cross-Case pointers', asyn
   const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
   let client: PoolClient | undefined;
   try {
-    await migrateToLatest(db);
+    await migrateThroughTg006(db);
 
     const ORG1 = uuid(1), ORG2 = uuid(2);
     const HOUSE1 = uuid(3), HOUSE2 = uuid(4);
@@ -487,7 +493,7 @@ test('closed-domain CHECK fixtures: all new constraints reject invalid values', 
   const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
   let client: PoolClient | undefined;
   try {
-    await migrateToLatest(db);
+    await migrateThroughTg006(db);
 
     const ORG = uuid(1), HOUSE = uuid(2), PREM = uuid(3), CAT = uuid(4), USER = uuid(5), CONTRACTOR = uuid(6);
     const seeds: Array<[string, unknown[]]> = [
@@ -645,7 +651,7 @@ test('uniqueness constraints: duplicate inserts rejected with 23505', async () =
   const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
   let client: PoolClient | undefined;
   try {
-    await migrateToLatest(db);
+    await migrateThroughTg006(db);
 
     const ORG = uuid(1), HOUSE = uuid(2), PREM = uuid(3), CAT = uuid(4), USER = uuid(5), CONTRACTOR = uuid(6);
     const seeds: Array<[string, unknown[]]> = [
@@ -719,7 +725,7 @@ test('EVT-015: null result_id rejected, duplicate EVT-015 on same result rejecte
   const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
   let client: PoolClient | undefined;
   try {
-    await migrateToLatest(db);
+    await migrateThroughTg006(db);
     const ORG = uuid(1), HOUSE = uuid(2), PREM = uuid(3), CAT = uuid(4), USER = uuid(5), CONTRACTOR = uuid(6);
     for (const [s, p] of [
       [`INSERT INTO organization VALUES ($1, 'T', true, now(), now())`, [ORG]],
@@ -787,7 +793,7 @@ test('immutability: UPDATE/DELETE on immutable tables rejected; stored facts unc
   const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
   let client: PoolClient | undefined;
   try {
-    await migrateToLatest(db);
+    await migrateThroughTg006(db);
     const ORG = uuid(1), HOUSE = uuid(2), PREM = uuid(3), CAT = uuid(4), USER = uuid(5), CONTRACTOR = uuid(6);
     for (const [s, p] of [
       [`INSERT INTO organization VALUES ($1, 'T', true, now(), now())`, [ORG]],
@@ -863,7 +869,7 @@ test('same-contractor N+1 Result fixture: accepted Assignment iteration 1 legiti
   const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
   let client: PoolClient | undefined;
   try {
-    await migrateToLatest(db);
+    await migrateThroughTg006(db);
     const ORG = uuid(1), HOUSE = uuid(2), PREM = uuid(3), CAT = uuid(4), USER = uuid(5), CONTRACTOR = uuid(6);
     for (const [s, p] of [
       [`INSERT INTO organization VALUES ($1, 'T', true, now(), now())`, [ORG]],
@@ -910,7 +916,7 @@ test('demo_run FK: primary_case_id from different demo_run rejected; same-run ac
   const db = new Kysely({ dialect: new PostgresDialect({ pool }) });
   let client: PoolClient | undefined;
   try {
-    await migrateToLatest(db);
+    await migrateThroughTg006(db);
     const ID1 = uuid(10), ID2 = uuid(11), USER = uuid(12), USER2 = uuid(13);
     await pool.query(`INSERT INTO app_user (app_user_id, display_name, is_synthetic, active, created_at, updated_at) VALUES ($1, 'U', false, true, now(), now())`, [USER]);
     await pool.query(`INSERT INTO app_user (app_user_id, display_name, is_synthetic, active, created_at, updated_at) VALUES ($1, 'U2', false, true, now(), now())`, [USER2]);

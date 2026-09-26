@@ -39,6 +39,15 @@ type _DbKeysExact = Expect<
     | 'resident_feedback'
     | 'comment'
     | 'case_event'
+    | 'attachment'
+    | 'case_initial_attachment'
+    | 'work_material_attachment'
+    | 'result_attachment'
+    | 'feedback_attachment'
+    | 'comment_attachment'
+    | 'command_execution'
+    | 'notification_intent'
+    | 'configuration_change'
   >
 >;
 type _DbAliasExact = Expect<Equal<DB, Database>>;
@@ -55,6 +64,10 @@ type _ClosureKindClosed = Expect<Equal<import('./index.js').ClosureKind, 'CONFIR
 type _CommentKindClosed = Expect<Equal<import('./index.js').CommentKind, 'WORKING' | 'CLARIFICATION_REQUEST' | 'CLARIFICATION_REPLY'>>;
 type _CaseEventTypeClosed = Expect<Equal<import('./index.js').CaseEventType, 'EVT_001' | 'EVT_002' | 'EVT_003' | 'EVT_004' | 'EVT_005' | 'EVT_006' | 'EVT_007' | 'EVT_008' | 'EVT_009' | 'EVT_010' | 'EVT_011' | 'EVT_012' | 'EVT_013' | 'EVT_014' | 'EVT_015' | 'EVT_016' | 'EVT_017'>>;
 type _IterationStartReasonClosed = Expect<Equal<import('./index.js').IterationStartReason, 'INITIAL' | 'REWORK'>>;
+type _IdempotencyPrincipalTypeClosed = Expect<Equal<import('./index.js').IdempotencyPrincipalType, 'APP_USER' | 'MAX_IDENTITY'>>;
+type _CommandExecutionStatusClosed = Expect<Equal<import('./index.js').CommandExecutionStatus, 'IN_PROGRESS' | 'SUCCEEDED'>>;
+type _NotificationKindClosed = Expect<Equal<import('./index.js').NotificationKind, 'RESULT_READY'>>;
+type _NotificationStatusClosed = Expect<Equal<import('./index.js').NotificationStatus, 'PENDING' | 'RETRY' | 'CLAIMED' | 'DELIVERED' | 'PERMANENT_FAILURE'>>;
 
 export type TypecheckGate<
   TDbKeys extends true,
@@ -72,6 +85,10 @@ export type TypecheckGate<
   TCommentKind extends true,
   TCaseEventType extends true,
   TIterationStartReason extends true,
+  TIdempotencyPrincipalType extends true,
+  TCommandExecutionStatus extends true,
+  TNotificationKind extends true,
+  TNotificationStatus extends true,
 > = [
   TDbKeys,
   TDbAlias,
@@ -88,6 +105,10 @@ export type TypecheckGate<
   TCommentKind,
   TCaseEventType,
   TIterationStartReason,
+  TIdempotencyPrincipalType,
+  TCommandExecutionStatus,
+  TNotificationKind,
+  TNotificationStatus,
 ];
 
 export type GateResult = TypecheckGate<
@@ -105,5 +126,9 @@ export type GateResult = TypecheckGate<
   _ClosureKindClosed,
   _CommentKindClosed,
   _CaseEventTypeClosed,
-  _IterationStartReasonClosed
+  _IterationStartReasonClosed,
+  _IdempotencyPrincipalTypeClosed,
+  _CommandExecutionStatusClosed,
+  _NotificationKindClosed,
+  _NotificationStatusClosed
 >;
