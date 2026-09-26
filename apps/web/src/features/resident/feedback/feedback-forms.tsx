@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import type {
   AllowedActionOutput, ResidentCaseSnapshotOutput, ResidentConfirmationSuccessOutput,
@@ -38,14 +38,17 @@ export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFee
   const [remarkText, setRemarkText] = useState('');
   const [stale, setStale] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
-  const [remarked, setRemarked] = useState(false);
+  const submitting = useRef(false);
+  const [pending, setPending] = useState<'confirm' | 'remark' | null>(null);
 
   const confirmAction = findAction(snapshot, 'RESIDENT_CONFIRM');
   const remarkAction = findAction(snapshot, 'RESIDENT_REMARK');
-  const inconsistent = confirmAction !== null && remarkAction !== null;
-  const confirmTargeted = confirmAction !== null && isCurrentTarget(snapshot, confirmAction);
-  const remarkTargeted = remarkAction !== null && isCurrentTarget(snapshot, remarkAction);
+  const feedback = snapshot.case.resident_feedback;
+  const currentFeedback = feedback !== null && feedback.result_id === snapshot.case.current_result?.result_id;
+  const confirmed = currentFeedback && feedback.type === 'CONFIRMATION';
+  const remarked = currentFeedback && feedback.type === 'REMARK';
+  const confirmTargeted = !currentFeedback && confirmAction !== null && isCurrentTarget(snapshot, confirmAction);
+  const remarkTargeted = !currentFeedback && remarkAction !== null && isCurrentTarget(snapshot, remarkAction);
 
   const confirm = useMutation<ResidentConfirmationSuccessOutput, unknown, void>({
     mutationFn: () => transport.confirmResult(snapshot.case.case_id, {
@@ -65,12 +68,13 @@ export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFee
   });
 
   async function runConfirm() {
-    if (!confirmTargeted || confirm.isPending) return;
+    if (!confirmTargeted || submitting.current) return;
+    submitting.current = true;
+    setPending('confirm');
     setStale(false);
     setError(null);
     try {
       await confirm.mutateAsync();
-      setConfirmed(true);
       await onMutated();
     } catch (cause) {
       if (isStaleResponse(cause)) {
@@ -80,19 +84,23 @@ export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFee
       } else {
         setError(CONFIRM_ERROR);
       }
+    } finally {
+      submitting.current = false;
+      setPending(null);
     }
   }
 
   async function runRemark(event: React.FormEvent) {
     event.preventDefault();
-    if (!remarkTargeted || remark.isPending || remarkText.trim() === '') return;
+    if (!remarkTargeted || submitting.current || remarkText.trim() === '') return;
+    submitting.current = true;
+    setPending('remark');
     setStale(false);
     setError(null);
     try {
       await remark.mutateAsync();
-      setRemarked(true);
-      setRemarkText('');
       await onMutated();
+      setRemarkText('');
     } catch (cause) {
       if (isStaleResponse(cause)) {
         setStale(true);
@@ -101,15 +109,10 @@ export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFee
       } else {
         setError(REMARK_ERROR);
       }
+    } finally {
+      submitting.current = false;
+      setPending(null);
     }
-  }
-
-  if (inconsistent) {
-    return <section className="resident-feedback" aria-label="Обратная связь по результату">
-      <p role="alert" data-testid="feedback-inconsistent">
-        Доступные действия противоречат друг другу. Обновите обращение.
-      </p>
-    </section>;
   }
 
   return <section className="resident-feedback" aria-label="Обратная связь по результату">
@@ -120,11 +123,10 @@ export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFee
     {confirmTargeted && <div className="resident-feedback__branch" data-testid="confirmation-branch">
       <p>Подтвердите, что результат выполнен.</p>
       <button type="button" data-testid="confirm-submit" onClick={() => { void runConfirm(); }}
-        disabled={confirm.isPending}>
-        {confirm.isPending ? 'Подтверждение…' : 'Подтвердить результат'}
+        disabled={pending !== null}>
+        {pending === 'confirm' ? 'Подтверждение…' : 'Подтвердить результат'}
       </button>
-      {confirm.isPending && <p role="status">Подтверждение результата…</p>}
-      {confirmed && <p role="status" data-testid="confirm-success">{CONFIRMED_TEXT}.</p>}
+      {pending === 'confirm' && <p role="status">Подтверждение результата…</p>}
     </div>}
 
     {remarkTargeted && <form className="resident-feedback__branch" data-testid="remark-branch"
@@ -132,15 +134,16 @@ export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFee
       <p>Оставьте замечание по актуальному результату — его рассмотрит УК.</p>
       <label htmlFor="resident-remark">Замечание</label>
       <textarea id="resident-remark" data-testid="remark-input" rows={4} value={remarkText}
-        onChange={(event) => setRemarkText(event.target.value)} />
-      <button type="submit" data-testid="remark-submit" disabled={remark.isPending || remarkText.trim() === ''}>
-        {remark.isPending ? 'Отправка…' : 'Оставить замечание'}
+        disabled={pending !== null} onChange={(event) => setRemarkText(event.target.value)} />
+      <button type="submit" data-testid="remark-submit" disabled={pending !== null || remarkText.trim() === ''}>
+        {pending === 'remark' ? 'Отправка…' : 'Оставить замечание'}
       </button>
-      {remark.isPending && <p role="status">Отправка замечания…</p>}
-      {remarked && <p role="status" data-testid="remark-success">{REMARK_SENT_TEXT}.</p>}
+      {pending === 'remark' && <p role="status">Отправка замечания…</p>}
     </form>}
 
-    {!confirmTargeted && !remarkTargeted && <p data-testid="feedback-absent">
+    {confirmed && <p role="status" data-testid="confirm-success">{CONFIRMED_TEXT}.</p>}
+    {remarked && <p role="status" data-testid="remark-success">{REMARK_SENT_TEXT}.</p>}
+    {!confirmTargeted && !remarkTargeted && !currentFeedback && <p data-testid="feedback-absent">
       Сейчас обратная связь по результату недоступна.
     </p>}
   </section>;
