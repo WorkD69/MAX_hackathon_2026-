@@ -12,6 +12,9 @@ import type { ValidatedMaxLaunch } from './init-data.js';
 import type {
   DemoActorRow, DemoRunRow, MaxIdentityRepository, MaxIdentityRow, NormalActorRow,
 } from '../max-identity/repository.js';
+import type { AuthorizationRepository, Binding } from '../authorization/policy.js';
+import { AuthService } from './service.js';
+import { verifySession } from './session-token.js';
 
 const now = 1771409719;
 const botToken = 'TG010_TEST_BOT_TOKEN_2026';
@@ -33,6 +36,9 @@ class FakeRepository implements MaxIdentityRepository {
     contractor_id: null, organization_active: null, contractor_active: null,
   };
   run: DemoRunRow | null = null;
+  demoActorRow: DemoActorRow | null = null;
+  demoBindings: Binding[] = [];
+  demoAccess = true;
   upsertCount = 0;
   async upsertValidated(launch: ValidatedMaxLaunch, _at: Date): Promise<MaxIdentityRow> {
     this.upsertCount++;
@@ -46,7 +52,29 @@ class FakeRepository implements MaxIdentityRepository {
   async findById(id: string): Promise<MaxIdentityRow | null> { return id === identityId ? this.identity : null; }
   async normalActors(id: string): Promise<NormalActorRow[]> { return id === userId ? [this.actor] : []; }
   async currentDemoRun(_id: string): Promise<DemoRunRow | null> { return this.run; }
-  async demoActor(_runId: string, _appUserId: string): Promise<DemoActorRow | null> { return null; }
+  async demoActor(runId: string, appUserId: string): Promise<DemoActorRow | null> {
+    return runId === this.run?.demo_run_id && appUserId === this.demoActorRow?.app_user_id ? this.demoActorRow : null;
+  }
+}
+
+function demoPolicyRepository(repo: FakeRepository): AuthorizationRepository {
+  return {
+    identity: async (id) => id === identityId ? { app_user_id: repo.identity.app_user_id } : null,
+    appUser: async (id) => id === repo.demoActorRow?.app_user_id ? { active: repo.demoActorRow.active } : null,
+    bindings: async (id) => id === repo.demoActorRow?.app_user_id ? repo.demoBindings : [],
+    organization: async () => ({ active: true }), contractor: async () => ({ active: true }),
+    demoRun: async (id) => id === repo.run?.demo_run_id
+      ? { status: 'ACTIVE', created_by_max_identity_id: identityId } : null,
+    demoActor: async (run, user) => (await repo.demoActor(run, user)) ? { role: repo.demoActorRow!.role } : null,
+    house: async () => null, premises: async () => null,
+    residentAccess: async () => repo.demoAccess,
+    residentAnyAccess: async () => repo.demoAccess,
+    ukHouseAccess: async () => repo.demoAccess,
+    ukAnyHouseAccess: async () => repo.demoAccess,
+    organizationContractor: async () => true,
+    contractorAnyOrganization: async () => true,
+    caseById: async () => null, attachmentById: async () => null,
+  };
 }
 
 const config = (demo = false) => loadConfig({
@@ -57,7 +85,8 @@ const config = (demo = false) => loadConfig({
   PUBLIC_API_BASE_URL: 'http://api/api/v1', BUILD_SHA: 'a'.repeat(40),
 });
 
-async function fixture(repository = new FakeRepository(), demo = false) {
+async function fixture(repository = new FakeRepository(), demo = false,
+  authorizationRepository?: AuthorizationRepository) {
   const lines: string[] = [];
   const clock = { value: now };
   const runtime = config(demo);
@@ -65,7 +94,8 @@ async function fixture(repository = new FakeRepository(), demo = false) {
   const app = await buildApp({
     config: runtime, logger: pair.loggerInstance, events: pair.events,
     readiness: { snapshot: () => ({ databaseReachable: true, migrationsCurrent: true, applicationInitialized: true }) },
-    auth: { repository, nowSeconds: () => clock.value },
+    auth: { repository, ...(authorizationRepository ? { authorizationRepository } : {}),
+      nowSeconds: () => clock.value },
   });
   return { app, repository, lines, runtime, clock };
 }
@@ -162,6 +192,34 @@ describe('TG-002 HTTP auth/session wire boundary', () => {
       expect(repository.upsertCount).toBe(2);
       const read = await app.inject({ method: 'GET', url: '/api/v1/session', headers: { authorization: `Bearer ${second.session_token}` } });
       expect(SessionReadResponseSchema.parse(read.json()).demo_run_id).toBe(runId);
+    } finally { await app.close(); }
+  });
+
+  it('issues an exact demo binding and revalidates it through GET session', async () => {
+    const repository = new FakeRepository();
+    repository.identity.app_user_id = null;
+    repository.run = { demo_run_id: runId, primary_case_id: null };
+    repository.demoActorRow = { app_user_id: userId, display_name: 'Resident', role: 'RESIDENT', active: true };
+    repository.demoBindings = [{ role_binding_id: roleBindingId, app_user_id: userId,
+      role: 'RESIDENT', organization_id: null, contractor_id: null, active: true }];
+    const policy = demoPolicyRepository(repository);
+    const { app, runtime } = await fixture(repository, true, policy);
+    const service = new AuthService(runtime, repository, () => now, policy, async () => userId);
+    try {
+      const bootstrap = AuthMaxSuccessSchema.parse((await app.inject({ method: 'POST', url: '/api/v1/auth/max', payload: { init_data: raw } })).json());
+      const selected = await service.selectDemoActorSession(bootstrap.session_token, 'RESIDENT');
+      expect(verifySession(selected.session_token, runtime, now).role_binding_id).toBe(roleBindingId);
+      const read = await app.inject({ method: 'GET', url: '/api/v1/session', headers: { authorization: `Bearer ${selected.session_token}` } });
+      expect(read.statusCode).toBe(200);
+      expect(SessionReadResponseSchema.parse(read.json()).effective_actor.app_user_id).toBe(userId);
+      repository.demoBindings[0]!.active = false;
+      const revoked = await app.inject({ method: 'GET', url: '/api/v1/session', headers: { authorization: `Bearer ${selected.session_token}` } });
+      expect(revoked.statusCode).toBe(401);
+      expect(ErrorResponseSchema.parse(revoked.json()).error.code).toBe('SESSION_EXPIRED');
+      const fresh = AuthMaxSuccessSchema.parse((await app.inject({ method: 'POST', url: '/api/v1/auth/max', payload: { init_data: raw } })).json());
+      expect(fresh.session.effective_actor.app_user_id).toBeNull();
+      await expect(service.selectDemoActorSession(fresh.session_token, 'RESIDENT'))
+        .rejects.toMatchObject({ code: 'SESSION_EXPIRED' });
     } finally { await app.close(); }
   });
 
