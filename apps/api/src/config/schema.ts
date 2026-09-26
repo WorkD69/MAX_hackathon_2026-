@@ -43,7 +43,7 @@ export const inputSchema = z.object({
   APP_SESSION_SECRET: utf8Bytes(32, 4096),
   MAX_ADAPTER_MODE: z.enum(['live', 'fake']),
   MAX_BOT_TOKEN: z.string().min(8).max(4096).optional(),
-  MAX_WEBHOOK_SECRET: utf8Bytes(32, 4096).optional(),
+  MAX_WEBHOOK_SECRET: z.string().regex(/^[a-zA-Z0-9_-]{5,256}$/).optional(),
   PUBLIC_APP_URL: publicUrl,
   PUBLIC_API_BASE_URL: publicUrl,
   BUILD_SHA: z.string().regex(/^[0-9a-f]{40}$/),
