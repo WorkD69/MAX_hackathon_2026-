@@ -24,6 +24,15 @@ const databaseKeys: readonly (keyof Database)[] = [
   'resident_feedback',
   'comment',
   'case_event',
+  'attachment',
+  'case_initial_attachment',
+  'work_material_attachment',
+  'result_attachment',
+  'feedback_attachment',
+  'comment_attachment',
+  'command_execution',
+  'notification_intent',
+  'configuration_change',
 ];
 
 test('TG-005 db boundary surface', () => {
@@ -31,9 +40,10 @@ test('TG-005 db boundary surface', () => {
   expect(typeof boundary.migrateToLatest).toBe('function');
   expect(typeof boundary.rollbackAll).toBe('function');
   expect(typeof boundary.resolveMigrationsDir).toBe('function');
+  expect(typeof boundary.createOperationalRepositories).toBe('function');
   expect(typeof boundary.MIGRATIONS_DIR).toBe('string');
   expect(boundary.MIGRATIONS_DIR.endsWith('migrations')).toBe(true);
-  expect(databaseKeys).toHaveLength(21);
+  expect(databaseKeys).toHaveLength(30);
 });
 
 const _dbAlias: DB = null as unknown as Database;
