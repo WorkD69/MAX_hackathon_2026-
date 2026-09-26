@@ -16,6 +16,10 @@ export type ClosureKind = 'CONFIRMED_RESULT' | 'NO_RESIDENT_FEEDBACK' | 'DISPUTE
 export type CommentKind = 'WORKING' | 'CLARIFICATION_REQUEST' | 'CLARIFICATION_REPLY';
 export type CaseEventType = 'EVT_001' | 'EVT_002' | 'EVT_003' | 'EVT_004' | 'EVT_005' | 'EVT_006' | 'EVT_007' | 'EVT_008' | 'EVT_009' | 'EVT_010' | 'EVT_011' | 'EVT_012' | 'EVT_013' | 'EVT_014' | 'EVT_015' | 'EVT_016' | 'EVT_017';
 export type IterationStartReason = 'INITIAL' | 'REWORK';
+export type IdempotencyPrincipalType = 'APP_USER' | 'MAX_IDENTITY';
+export type CommandExecutionStatus = 'IN_PROGRESS' | 'SUCCEEDED';
+export type NotificationKind = 'RESULT_READY';
+export type NotificationStatus = 'PENDING' | 'RETRY' | 'CLAIMED' | 'DELIVERED' | 'PERMANENT_FAILURE';
 
 export interface OrganizationTable {
   organization_id: string;
@@ -274,6 +278,103 @@ export interface CaseEventTable {
   derived: boolean;
 }
 
+export interface AttachmentTable {
+  attachment_id: string;
+  case_id: string;
+  uploaded_by_user_id: string;
+  file_name: string;
+  mime_type: string;
+  byte_size: ColumnType<string, number | string, never>;
+  sha256: string;
+  content: Buffer;
+  created_at: Date;
+}
+
+export interface CaseInitialAttachmentTable {
+  case_id: string;
+  attachment_id: string;
+}
+
+export interface WorkMaterialAttachmentTable {
+  case_id: string;
+  iteration_id: string;
+  assignment_id: string;
+  attachment_id: string;
+  created_event_id: string;
+}
+
+export interface ResultAttachmentTable {
+  case_id: string;
+  result_id: string;
+  attachment_id: string;
+}
+
+export interface FeedbackAttachmentTable {
+  case_id: string;
+  feedback_id: string;
+  attachment_id: string;
+}
+
+export interface CommentAttachmentTable {
+  case_id: string;
+  comment_id: string;
+  attachment_id: string;
+}
+
+export interface CommandExecutionTable {
+  command_id: string;
+  principal_type: IdempotencyPrincipalType;
+  app_user_id: string | null;
+  max_identity_id: string | null;
+  idempotency_key: string;
+  command_type: string;
+  case_id: string | null;
+  request_hash: string;
+  execution_status: CommandExecutionStatus;
+  http_status: number | null;
+  response_body: unknown | null;
+  created_at: Date;
+  completed_at: Date | null;
+}
+
+export interface NotificationIntentTable {
+  notification_intent_id: string;
+  case_id: string;
+  result_id: string;
+  recipient_max_identity_id: string;
+  delivery_chat_id: string;
+  delivery_chat_type: string;
+  notification_kind: NotificationKind;
+  dedupe_key: string;
+  payload: unknown;
+  status: NotificationStatus;
+  attempt_count: Generated<number>;
+  next_attempt_at: Date | null;
+  last_attempt_at: Date | null;
+  claim_token: string | null;
+  claimed_at: Date | null;
+  lease_expires_at: Date | null;
+  delivered_at: Date | null;
+  provider_message_id: string | null;
+  last_error_code: string | null;
+  last_error_message: string | null;
+  operational_redrive_count: Generated<number>;
+  created_at: Date;
+}
+
+export interface ConfigurationChangeTable {
+  config_change_id: string;
+  organization_id: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  before_data: unknown | null;
+  after_data: unknown;
+  actor_user_id: string;
+  occurred_at: Date;
+  command_id: string;
+}
+
 export interface Database {
   organization: OrganizationTable;
   house: HouseTable;
@@ -296,6 +397,15 @@ export interface Database {
   resident_feedback: ResidentFeedbackTable;
   comment: CommentTable;
   case_event: CaseEventTable;
+  attachment: AttachmentTable;
+  case_initial_attachment: CaseInitialAttachmentTable;
+  work_material_attachment: WorkMaterialAttachmentTable;
+  result_attachment: ResultAttachmentTable;
+  feedback_attachment: FeedbackAttachmentTable;
+  comment_attachment: CommentAttachmentTable;
+  command_execution: CommandExecutionTable;
+  notification_intent: NotificationIntentTable;
+  configuration_change: ConfigurationChangeTable;
 }
 
 export type DB = Database;
@@ -336,3 +446,4 @@ export async function rollbackAll(db: Kysely<Database>): Promise<MigrationResult
 }
 
 export type { MigrationResult, MigrationResultSet };
+export * from './operational-repositories.js';
