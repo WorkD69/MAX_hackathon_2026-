@@ -12,9 +12,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.migrations.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run src/index.test.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "kysely": "0.29.6",
