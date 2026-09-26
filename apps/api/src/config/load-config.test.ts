@@ -117,14 +117,11 @@ describe('runtime config', () => {
     expect(() => loadConfig({ ...base(), APP_SESSION_SECRET: 'é'.repeat(15) })).toThrow(ConfigValidationError);
     expect(loadConfig({ ...base(), APP_SESSION_SECRET: 's'.repeat(4096) }).APP_SESSION_SECRET).toHaveLength(4096);
     expect(() => loadConfig({ ...base(), APP_SESSION_SECRET: 's'.repeat(4097) })).toThrow(ConfigValidationError);
-    const live = { ...base(), MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: 'b'.repeat(8), MAX_WEBHOOK_SECRET: 'é'.repeat(16) };
+    const live = { ...base(), MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: 'b'.repeat(8), MAX_WEBHOOK_SECRET: 'w'.repeat(5) };
     expect(loadConfig(live).MAX_BOT_TOKEN).toHaveLength(8);
     expect(loadConfig({ ...live, MAX_BOT_TOKEN: 'b'.repeat(4096) }).MAX_BOT_TOKEN).toHaveLength(4096);
     expect(() => loadConfig({ ...live, MAX_BOT_TOKEN: 'b'.repeat(7) })).toThrow(ConfigValidationError);
     expect(() => loadConfig({ ...live, MAX_BOT_TOKEN: 'b'.repeat(4097) })).toThrow(ConfigValidationError);
-    expect(() => loadConfig({ ...live, MAX_WEBHOOK_SECRET: 'é'.repeat(15) })).toThrow(ConfigValidationError);
-    expect(loadConfig({ ...live, MAX_WEBHOOK_SECRET: 'w'.repeat(4096) }).MAX_WEBHOOK_SECRET).toHaveLength(4096);
-    expect(() => loadConfig({ ...live, MAX_WEBHOOK_SECRET: 'w'.repeat(4097) })).toThrow(ConfigValidationError);
     expect(() => loadConfig({ ...live, MAX_BOT_TOKEN: undefined })).toThrow(ConfigValidationError);
     expect(() => loadConfig({ ...live, MAX_WEBHOOK_SECRET: undefined })).toThrow(ConfigValidationError);
     expect(() => loadConfig({ ...base(), MAX_WEBHOOK_SECRET: 'w'.repeat(32) })).toThrow(ConfigValidationError);
@@ -136,7 +133,7 @@ describe('runtime config', () => {
       { DATABASE_URL: sentinel },
       { APP_SESSION_SECRET: sentinel },
       { MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: sentinel.slice(0, 5), MAX_WEBHOOK_SECRET: 'w'.repeat(32) },
-      { MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: 'b'.repeat(8), MAX_WEBHOOK_SECRET: sentinel },
+      { MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: 'b'.repeat(8), MAX_WEBHOOK_SECRET: `${sentinel}:` },
     ];
     for (const candidate of candidates) {
       let thrown: unknown;
@@ -145,5 +142,66 @@ describe('runtime config', () => {
       expect(String(thrown)).not.toContain(sentinel);
       expect(JSON.stringify(thrown)).not.toContain(sentinel);
     }
+  });
+
+  describe('MAX webhook secret compatibility', () => {
+    const live = () => ({ ...base(), MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: 'b'.repeat(8) });
+
+    it.each([
+      ['minimum length', 'a'.repeat(5)],
+      ['maximum length', 'a'.repeat(256)],
+      ['uppercase ASCII', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'],
+      ['lowercase ASCII', 'abcdefghijklmnopqrstuvwxyz'],
+      ['digits', '0123456789'],
+      ['underscore', '_____'],
+      ['hyphen', '-----'],
+      ['mixed allowlist', 'Az09_-'],
+    ])('accepts %s without changing the value', (_label, secret) => {
+      expect(loadConfig({ ...live(), MAX_WEBHOOK_SECRET: secret }).MAX_WEBHOOK_SECRET).toBe(secret);
+    });
+
+    it.each([
+      ...Array.from({ length: 5 }, (_, length) => [`length ${length}`, 'a'.repeat(length)]),
+      ['length 257', 'a'.repeat(257)],
+      ['former maximum length', 'a'.repeat(4096)],
+      ['space', 'ab cd'],
+      ['leading space', ' abcde'],
+      ['trailing space', 'abcde '],
+      ['tab', 'ab\tcd'],
+      ['newline', 'ab\ncd'],
+      ['trailing newline', 'abcde\n'],
+      ['carriage return', 'abcde\r'],
+      ['colon', 'ab:cd'],
+      ['slash', 'ab/cd'],
+      ['backslash', 'ab\\cd'],
+      ['Cyrillic', 'секрет'],
+      ['accented characters', 'é'.repeat(16)],
+      ['fullwidth digits', '１２３４５'],
+      ['emoji', 'abcde🔒'],
+      ['period', 'ab.cd'],
+      ['exclamation mark', 'abcd!'],
+      ['at sign', 'abcd@'],
+      ['equals sign', 'abcd='],
+      ['plus sign', 'abcd+'],
+    ])('rejects %s', (_label, secret) => {
+      expect(() => loadConfig({ ...live(), MAX_WEBHOOK_SECRET: secret })).toThrow(ConfigValidationError);
+    });
+
+    it.each(['test', 'development', 'production'])('preserves live requirements in %s', appEnv => {
+      const env = {
+        ...live(), APP_ENV: appEnv,
+        PUBLIC_APP_URL: 'https://city.example/', PUBLIC_API_BASE_URL: 'https://api.city.example/api/v1',
+      };
+      expect(loadConfig({ ...env, MAX_WEBHOOK_SECRET: 'Az0_-' }).MAX_WEBHOOK_SECRET).toBe('Az0_-');
+      expect(() => loadConfig(env)).toThrow(ConfigValidationError);
+      expect(() => loadConfig({ ...env, MAX_WEBHOOK_SECRET: 'Az0_-', MAX_BOT_TOKEN: undefined })).toThrow(ConfigValidationError);
+    });
+
+    it('preserves fake-mode absence and rejection of supplied webhook secrets', () => {
+      expect(loadConfig(base()).MAX_WEBHOOK_SECRET).toBeUndefined();
+      for (const secret of ['Az0_-', 'a'.repeat(256)]) {
+        expect(() => loadConfig({ ...base(), MAX_WEBHOOK_SECRET: secret })).toThrow(ConfigValidationError);
+      }
+    });
   });
 });
