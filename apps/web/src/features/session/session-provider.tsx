@@ -141,12 +141,18 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
     try {
       const result = await startDemoRun(snapshot.token);
       runCreated = true;
-      const fresh = await readSession(snapshot.token);
-      if (fresh.demo_run_id !== result.demo_run_id) throw new Error('DemoRun context mismatch');
+      const raw = platform.isMiniAppContext ? platform.getRawInitData() : null;
+      if (!raw?.trim()) throw new Error('MAX context unavailable');
+      const issued = await authenticateMax(raw);
+      if (Date.parse(issued.expires_at) <= Date.now()) throw new Error('Expired session');
+      if (issued.session.demo_run_id !== result.demo_run_id) throw new Error('DemoRun context mismatch');
       if (current.current !== snapshot) return;
       await queryClient.invalidateQueries({ refetchType: 'none' });
       queryClient.clear();
-      changeState({ ...snapshot, session: fresh });
+      changeState({
+        status: 'ready', session: issued.session,
+        token: issued.session_token, expiresAt: issued.expires_at,
+      });
       setRevision((value) => value + 1);
     } catch (cause) {
       if (runCreated || !(cause instanceof SessionHttpError) || cause.status === 401) failSession();
@@ -158,7 +164,7 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
       operation.current = false;
       setBusy(false);
     }
-  }, [changeState, credential, failSession, queryClient, refreshSession]);
+  }, [changeState, credential, failSession, platform, queryClient, refreshSession]);
 
   const switchRole = useCallback(async (role: RoleOutput) => {
     if (operation.current) return;
