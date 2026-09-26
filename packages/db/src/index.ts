@@ -447,3 +447,4 @@ export async function rollbackAll(db: Kysely<Database>): Promise<MigrationResult
 
 export type { MigrationResult, MigrationResultSet };
 export * from './operational-repositories.js';
+export * from './transactions/index.js';
