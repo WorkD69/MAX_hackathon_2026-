@@ -1,0 +1,14 @@
+.uk-workflow { width: 100%; min-width: 0; }
+.uk-workflow__facts { margin-bottom: 16px; padding: 12px 16px; border: 1px solid #d5dce0;
+  border-radius: 12px; background: #f6f9fa; overflow-wrap: anywhere; }
+.uk-workflow__facts h2 { margin: 0 0 12px; font-size: 1.15rem; }
+.uk-workflow__facts p { margin: 8px 0; }
+.uk-workflow__form { display: grid; gap: 12px; min-width: 0; }
+.uk-workflow__form label { display: grid; gap: 6px; min-width: 0; }
+.uk-workflow__form input:not([type="checkbox"]), .uk-workflow__form textarea {
+  box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px;
+  border: 1px solid #365766; border-radius: 8px; font: inherit; }
+.uk-workflow__form textarea { min-height: 88px; resize: vertical; }
+.uk-workflow__form .uk-workflow__check { display: flex; align-items: center; gap: 8px; }
+.uk-workflow__form button { justify-self: start; }
+@media (max-width: 600px) { .uk-workflow__form button { width: 100%; } }
