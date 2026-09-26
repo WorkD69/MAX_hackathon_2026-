@@ -56,6 +56,8 @@ Final record содержит зелёные результаты всей ма�
 | 16–20 | restart/persistence; OpenAPI; DATA-API; public deployment; HTTPS/TLS |
 | 21–23 | real MAX mobile; real MAX web/Desktop; real proactive MAX notification |
 
+Для каждого пункта записать фактическую команду или метод, exit code и результат. Если root `npm run test:integration` либо `npm run test:e2e` выводит `NO_SUITE_YET`, считать suite `NOT_RUN` даже при exit code 0; заменить заглушку реальным evidence владельца соответствующей задачи.
+
 Clean reproducibility rehearsal из fresh checkout/source candidate: clean install → build → Docker image build → compose startup → PostgreSQL initialization → migrations → deterministic seed → application и worker startup → automated regression и обязательные E2E §7 → restart → persistence confirmation → public deployed smoke. Developer-local leftovers недопустимы. Проверить доступность MAX и API на период оценки.
 
 Real TG-033 evidence обязателен: bot → Mini App, valid real initData и rejection tampered/invalid initData, proactive notification, оба реальных MAX клиента, cross-client continuity того же Case, attachment/native и web download paths, subscription recovery, retry/redrive dedupe. Evidence указывает client/account/candidate. Fake adapter и browser mobile viewport не заменяют real MAX mobile; каждый client проверяется отдельно.
