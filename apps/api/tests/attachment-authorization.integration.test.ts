@@ -120,6 +120,22 @@ describe('TG-012 real PostgreSQL attachment classifier and TG-011 policy', () =>
         comment_iteration_id: ids.iteration2, actor_contractor_id: ids.contractorA });
     });
   });
+  it('keeps current remark attachment with UK and Resident during REMARKS_REVIEW', async () => {
+    await db.updateTable('case_table').set({ current_state: 'REMARKS_REVIEW',
+      current_iteration_id: ids.iteration1, current_result_id: ids.result })
+      .where('case_id', '=', ids.case).execute();
+    try {
+      await withPolicy(async (auth) => {
+        await expect(auth.attachment(claim(actors[3]), ids.feedbackFile)).rejects.toMatchObject(hidden);
+        expect((await auth.attachment(claim(actors[0]), ids.feedbackFile)).access).toBe('RESIDENT');
+        expect((await auth.attachment(claim(actors[1]), ids.feedbackFile)).access).toBe('UK');
+      });
+    } finally {
+      await db.updateTable('case_table').set({ current_state: 'REWORK',
+        current_iteration_id: ids.iteration2, current_result_id: null })
+        .where('case_id', '=', ids.case).execute();
+    }
+  });
   it('allows parent-visible feedback and common work comments; hides foreign scope and unrelated history', async () => {
     await withPolicy(async (auth) => {
       expect((await auth.attachment(claim(actors[0]), ids.feedbackFile)).access).toBe('RESIDENT');
@@ -131,15 +147,15 @@ describe('TG-012 real PostgreSQL attachment classifier and TG-011 policy', () =>
       await expect(auth.attachment(claim(actors[3]), ids.oldFile)).rejects.toMatchObject(hidden);
     });
   });
-  it('reauthorizes at capability mint and consume after reassignment', async () => {
-    const capability = { attachmentId: ids.feedbackFile, principal: claim(actors[3]) };
-    await withPolicy(async (auth) => { await auth.attachment(capability.principal, capability.attachmentId); });
+  it('policy recheck denies old executor after reassignment', async () => {
+    const oldExecutor = claim(actors[3]);
+    await withPolicy(async (auth) => { await auth.attachment(oldExecutor, ids.feedbackFile); });
     await db.updateTable('case_table').set({ current_selection_id: ids.selectionB,
       current_assignment_id: ids.assignmentB, current_executor_contractor_id: ids.contractorB })
       .where('case_id', '=', ids.case).execute();
     await withPolicy(async (auth) => {
-      await expect(auth.attachment(capability.principal, capability.attachmentId)).rejects.toMatchObject(hidden);
-      await expect(auth.attachment(capability.principal, ids.ownFile)).rejects.toMatchObject(hidden);
+      await expect(auth.attachment(oldExecutor, ids.feedbackFile)).rejects.toMatchObject(hidden);
+      await expect(auth.attachment(oldExecutor, ids.ownFile)).rejects.toMatchObject(hidden);
       expect((await auth.attachment(claim(actors[4]), ids.ukFile)).access).toBe('EXECUTOR');
     });
   });
