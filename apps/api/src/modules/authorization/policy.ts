@@ -38,16 +38,23 @@ export interface CaseContext {
   current_result_id: string | null;
   current_feedback_id: string | null;
   current_feedback_type: 'CONFIRMATION' | 'REMARK' | null;
+  current_iteration_source_feedback_id: string | null;
   current_clarification_request_id: string | null;
   no_resident_feedback_recorded: boolean;
 }
-export interface AttachmentContext {
+interface AttachmentBase {
   attachment_id: string;
   case_id: string;
-  kind: 'INITIAL' | 'RESULT' | 'WORK_MATERIAL' | 'COMMENT';
-  assignment_id: string | null;
-  iteration_id: string | null;
 }
+export type AttachmentContext = AttachmentBase & (
+  { kind: 'INITIAL' | 'RESULT' | 'WORK_MATERIAL'; assignment_id: string | null; iteration_id: string | null }
+  | { kind: 'FEEDBACK'; feedback_id: string; feedback_type: 'CONFIRMATION' | 'REMARK';
+      feedback_iteration_id: string; feedback_result_id: string }
+  | { kind: 'COMMENT'; comment_id: string; comment_iteration_id: string;
+      comment_kind: 'WORKING' | 'CLARIFICATION_REQUEST' | 'CLARIFICATION_REPLY';
+      actor_role_snapshot: Role; actor_contractor_id: string | null;
+      context_result_id: string | null; context_feedback_id: string | null }
+);
 
 /** Every method reads authoritative rows in the caller's read/transaction context. */
 export interface AuthorizationRepository {
@@ -250,16 +257,25 @@ export class AuthorizationPolicy {
     return { principal, case: row, access, visibility, projection, allowed_actions: this.actions(access, row) };
   }
 
+  /** Shared read gate: TG-015 must call it at capability mint and again at consume with the bound actor. */
   async attachment(claims: SessionClaims, attachmentId: string): Promise<CaseDecision> {
     await this.principal(claims);
     const attachment = await this.repository.attachmentById(attachmentId);
     if (!attachment) return hidden();
     const decision = await this.case(claims, attachment.case_id);
     if (decision.access === 'PENDING_CONTRACTOR' && attachment.kind !== 'INITIAL') return hidden();
-    if (decision.access === 'EXECUTOR' && (attachment.kind === 'WORK_MATERIAL' || attachment.kind === 'RESULT') &&
-      (attachment.assignment_id !== decision.case.current_assignment_id ||
-        (attachment.kind === 'WORK_MATERIAL' && attachment.iteration_id !== decision.case.current_iteration_id))) return hidden();
-    if (decision.access === 'EXECUTOR' && attachment.kind === 'COMMENT') return hidden();
+    if (decision.access === 'EXECUTOR') {
+      if ((attachment.kind === 'WORK_MATERIAL' || attachment.kind === 'RESULT') &&
+        (attachment.assignment_id !== decision.case.current_assignment_id ||
+          (attachment.kind === 'WORK_MATERIAL' && attachment.iteration_id !== decision.case.current_iteration_id))) return hidden();
+      if (attachment.kind === 'FEEDBACK' &&
+        (attachment.feedback_type !== 'REMARK' ||
+          (attachment.feedback_id !== decision.case.current_iteration_source_feedback_id &&
+            !(decision.case.current_state === 'REMARKS_REVIEW' &&
+              attachment.feedback_id === decision.case.current_feedback_id &&
+              attachment.feedback_result_id === decision.case.current_result_id)))) return hidden();
+      if (attachment.kind === 'COMMENT' && !this.executorCanSeeComment(attachment, decision.case)) return hidden();
+    }
     return decision;
   }
 
@@ -270,7 +286,7 @@ export class AuthorizationPolicy {
       : decision.access === 'RESIDENT' ? residentActions.includes(action)
       : decision.access === 'PENDING_CONTRACTOR' ? ['ACCEPT_ASSIGNMENT', 'REJECT_ASSIGNMENT'].includes(action)
       : contractorActions.includes(action);
-    if (!roleAllowed) return forbidden();
+    if (!roleAllowed || (action === 'ADD_COMMENT' && decision.access === 'UK' && decision.case.current_state === 'CREATED')) return forbidden();
     return decision;
   }
 
@@ -281,7 +297,7 @@ export class AuthorizationPolicy {
       : decision.access === 'RESIDENT' ? residentActions.includes(action)
       : decision.access === 'PENDING_CONTRACTOR' ? ['ACCEPT_ASSIGNMENT', 'REJECT_ASSIGNMENT'].includes(action)
       : contractorActions.includes(action) || action === 'ACCEPT_ASSIGNMENT';
-    if (!roleAllowed) return forbidden();
+    if (!roleAllowed || (action === 'ADD_COMMENT' && decision.access === 'UK' && decision.case.current_state === 'CREATED')) return forbidden();
     if ((decision.access === 'PENDING_CONTRACTOR' || decision.access === 'EXECUTOR') &&
       (!targetAssignmentId || targetAssignmentId !== decision.case.current_assignment_id)) return hidden();
     return decision;
@@ -313,6 +329,17 @@ export class AuthorizationPolicy {
     return hidden();
   }
 
+  private executorCanSeeComment(comment: Extract<AttachmentContext, { kind: 'COMMENT' }>, row: CaseContext): boolean {
+    if (comment.comment_iteration_id !== row.current_iteration_id) return false;
+    if (comment.actor_role_snapshot === 'CONTRACTOR_EMPLOYEE' &&
+      comment.actor_contractor_id !== row.current_executor_contractor_id) return false;
+    if (comment.comment_kind === 'WORKING') return true;
+    return row.current_state === 'REMARKS_REVIEW' &&
+      comment.context_result_id === row.current_result_id &&
+      comment.context_feedback_id === row.current_feedback_id &&
+      row.current_feedback_type === 'REMARK';
+  }
+
   private actions(access: CaseAccess, row: CaseContext): readonly Action[] {
     switch (access) {
       case 'PENDING_CONTRACTOR': return ['ACCEPT_ASSIGNMENT', 'REJECT_ASSIGNMENT'];
@@ -324,7 +351,7 @@ export class AuthorizationPolicy {
         if (row.current_state === 'REMARKS_REVIEW' && row.current_clarification_request_id) return ['ADD_COMMENT'];
         return [];
       case 'UK':
-        if (row.current_state === 'CREATED') return ['ACCEPT_CASE', 'ADD_COMMENT'];
+        if (row.current_state === 'CREATED') return ['ACCEPT_CASE'];
         if (row.current_state === 'ACCEPTED_BY_UK' || row.current_state === 'REWORK') {
           return row.current_selection_id ? ['SELECT_CONTRACTOR', 'SEND_ASSIGNMENT', 'ADD_COMMENT'] : ['SELECT_CONTRACTOR', 'ADD_COMMENT'];
         }

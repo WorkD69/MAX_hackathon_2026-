@@ -108,6 +108,8 @@ export function createTransactionAuthorizationRepository(transaction: Pick<Datab
           .where('case_id', '=', caseId).where('result_id', '=', row.current_result_id)
           .where('event_type', '=', 'EVT_015').executeTakeFirst()
         : undefined;
+      const iteration = await transaction.selectFrom('case_iteration').select('source_feedback_id')
+        .where('iteration_id', '=', row.current_iteration_id).executeTakeFirst();
       return {
         case_id: row.case_id, organization_id: row.organization_id, house_id: row.house_id,
         premises_id: row.premises_id, resident_user_id: row.resident_user_id,
@@ -119,6 +121,7 @@ export function createTransactionAuthorizationRepository(transaction: Pick<Datab
         current_executor_contractor_id: row.current_executor_contractor_id,
         current_result_id: row.current_result_id, current_feedback_id: feedback?.feedback_id ?? null,
         current_feedback_type: feedback?.type ?? null,
+        current_iteration_source_feedback_id: iteration?.source_feedback_id ?? null,
         current_clarification_request_id: clarification?.comment_id ?? null,
         no_resident_feedback_recorded: Boolean(noFeedback),
       };
@@ -137,9 +140,26 @@ export function createTransactionAuthorizationRepository(transaction: Pick<Datab
         .select(['result.assignment_id', 'result.iteration_id'])
         .where('result_attachment.attachment_id', '=', attachmentId).executeTakeFirst();
       if (result) return { attachment_id: attachmentId, case_id: attachment.case_id, kind: 'RESULT', assignment_id: result.assignment_id, iteration_id: result.iteration_id };
-      const comment = await transaction.selectFrom('comment_attachment').select('attachment_id')
-        .where('attachment_id', '=', attachmentId).executeTakeFirst();
-      return comment ? { attachment_id: attachmentId, case_id: attachment.case_id, kind: 'COMMENT', assignment_id: null, iteration_id: null } : null;
+      const feedback = await transaction.selectFrom('feedback_attachment')
+        .innerJoin('resident_feedback', 'resident_feedback.feedback_id', 'feedback_attachment.feedback_id')
+        .select(['resident_feedback.feedback_id', 'resident_feedback.type', 'resident_feedback.iteration_id', 'resident_feedback.result_id'])
+        .where('feedback_attachment.attachment_id', '=', attachmentId)
+        .where('feedback_attachment.case_id', '=', attachment.case_id).executeTakeFirst();
+      if (feedback) return { attachment_id: attachmentId, case_id: attachment.case_id, kind: 'FEEDBACK',
+        feedback_id: feedback.feedback_id, feedback_type: feedback.type,
+        feedback_iteration_id: feedback.iteration_id, feedback_result_id: feedback.result_id };
+      const comment = await transaction.selectFrom('comment_attachment')
+        .innerJoin('comment', 'comment.comment_id', 'comment_attachment.comment_id')
+        .select(['comment.comment_id', 'comment.iteration_id', 'comment.comment_kind',
+          'comment.actor_role_snapshot', 'comment.actor_contractor_id',
+          'comment.context_result_id', 'comment.context_feedback_id'])
+        .where('comment_attachment.attachment_id', '=', attachmentId)
+        .where('comment_attachment.case_id', '=', attachment.case_id).executeTakeFirst();
+      return comment ? { attachment_id: attachmentId, case_id: attachment.case_id, kind: 'COMMENT',
+        comment_id: comment.comment_id, comment_iteration_id: comment.iteration_id,
+        comment_kind: comment.comment_kind, actor_role_snapshot: comment.actor_role_snapshot,
+        actor_contractor_id: comment.actor_contractor_id,
+        context_result_id: comment.context_result_id, context_feedback_id: comment.context_feedback_id } : null;
     },
   };
 }

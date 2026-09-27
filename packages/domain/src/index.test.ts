@@ -439,6 +439,11 @@ const remainingInvariantChecks: readonly [string, () => void][] = [
 ];
 test.each(remainingInvariantChecks)('%s', (_name, assertion) => assertion());
 
+test('UK AddComment in CREATED remains rejected by the domain engine', () => {
+  rejected(base('CREATED'), uk, comment, 'INVALID_STATE');
+  expect(valid(base('ACCEPTED_BY_UK'), uk, comment).transition).toBe('TR-021');
+});
+
 test('pure plans are deterministic and never mutate the supplied snapshot', () => {
   const snapshot = remark();
   const before = structuredClone(snapshot);
