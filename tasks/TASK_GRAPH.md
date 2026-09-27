@@ -1,6 +1,6 @@
 # TASK GRAPH
 
-> Canonical approved Task Graph. `TASK_GRAPH_GATE = PASS` подтверждён independent final recheck. Документ не является Task Contract или разрешением на coding.
+> Исходный Task Graph получил `TASK_GRAPH_GATE = PASS` после independent final recheck. Настоящее targeted gap-closure дополнение на task branch ожидает отдельный independent review. Документ не является разрешением на coding.
 
 ## 1. Baseline / Gate Status
 
@@ -12,9 +12,10 @@ TASK_GRAPH = APPROVED
 CURRENT_GATE = TASK CONTRACTS
 TASK_CONTRACTS = NOT STARTED
 CODING = BLOCKED
+TARGETED_GAP_CLOSURE_REVIEW = PENDING
 ```
 
-Baseline preflight выполнен до анализа:
+Блок выше сохраняет исторический gate/status исходного графа; поле targeted closure отражает статус текущей branch candidate. Baseline preflight выполнен до исходного анализа:
 
 - исходный projectless workspace не был checkout целевого repository: `git branch --show-current` вернул `master`, `git rev-parse HEAD` и `git log -5 --oneline` подтвердили отсутствие commit, а `git rev-parse --show-toplevel` указал на посторонний пустой `C:/` repository;
 - неизвестное локальное состояние не использовалось;
@@ -30,7 +31,7 @@ Baseline preflight выполнен до анализа:
 2. **Один Case — одна consistency boundary.** Lifecycle-команды сохраняют immutable `case_id`, ровно восемь states, append-only history, exact targets и `SELECT ... FOR UPDATE` serialization.
 3. **Dependency boundaries важнее технических слоёв.** Например, Result, material validation и outbox intent объединены одной atomic integration boundary; outbox delivery worker остаётся отдельной задачей.
 4. **File ownership закреплён заранее.** High-conflict aggregators (`package.json`, migration order, API app bootstrap, frontend router, compose, README) имеют одного владельца в конкретной wave.
-5. **Только явные direct dependencies.** `Depends On` фиксирует реальные немедленные blockers; `Unlocks` является точным обратным индексом этих рёбер. Всего после targeted fix: **35 tasks / 74 direct dependency edges**.
+5. **Только явные direct dependencies.** `Depends On` фиксирует реальные немедленные blockers; `Unlocks` является точным обратным индексом этих рёбер. После targeted gap closure: **35 tasks / 75 direct dependency edges**.
 6. **Параллелизм ограничен четырьмя lanes.** Lanes — предпочтительные области владения, не люди. В одной wave не выдаётся двум агентам право менять один high-conflict shared file.
 7. **Backend authoritative.** UI использует role-filtered snapshots и `allowed_actions`, но не воспроизводит state machine, authorization или contractor actor resolution.
 8. **No optimistic workflow mutation.** После success или `409` frontend refetch'ит snapshot; stale command не retarget'ится.
@@ -190,7 +191,7 @@ docs/evidence/               runtime/deployment evidence
 - **Execution Class:** A — Implementation
 - **Depends On:** TG-007
 - **Unlocks:** TG-013, TG-026
-- **Parallel With:** TG-012, TG-019, TG-022
+- **Parallel With:** TG-012, TG-019
 - **Primary Ownership:** LANE-B
 - **File / Module Scope:** `packages/db/src/seed/**`, `apps/api/src/maintenance/**`, seed scripts only.
 - **Contract Sources:** Data Model §36; Architecture §23; Product Spec §§18–20; ADR-021, ADR-022, ADR-024.
@@ -259,7 +260,7 @@ docs/evidence/               runtime/deployment evidence
 - **Execution Class:** A — Implementation
 - **Depends On:** TG-002, TG-007, TG-011
 - **Unlocks:** TG-013, TG-018, TG-026
-- **Parallel With:** TG-008, TG-019, TG-022
+- **Parallel With:** TG-008, TG-019
 - **Primary Ownership:** LANE-A
 - **File / Module Scope:** `apps/api/src/modules/commands/kernel/**`, `packages/db/src/transactions/**`, CommandExecution repository.
 - **Contract Sources:** Architecture §§9.4, 16–17; Data Model §§18, 28–29; Interface Contracts §§4–5, 29, 32–33; ADR-013, ADR-014.
@@ -288,20 +289,20 @@ docs/evidence/               runtime/deployment evidence
 
 ### TG-014 — Intake и assignment command slice
 
-- **Goal:** реализовать commands от CreateCase до accepted/rejected Assignment, включая config snapshots и exact-target semantics.
+- **Goal:** реализовать commands от CreateCase до accepted/rejected Assignment, включая config snapshots и exact-target semantics, и Resident-safe options для формы нового Case.
 - **Type:** BACKEND
 - **Execution Class:** A — Implementation
 - **Depends On:** TG-009, TG-013
-- **Unlocks:** TG-015, TG-016
+- **Unlocks:** TG-015, TG-016, TG-022
 - **Parallel With:** NONE.
 - **Primary Ownership:** LANE-B
-- **File / Module Scope:** `apps/api/src/modules/cases/commands/intake-assignment/**`, соответствующие repositories/routes.
-- **Contract Sources:** Product Spec TR-001…TR-006, TR-018, TR-019, §§7–9, §16.3, INV-027, AC-001/003/005/011–013/069–074; Architecture §§11.4, 13–17; Data Model §§20, 28–31; Interface Contracts §§10–15, 20–21, 29–30.
-- **Required Outputs:** CreateCase, AcceptCase, SelectContractor, SendAssignment, AcceptAssignment, RejectAssignment; EVT-001…006; projection changes; normal readiness gate and demo primary bind; explicit `REWORK` branch allowing UK to select/send a new contractor B after ReturnToRework has already created iteration N+1, while revoking contractor A's LIVE authority without a second iteration increment.
+- **File / Module Scope:** `apps/api/src/modules/cases/commands/intake-assignment/**`, Resident-safe `GET /api/v1/cases/create-options`, соответствующие repositories/routes; registerable module/plugin boundary, central registration — TG-029.
+- **Contract Sources:** Product Spec TR-001…TR-006, TR-018, TR-019, §§7–9, §16.3, INV-027, AC-001/003/005/011–013/069–074; Architecture §§11.4, 13–17; Data Model §§20, 28–31; Interface Contracts §§9A–15, 20–21, 29–30.
+- **Required Outputs:** CreateCase, AcceptCase, SelectContractor, SendAssignment, AcceptAssignment, RejectAssignment; Resident-safe CreateCase options/read endpoint по Interface §9A без доступа к admin configuration; EVT-001…006; projection changes; normal readiness gate and demo primary bind; explicit `REWORK` branch allowing UK to select/send a new contractor B after ReturnToRework has already created iteration N+1, while revoking contractor A's LIVE authority without a second iteration increment.
 - **Acceptance Criteria:** `selected ≠ sent ≠ accepted`; contractor has no access when selected; rejection returns `ACCEPTED_BY_UK`, clears current authority, preserves iteration/Case/history; stale selection/assignment rejected; config rows locked coherently. For rework A→B: iteration is already N+1; SelectContractor(B) creates Selection B and removes A from LIVE authority/access without increment; SendAssignment(B) does not increment; B accepts and becomes current executor; iteration remains N+1; A cannot list/read/act/download on the LIVE Case.
-- **Required Tests:** handler/API tests for happy/reject/reselect/same-contractor-new-assignment; dedicated rework A→B fixture and command/authorization assertions for all nine acceptance steps above, distinct from initial rejection A→B; early `MAX_DELIVERY_TARGET_NOT_READY` leaves no Case; concurrent accept||reject first-valid-wins; config deactivation race.
+- **Required Tests:** handler/API tests for happy/reject/reselect/same-contractor-new-assignment; Resident options role/tenant/access/category filtering and CreateCase revalidation after options read; dedicated rework A→B fixture and command/authorization assertions for all nine acceptance steps above, distinct from initial rejection A→B; early `MAX_DELIVERY_TARGET_NOT_READY` leaves no Case; concurrent accept||reject first-valid-wins; own lock-order/config-state revalidation fixtures. Cross-module races with production TG-018 writer belong to TG-026.
 - **Forbidden / Must Not:** не auto-send default contractor; не create executor before accepted; не increment iteration on rejection; не reveal reject reason to Resident.
-- **Integration Notes:** yields accepted current executor boundary; execution/result commands start in TG-015.
+- **Integration Notes:** yields accepted current executor boundary and registerable options/command module; execution/result commands start in TG-015; TG-022 final compatibility consumes options; TG-026 later composes production TG-014/TG-018 sides for races; TG-029 owns central registration.
 
 ### TG-015 — Execution, comments, attachments, Result и outbox intent
 
@@ -310,7 +311,7 @@ docs/evidence/               runtime/deployment evidence
 - **Execution Class:** A — Implementation
 - **Depends On:** TG-007, TG-014
 - **Unlocks:** TG-016
-- **Parallel With:** NONE на sequential Product E2E path.
+- **Parallel With:** TG-022 после завершения TG-014; отдельные modules, без конкурентной правки shared registration.
 - **Primary Ownership:** LANE-B
 - **File / Module Scope:** `apps/api/src/modules/cases/commands/execution/**`, `apps/api/src/modules/attachments/**`, attachment repositories; intent creation only, not worker.
 - **Contract Sources:** Product Spec §§9.4–9.6, 11, 13, AC-006/021–024/032–043; Architecture §§18.1–18.2, 19; Data Model §§15–16, 19.3, 32; Interface Contracts §§15A, 16, 23, 26, 28.1–28.3.
@@ -366,8 +367,8 @@ docs/evidence/               runtime/deployment evidence
 - **File / Module Scope:** `apps/api/src/modules/configuration/**`; config repositories/routes.
 - **Contract Sources:** Product Spec §§10, 18–19, AC-044–054; Architecture §16.4; Data Model §§29.4, 33; Interface Contracts §24; ADR-020.
 - **Required Outputs:** configuration reads; Organization update; House create/update; Category create/update/default contractor; contractor binding; pre-created user role/contractor employee binding; ConfigurationChange.
-- **Acceptance Criteria:** UK_ADMIN own org only; every successful mutation writes audit in same transaction; deactivation affects new actions but not Case snapshots/history; lock order serializes config races; only four roles/simple result requirements.
-- **Required Tests:** admin/non-admin/cross-tenant matrix; audit before/after payload; concurrent deactivate vs Create/Select/Send; existing Case snapshot stability.
+- **Acceptance Criteria:** UK_ADMIN own org only; every successful mutation writes audit in same transaction; deactivation affects new actions but not Case snapshots/history; own canonical lock order, atomicity, replacement and revision; only four roles/simple result requirements. Cross-module production races are TG-026 acceptance.
+- **Required Tests:** admin/non-admin/cross-tenant matrix; audit before/after payload; own concurrent configuration writes, replacement and revision; existing Case snapshot stability. Production TG-014 handler races are tested by TG-026.
 - **Forbidden / Must Not:** не build CRM/HR/invitations/offboarding; не edit Case history; не create user lifecycle or category-specific state machine.
 - **Integration Notes:** frontend config task consumes only this approved API surface.
 
@@ -378,7 +379,7 @@ docs/evidence/               runtime/deployment evidence
 - **Execution Class:** A — Implementation
 - **Depends On:** TG-007, TG-010
 - **Unlocks:** TG-026, TG-027, TG-029, TG-031
-- **Parallel With:** TG-008, TG-012, TG-022
+- **Parallel With:** TG-008, TG-012
 - **Primary Ownership:** LANE-D
 - **File / Module Scope:** `apps/api/src/modules/max-adapter/**`, `apps/api/src/modules/notifications/**`, `apps/api/src/integrations/max/**`.
 - **Contract Sources:** Architecture §§7.2–7.4, 18, 20, 24–25; Data Model §19; Interface Contracts §§27–28; ADR-018, ADR-023.
@@ -427,13 +428,13 @@ docs/evidence/               runtime/deployment evidence
 - **Goal:** реализовать Resident path from CreateCase through access comments, Result review, confirmation/remark and download.
 - **Type:** FRONTEND
 - **Execution Class:** A — Implementation
-- **Depends On:** TG-021
+- **Depends On:** TG-014, TG-021
 - **Unlocks:** TG-028, TG-029
-- **Parallel With:** TG-008, TG-012, TG-019
+- **Parallel With:** TG-015
 - **Primary Ownership:** LANE-C
 - **File / Module Scope:** `apps/web/src/features/resident/**`.
-- **Contract Sources:** Product Spec §7, §11, §§13–17, AC-001/002/006/014/015/021–027/039; Interface Contracts §§10, 17–18, 23, 26.
-- **Required Outputs:** create form/files; comment/clarification reply; Result view/material download; mutually exclusive confirmation/remark forms; pending/success/error and refetch.
+- **Contract Sources:** Product Spec §7, §11, §§13–17, AC-001/002/006/014/015/021–027/039; Interface Contracts §§9A–10, 17–18, 23, 26.
+- **Required Outputs:** create form/files consuming TG-014 Resident-safe CreateCase options rather than admin-only config; comment/clarification reply; Result view/material download; mutually exclusive confirmation/remark forms; pending/success/error and refetch; compatibility fix for existing TG-022 contribution.
 - **Acceptance Criteria:** only active accessible category/premises selectable; failed create shows no fake Case; confirmation UI never says Case closed; remark targets current Result/iteration; native capability and web download adapters invoked correctly.
 - **Required Tests:** form validation; upload retry/idempotency key lifecycle; action visibility fixtures; confirmation-vs-remark; native/web download adapters; 409 refresh.
 - **Forbidden / Must Not:** не expose contractor assignment controls; не allow free remark-review comment without clarification target; не claim notification delivered from queue status.
@@ -501,11 +502,11 @@ docs/evidence/               runtime/deployment evidence
 - **Primary Ownership:** LANE-B
 - **File / Module Scope:** `tests/integration/db/**`, `tests/integration/concurrency/**`; no feature implementation edits.
 - **Contract Sources:** Architecture §§26.3–26.4; Data Model §§24–29, 37; Interface Contracts §37; ADR-013, ADR-014, ADR-026.
-- **Required Outputs:** deterministic DB harness with controlled parallel transactions; constraint/race/restart suites; comprehensive real-PostgreSQL negative immutability regression matrix.
-- **Acceptance Criteria:** each prescribed race yields at most one allowed business fact; loser is semantic 409 or allowed replay/no-op; forbidden UPDATE/DELETE of every immutable fact fails at the database boundary and leaves the stored row/canonical response byte-equivalent; restart preserves all authoritative data and resumes retry/expired claims.
-- **Required Tests:** accept||reject; old Assignment; duplicate Result; confirm||remark; rework||disputed completion; completion||late remark; duplicate EVT-015; same-key replay/key reuse; config races; stale send; two-worker lease; persistence restart; real-PostgreSQL attempted UPDATE and DELETE for Result, ResidentFeedback, Comment, Attachment bytes/immutable metadata after business association, ContractorSelection identity, immutable Assignment identity, one-way Assignment decision, CaseEvent, and successful CommandExecution canonical response.
+- **Required Outputs:** deterministic DB harness with controlled parallel transactions; constraint/race/restart suites; cross-module production config-command race matrix; comprehensive real-PostgreSQL negative immutability regression matrix.
+- **Acceptance Criteria:** production TG-014 CreateCase/SelectContractor/SendAssignment and TG-018 config writer races run on real PostgreSQL with two sessions, controlled barriers and both commit orders, preserving the canonical lock/revalidation outcome without test-only duplicated lifecycle/config implementations. Each prescribed race yields at most one allowed business fact; loser is the canonical semantic error or allowed replay/no-op for that scenario; forbidden UPDATE/DELETE of every immutable fact fails at the database boundary and leaves the stored row/canonical response byte-equivalent; restart preserves all authoritative data and resumes retry/expired claims.
+- **Required Tests:** production TG-018 configuration mutation vs TG-014 CreateCase, SelectContractor and SendAssignment, each in writer-first and command-first committed orders with persisted fact/audit/snapshot assertions; accept||reject; old Assignment; duplicate Result; confirm||remark; rework||disputed completion; completion||late remark; duplicate EVT-015; same-key replay/key reuse; stale send; two-worker lease; persistence restart; real-PostgreSQL attempted UPDATE and DELETE for Result, ResidentFeedback, Comment, Attachment bytes/immutable metadata after business association, ContractorSelection identity, immutable Assignment identity, one-way Assignment decision, CaseEvent, and successful CommandExecution canonical response.
 - **Forbidden / Must Not:** не mock PostgreSQL locking/constraints; не weaken production isolation for tests; не repair failures by serializing the test client.
-- **Integration Notes:** verifies the production immutability guarantees implemented by TG-006 for Case/workflow facts and by TG-007 for Attachment/CommandExecution; remains TEST-only and routes any failure back to the owning production task. Produces machine-readable CI results consumed by deployment gate.
+- **Integration Notes:** receives TG-014 transitively through TG-016 and TG-018 directly; composes both production module boundaries only for cross-module regression. Verifies production immutability from TG-006/TG-007, remains TEST-only and routes failures to the owning production task. Produces machine-readable CI results consumed by deployment gate.
 
 ### TG-027 — API, authorization и MAX contract regression suite
 
@@ -720,6 +721,7 @@ graph TD
   TG012 --> TG013
   TG009 --> TG014
   TG013 --> TG014
+  TG014 --> TG022
   TG007 --> TG015
   TG014 --> TG015
   TG014 --> TG016
@@ -776,7 +778,7 @@ graph TD
   TG034 --> TG035
 ```
 
-Граф содержит **74 direct dependency edges**. Длинная последовательность TG-014→TG-017 не искусственна: Result требует accepted Assignment, feedback требует актуальный Result, а окончательная read projection требует полный event/allowed-action catalog. Configuration backend/UI теперь явно сходятся в TG-029; API regression, Docker и route inventory стартуют только после final composition, после чего browser E2E и deployment остаются отдельными gates.
+Граф содержит **75 direct dependency edges**. Длинная последовательность TG-014→TG-017 не искусственна: Result требует accepted Assignment, feedback требует актуальный Result, а окончательная read projection требует полный event/allowed-action catalog. TG-014→TG-022 необходим для финальной совместимости Resident UI с безопасным read endpoint. Между TG-014 и TG-018 нет direct edge: каждый владеет локальными lock/atomicity tests, а production cross-module config-command races принимает TG-026, которому TG-014 доступен транзитивно через TG-016, а TG-018 — напрямую. Configuration backend/UI сходятся в TG-029; API regression, Docker и route inventory стартуют только после final composition.
 
 ## 5. Implementation Waves
 
@@ -810,19 +812,19 @@ Waves — topological levels с учётом максимум четырёх а�
 - **Merge checkpoint:** complete schema, authorization matrix, fixture-driven shared Case UI and config UI.
 - **Exit criteria:** no shared migration/router collisions; downstream command kernel unblocked.
 
-### WAVE 4 — seed, command kernel, MAX worker and Resident UX
+### WAVE 4 — seed, command kernel and MAX worker
 
 - **Prerequisites:** WAVE 3.
-- **Tasks / lanes:** TG-008 (B), TG-012 (A), TG-019 (D), TG-022 (C).
-- **Merge checkpoint:** deterministic fixtures, unified transaction protocol, tested MAX boundary and Resident forms.
+- **Tasks / lanes:** TG-008 (B), TG-012 (A), TG-019 (D).
+- **Merge checkpoint:** deterministic fixtures, unified transaction protocol and tested MAX boundary.
 - **Exit criteria:** demo/config command implementation and main business slices can start.
 
 ### WAVE 5 — demo/config backend plus UK/Contractor UX
 
 - **Prerequisites:** WAVE 4.
 - **Tasks / lanes:** TG-013 (A), TG-018 (B), TG-023 (D), TG-024 (C).
-- **Merge checkpoint:** DemoRun restore/switch, config mutations and all role-specific UI modules compile against contracts.
-- **Exit criteria:** server actor/run boundary is stable; UI parallel branch complete except integration.
+- **Merge checkpoint:** DemoRun restore/switch, configuration mutations with own locking/audit tests and UK/Contractor UI modules compile against contracts.
+- **Exit criteria:** server actor/run and configuration boundaries are stable; UK/Contractor UI branches are ready for integration. TG-018 cross-module production races remain TG-026 acceptance.
 
 ### WAVE 6 — intake and assignment lifecycle
 
@@ -831,12 +833,12 @@ Waves — topological levels с учётом максимум четырёх а�
 - **Merge checkpoint:** Create→UK accept→select→send→contractor accept/reject passes API/DB tests.
 - **Exit criteria:** current executor can be established only by accepted Assignment.
 
-### WAVE 7 — execution and Result boundary
+### WAVE 7 — execution and Resident compatibility
 
-- **Prerequisites:** WAVE 6 and TG-007.
-- **Tasks / lanes:** TG-015 (B).
-- **Merge checkpoint:** comments/materials/Result/outbox intent atomic path passes.
-- **Exit criteria:** committed Result reaches durable queued notification without external call in transaction.
+- **Prerequisites:** WAVE 6; TG-021 for TG-022.
+- **Tasks / lanes:** TG-015 (B), TG-022 (C).
+- **Merge checkpoint:** comments/materials/Result/outbox intent atomic path passes; Resident CreateCase consumes TG-014 options and no admin config endpoint.
+- **Exit criteria:** committed Result reaches durable queued notification; Resident UI compatibility is ready for final composition.
 
 ### WAVE 8 — feedback, rework and completion
 
@@ -854,9 +856,9 @@ Waves — topological levels с учётом максимум четырёх а�
 
 ### WAVE 10 — DB hardening and final Product composition
 
-- **Prerequisites:** WAVE 9; frontend, MAX and configuration backend/UI branches merged.
+- **Prerequisites:** WAVE 9; frontend, MAX and configuration backend/UI branches merged, including TG-022 compatibility and TG-018 local tests. Cross-module production races are TG-026 work in this wave.
 - **Tasks / lanes:** TG-026 (B), TG-029 (A).
-- **Merge checkpoint:** DB/concurrency matrix runs independently while Integration Agent builds the one deployable Fastify registry and one web router including TG-018/TG-025.
+- **Merge checkpoint:** TG-026 runs real PostgreSQL production TG-014 command vs TG-018 writer races in both commit orders while Integration Agent builds the one deployable Fastify registry and one web router including TG-014 options, TG-018/TG-025 configuration and TG-022 Resident UX.
 - **Exit criteria:** final Product/Demo composition exists; configuration API/UI are reachable; DB hardening evidence is ready.
 
 ### WAVE 11 — final API regression, container and route inventory
@@ -929,15 +931,15 @@ Lane assignment balances four simultaneous agents per wide wave. Lane is a prefe
 | TG-011 | A | authorization module | TG-017 field projection | policy exposes scopes/visibility descriptors; projection owns serialization |
 | TG-012 | A | command kernel/transactions | every mutation | kernel frozen before command slices; no per-feature clones |
 | TG-013 | A | demo module/routes | auth bootstrap and CreateCase bind | explicit service interfaces; TG-014 calls bind operation |
-| TG-014 | B | intake-assignment commands | TG-015/016 same Case module | separate command subdirectory; sequential merge |
-| TG-015 | B | execution/attachments commands | TG-019 notification rows | TG-015 creates intent only; TG-019 owns delivery lifecycle |
+| TG-014 | B | intake-assignment commands and Resident CreateCase options | TG-015/016 same Case module; TG-022 options; TG-026 race harness | registerable module boundary; central registration only TG-029 |
+| TG-015 | B | execution/attachments commands | TG-019 notification rows | TG-015 creates intent only; TG-019 owns delivery lifecycle; may run parallel with TG-022 after TG-014 |
 | TG-016 | B | feedback-resolution commands | TG-017 allowed actions | TG-016 exports command capability descriptors; TG-017 projects them |
 | TG-017 | A | read-models/query routes | frontend contract expectations | TG-002 remains source; API tests catch drift |
-| TG-018 | B | configuration module | TG-025 admin UI; schema locks | API/UI separate; lock order imported from TG-012 |
+| TG-018 | B | configuration module | TG-025 admin UI; schema locks; TG-026 race harness | API/UI separate; local locking/audit tests; cross-module production races only TG-026 |
 | TG-019 | D | max-adapter/notifications/webhook | TG-003 config/app registration, TG-015 intent | consumes injected TG-003 config; plugin seam; TG-029 registers; table contract from TG-007 |
 | TG-020 | C | session/demo web features | shell/router | route descriptors; does not edit Case features |
 | TG-021 | C | case read components | TG-022/023/024 shared components | shared read primitives finalized before role features |
-| TG-022 | C | resident feature | TG-024 attachment UI | shared download adapter contract; role-owned screens/forms |
+| TG-022 | C | resident feature | TG-024 attachment UI; TG-014 options | existing contribution receives compatibility fix; no admin config access; role-owned screens/forms |
 | TG-023 | D | UK workflow/AddComment feature | TG-025 both UK roles; TG-022/024 comment feed | separate `uk-workflow` vs `configuration` directories; one shared read feed, no private channel |
 | TG-024 | C | contractor feature | TG-022 shared Case components | read-only reuse; no central component edits without owner review |
 | TG-025 | D | configuration web feature | TG-023 nav | feature route contribution; TG-029 integrates nav/router |
@@ -977,6 +979,8 @@ TG-001
                       └────────→ TG-025 ──────────┤
                                                    ↓
 TG-014 → TG-015 → TG-016 → TG-017 → TG-029
+      └→ TG-022 ──────────────────────────┤
+TG-018 ───────────────────────────────────┤
 ```
 
 TG-014→015→016→017 реально определяет момент прохождения `Resident → UK → Contractor → Result → Resident/UK`, потому что каждая стадия создаёт exact immutable target следующей. К TG-029 также напрямую сходятся TG-018 configuration backend и TG-025 configuration UI; final composition нельзя объявить готовой без их routes/navigation. Frontend, config и MAX branches join в TG-029, а не ждут submission stage.
@@ -989,6 +993,8 @@ TG-001 → TG-005 → TG-006 → TG-007 → TG-008
 TG-001 → TG-003 → TG-010 → TG-011 → TG-012 → TG-013
 TG-001 → TG-004 → TG-020 → TG-021 → TG-022/023/024; TG-020 → TG-025
 TG-013 → TG-014 → TG-015 → TG-016 → TG-017
+                └→ TG-022 (Resident-safe options)
+TG-014 (via TG-016) + TG-018 → TG-026 (production config-command races)
 TG-018 + all role/config/MAX branches → TG-029
 ```
 
@@ -1150,8 +1156,8 @@ Self-check:
 - All 49 Product Spec invariants and 76 acceptance criteria have implementation/test owners through grouped domain/API/QA tasks.
 - Architecture/Data Model/Interface Contract areas requested in scope have at least one implementation owner and one verification path.
 - 35 tasks have goal, type, dependencies, unlocks, parallel set, lane, file scope, contract sources, outputs, objective acceptance, tests, prohibitions and integration notes.
-- Dependency graph is acyclic and contains 74 direct edges.
-- `Unlocks` is the exact reverse index of all 74 direct `Depends On` edges; Mermaid contains the same edge set.
+- Dependency graph is acyclic and contains 75 direct edges.
+- `Unlocks` is the exact reverse index of all 75 direct `Depends On` edges; Mermaid contains the same edge set.
 - 17 dependency-valid waves contain no prerequisite violation and schedule at most 4 lanes.
 - Maximum scheduled concurrency is 4.
 - Implementation, integration, runtime evidence and delivery are separate execution classes.
