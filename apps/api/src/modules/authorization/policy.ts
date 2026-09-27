@@ -257,7 +257,7 @@ export class AuthorizationPolicy {
     return { principal, case: row, access, visibility, projection, allowed_actions: this.actions(access, row) };
   }
 
-  /** Shared read gate: TG-015 must call it at capability mint and again at consume with the bound actor. */
+  /** Shared read gate for future TG-015 mint and consume handlers; both must reauthorize the bound actor. */
   async attachment(claims: SessionClaims, attachmentId: string): Promise<CaseDecision> {
     await this.principal(claims);
     const attachment = await this.repository.attachmentById(attachmentId);
@@ -269,11 +269,9 @@ export class AuthorizationPolicy {
         (attachment.assignment_id !== decision.case.current_assignment_id ||
           (attachment.kind === 'WORK_MATERIAL' && attachment.iteration_id !== decision.case.current_iteration_id))) return hidden();
       if (attachment.kind === 'FEEDBACK' &&
-        (attachment.feedback_type !== 'REMARK' ||
-          (attachment.feedback_id !== decision.case.current_iteration_source_feedback_id &&
-            !(decision.case.current_state === 'REMARKS_REVIEW' &&
-              attachment.feedback_id === decision.case.current_feedback_id &&
-              attachment.feedback_result_id === decision.case.current_result_id)))) return hidden();
+        (decision.case.current_state === 'REMARKS_REVIEW' ||
+          attachment.feedback_type !== 'REMARK' ||
+          attachment.feedback_id !== decision.case.current_iteration_source_feedback_id)) return hidden();
       if (attachment.kind === 'COMMENT' && !this.executorCanSeeComment(attachment, decision.case)) return hidden();
     }
     return decision;

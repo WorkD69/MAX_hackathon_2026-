@@ -343,6 +343,27 @@ describe('TG-011 per-request authorization', () => {
     f.row.current_executor_contractor_id = ids.otherContractor;
     await denied(f.policy.attachment(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'), 'remark-file'));
   });
+  it('current ResidentRemark attachment stays with UK review until ReturnToRework', async () => {
+    const f = fixture();
+    f.row.current_state = 'REMARKS_REVIEW';
+    f.row.current_result_id = 'result';
+    f.row.current_feedback_id = 'remark';
+    f.row.current_feedback_type = 'REMARK';
+    f.attachments.set('remark-file', { attachment_id: 'remark-file', case_id: ids.case, kind: 'FEEDBACK',
+      feedback_id: 'remark', feedback_type: 'REMARK', feedback_iteration_id: 'iteration', feedback_result_id: 'result' });
+    f.attachments.set('prior-remark-file', { attachment_id: 'prior-remark-file', case_id: ids.case, kind: 'FEEDBACK',
+      feedback_id: 'prior-remark', feedback_type: 'REMARK', feedback_iteration_id: 'prior-iteration', feedback_result_id: 'prior-result' });
+    f.row.current_iteration_source_feedback_id = 'prior-remark';
+    const executor = f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE');
+    await denied(f.policy.attachment(executor, 'remark-file'));
+    await denied(f.policy.attachment(executor, 'prior-remark-file'));
+    expect((await f.policy.attachment(f.as(ids.resident, 'RESIDENT'), 'remark-file')).access).toBe('RESIDENT');
+    expect((await f.policy.attachment(f.as(ids.uk, 'UK_EMPLOYEE'), 'remark-file')).access).toBe('UK');
+    f.row.current_state = 'REWORK';
+    f.row.current_iteration_id = 'rework-iteration';
+    f.row.current_iteration_source_feedback_id = 'remark';
+    expect((await f.policy.attachment(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'), 'remark-file')).access).toBe('EXECUTOR');
+  });
   it('comment attachment follows parent common-feed visibility, not authorship alone', async () => {
     const f = fixture();
     const add = (id: string, role: Role, contractor: string | null, iteration = 'iteration') =>
