@@ -9,6 +9,45 @@ import type {
 import { MAX_API_BASE_URL } from './types.js';
 
 export type MaxFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
+export interface MaxTiming {
+  now(): number;
+  sleep(milliseconds: number): Promise<void>;
+}
+
+const systemTiming: MaxTiming = {
+  now: () => Date.now(),
+  sleep: milliseconds => new Promise(resolve => { setTimeout(resolve, milliseconds); }),
+};
+
+class PerChatSendLimiter {
+  private readonly sentAt = new Map<string, number[]>();
+  private readonly tails = new Map<string, Promise<void>>();
+
+  constructor(private readonly timing: MaxTiming) {}
+
+  async enter(chatId: string): Promise<void> {
+    const previous = this.tails.get(chatId) ?? Promise.resolve();
+    let release!: () => void;
+    const turn = new Promise<void>(resolve => { release = resolve; });
+    this.tails.set(chatId, turn);
+    await previous;
+    try {
+      for (;;) {
+        const now = this.timing.now();
+        const recent = (this.sentAt.get(chatId) ?? []).filter(at => at > now - 1000);
+        if (recent.length < 2) {
+          recent.push(now);
+          this.sentAt.set(chatId, recent);
+          return;
+        }
+        await this.timing.sleep(Math.max(1, recent[0]! + 1000 - now));
+      }
+    } finally {
+      release();
+      if (this.tails.get(chatId) === turn) this.tails.delete(chatId);
+    }
+  }
+}
 
 const sendResponse = z.object({
   message: z.object({ body: z.object({ mid: z.string().min(1) }).passthrough() }).passthrough(),
@@ -43,19 +82,23 @@ export class RealMaxAdapter implements MaxAdapter {
   private readonly token: string;
   private readonly fetcher: MaxFetch;
   private readonly timeoutMs: number;
+  private readonly sendLimiter: PerChatSendLimiter;
 
-  constructor(config: RuntimeConfig, fetcher: MaxFetch = fetch) {
+  constructor(config: RuntimeConfig, fetcher: MaxFetch = fetch, timing: MaxTiming = systemTiming) {
     if (config.MAX_ADAPTER_MODE !== 'live' || !config.MAX_BOT_TOKEN) {
       throw new Error('MAX_LIVE_CONFIGURATION_REQUIRED');
     }
     this.token = config.MAX_BOT_TOKEN;
     this.timeoutMs = config.MAX_REQUEST_TIMEOUT_MS;
     this.fetcher = fetcher;
+    this.sendLimiter = new PerChatSendLimiter(timing);
   }
 
   async sendMessage(validatedChatId: string, message: MaxOutgoingMessage): Promise<MaxSendResult> {
+    const chatId = safeChatId(validatedChatId);
+    await this.sendLimiter.enter(chatId);
     const url = new URL('/messages', MAX_API_BASE_URL);
-    url.searchParams.set('chat_id', safeChatId(validatedChatId));
+    url.searchParams.set('chat_id', chatId);
     const response = await this.request(url, {
       method: 'POST',
       body: JSON.stringify(messageBody(message)),
@@ -86,6 +129,16 @@ export class RealMaxAdapter implements MaxAdapter {
         secret: expected.secret,
       }),
     });
+    if (response.status !== 200) throw classifyHttpFailure(response.status);
+    const parsed = createSubscriptionResponse.safeParse(await this.safeJson(response));
+    if (!parsed.success) throw new MaxAdapterError('transient', 'MAX_RESPONSE_MALFORMED');
+    if (!parsed.data.success) throw new MaxAdapterError('transient', 'MAX_SUBSCRIPTION_REJECTED');
+  }
+
+  async deleteSubscription(subscriptionUrl: string): Promise<void> {
+    const url = new URL('/subscriptions', MAX_API_BASE_URL);
+    url.searchParams.set('url', subscriptionUrl);
+    const response = await this.request(url, { method: 'DELETE' });
     if (response.status !== 200) throw classifyHttpFailure(response.status);
     const parsed = createSubscriptionResponse.safeParse(await this.safeJson(response));
     if (!parsed.success) throw new MaxAdapterError('transient', 'MAX_RESPONSE_MALFORMED');

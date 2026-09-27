@@ -35,5 +35,6 @@ export interface MaxAdapter {
   sendMessage(validatedChatId: string, message: MaxOutgoingMessage): Promise<MaxSendResult>;
   listSubscriptions(): Promise<readonly MaxSubscription[]>;
   createSubscription(expected: ExpectedMaxSubscription): Promise<void>;
+  deleteSubscription(url: string): Promise<void>;
   parseUpdate(value: unknown): ParsedMaxUpdate;
 }

@@ -17,6 +17,15 @@ import { registerAuthRoutes } from './plugin.js';
 const now = 1771409719;
 const botToken = 'TG010_TEST_BOT_TOKEN_2026';
 const raw = 'chat=%7B%22id%22%3A12345%2C%22type%22%3A%22DIALOG%22%7D&ip=192.168.0.1&user=%7B%22id%22%3A67890%2C%22first_name%22%3A%22Max%22%2C%22last_name%22%3A%22User%22%2C%22username%22%3Anull%2C%22language_code%22%3A%22ru%22%2C%22photo_url%22%3Anull%7D&query_id=4c0ab423-342b-4e45-aea4-2747dbc500cd&auth_date=1771409719&hash=4cc1bccc784cc661a1a8c2d158631c86f2fe610050af96b54f30450f45d489e6';
+const signedLaunch = (chatType: 'DIALOG' | 'CHAT' | 'CHANNEL', chatId: number): string => {
+  const params = new URLSearchParams(raw);
+  params.set('chat', JSON.stringify({ id: chatId, type: chatType }));
+  params.set('hash', '0'.repeat(64));
+  const canonical = canonicalizeMaxInitData(params.toString()).launchParams;
+  const key = createHmac('sha256', 'WebAppData').update(botToken).digest();
+  params.set('hash', createHmac('sha256', key).update(canonical).digest('hex'));
+  return params.toString();
+};
 const userId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const identityId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const roleBindingId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -37,10 +46,12 @@ class FakeRepository implements MaxIdentityRepository {
   upsertCount = 0;
   async upsertValidated(launch: ValidatedMaxLaunch, _at: Date): Promise<MaxIdentityRow> {
     this.upsertCount++;
+    const personal = launch.chatType === 'DIALOG';
     this.identity = {
       ...this.identity, mini_app_user_id: launch.miniAppUserId,
-      delivery_chat_id: launch.chatId, delivery_chat_type: launch.chatType,
-      link_status: 'LINKED_CONFIRMED',
+      delivery_chat_id: personal ? launch.chatId : this.identity.delivery_chat_id,
+      delivery_chat_type: personal ? launch.chatType : this.identity.delivery_chat_type,
+      link_status: personal || this.identity.delivery_chat_type === 'DIALOG' ? 'LINKED_CONFIRMED' : 'UNLINKED',
     };
     return this.identity;
   }
@@ -70,6 +81,41 @@ async function fixture(repository = new FakeRepository(), demo = false) {
 }
 
 describe('TG-002 HTTP auth/session wire boundary', () => {
+  it.each(['CHAT', 'CHANNEL'] as const)('does not use a signed %s launch as a personal target', async chatType => {
+    const { app, repository } = await fixture();
+    try {
+      const response = await app.inject({ method: 'POST', url: '/api/v1/auth/max', payload: { init_data: signedLaunch(chatType, -500) } });
+      expect(response.statusCode).toBe(200);
+      const success = AuthMaxSuccessSchema.parse(response.json());
+      expect(success.session.real_max_identity.outbound_max_ready).toBe(false);
+      expect(repository.identity).toMatchObject({ delivery_chat_id: null, delivery_chat_type: null, link_status: 'UNLINKED' });
+      const read = await app.inject({ method: 'GET', url: '/api/v1/session', headers: { authorization: `Bearer ${success.session_token}` } });
+      expect(SessionReadResponseSchema.parse(read.json()).real_max_identity.outbound_max_ready).toBe(false);
+    } finally { await app.close(); }
+  });
+
+  it.each(['CHAT', 'CHANNEL'] as const)('preserves a personal DIALOG after a %s launch', async chatType => {
+    const { app, repository } = await fixture();
+    try {
+      const first = await app.inject({ method: 'POST', url: '/api/v1/auth/max', payload: { init_data: raw } });
+      expect(first.statusCode).toBe(200);
+      const second = await app.inject({ method: 'POST', url: '/api/v1/auth/max', payload: { init_data: signedLaunch(chatType, -500) } });
+      expect(second.statusCode).toBe(200);
+      expect(AuthMaxSuccessSchema.parse(second.json()).session.real_max_identity.outbound_max_ready).toBe(true);
+      expect(repository.identity).toMatchObject({ delivery_chat_id: '12345', delivery_chat_type: 'DIALOG', link_status: 'LINKED_CONFIRMED' });
+    } finally { await app.close(); }
+  });
+
+  it('reports a persisted non-personal target as not ready', async () => {
+    const { app, repository } = await fixture();
+    try {
+      const bootstrap = AuthMaxSuccessSchema.parse((await app.inject({ method: 'POST', url: '/api/v1/auth/max', payload: { init_data: raw } })).json());
+      repository.identity.delivery_chat_id = '-500';
+      repository.identity.delivery_chat_type = 'CHAT';
+      const read = await app.inject({ method: 'GET', url: '/api/v1/session', headers: { authorization: `Bearer ${bootstrap.session_token}` } });
+      expect(SessionReadResponseSchema.parse(read.json()).real_max_identity.outbound_max_ready).toBe(false);
+    } finally { await app.close(); }
+  });
   it('bootstraps without Bearer, persists validated chat metadata and reads session with Bearer', async () => {
     const { app, repository } = await fixture();
     try {

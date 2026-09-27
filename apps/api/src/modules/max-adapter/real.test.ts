@@ -23,6 +23,49 @@ function config(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
 }
 
 describe('RealMaxAdapter request contract', () => {
+  it('limits three concurrent sends to one chat to two per rolling second', async () => {
+    let now = 0;
+    const sleeping: Array<{ ms: number; wake: () => void }> = [];
+    const sentAt: number[] = [];
+    const fetcher = vi.fn(async () => {
+      sentAt.push(now);
+      return new Response(JSON.stringify({ message: { body: { mid: `mid.${sentAt.length}` } } }), { status: 200 });
+    });
+    const adapter = new RealMaxAdapter(config(), fetcher, {
+      now: () => now,
+      sleep: ms => new Promise<void>(resolve => { sleeping.push({ ms, wake: resolve }); }),
+    });
+    const pending = [1, 2, 3].map(() => adapter.sendMessage('42', { text: 'x' }));
+    await vi.waitFor(() => expect(sentAt).toHaveLength(2));
+    expect(sleeping).toHaveLength(1);
+    expect(sleeping[0]!.ms).toBe(1000);
+    now = 1000;
+    sleeping[0]!.wake();
+    await Promise.all(pending);
+    expect(sentAt).toEqual([0, 0, 1000]);
+  });
+
+  it('allows another chat while one chat waits for its limit', async () => {
+    let now = 0;
+    let wake!: () => void;
+    const calls: string[] = [];
+    const fetcher = vi.fn(async (url: string | URL) => {
+      calls.push(new URL(String(url)).searchParams.get('chat_id')!);
+      return new Response(JSON.stringify({ message: { body: { mid: 'mid.1' } } }), { status: 200 });
+    });
+    const adapter = new RealMaxAdapter(config(), fetcher, {
+      now: () => now,
+      sleep: () => new Promise<void>(resolve => { wake = resolve; }),
+    });
+    const first = [1, 2, 3].map(() => adapter.sendMessage('42', { text: 'x' }));
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    await adapter.sendMessage('43', { text: 'y' });
+    expect(calls).toEqual(['42', '42', '43']);
+    now = 1000;
+    wake();
+    await Promise.all(first);
+    expect(calls).toEqual(['42', '42', '43', '42']);
+  });
   it('sends exact chat_id/open_app contract and keeps token only in Authorization', async () => {
     const fetcher = vi.fn(async (_url: string | URL, _init?: RequestInit) => new Response(JSON.stringify({
       message: { body: { mid: 'mid.123', seq: 1, text: 'ok', attachments: null } },
@@ -96,6 +139,24 @@ describe('RealMaxAdapter request contract', () => {
       expect(String(url)).not.toContain(token);
       expect(init?.headers).toEqual({ Authorization: token, 'Content-Type': 'application/json' });
     }
+  });
+
+  it('deletes only the exact subscription URL and sanitizes unsuccessful replies', async () => {
+    const endpoint = 'https://old.city.example/integrations/max/webhook';
+    const responses = [
+      new Response(JSON.stringify({ success: true }), { status: 200 }),
+      new Response(JSON.stringify({ success: false, message: token }), { status: 200 }),
+    ];
+    const fetcher = vi.fn(async (_url: string | URL, _init?: RequestInit) => responses.shift()!);
+    const adapter = new RealMaxAdapter(config(), fetcher);
+    await expect(adapter.deleteSubscription(endpoint)).resolves.toBeUndefined();
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(String(url)).toBe(`https://platform-api2.max.ru/subscriptions?url=${encodeURIComponent(endpoint)}`);
+    expect(init?.method).toBe('DELETE');
+    expect(init?.headers).toEqual({ Authorization: token, 'Content-Type': 'application/json' });
+    await expect(adapter.deleteSubscription(endpoint)).rejects.toMatchObject({
+      disposition: 'transient', safeCode: 'MAX_SUBSCRIPTION_REJECTED',
+    });
   });
 });
 

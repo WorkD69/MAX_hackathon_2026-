@@ -50,19 +50,42 @@ export class PostgresMaxIdentityRepository implements MaxIdentityRepository {
   constructor(private readonly sql: SqlClient) {}
 
   async upsertValidated(launch: ValidatedMaxLaunch, now: Date): Promise<MaxIdentityRow> {
+    const personal = launch.chatType === 'DIALOG';
     const result = await this.sql.query<MaxIdentityRow>(`
       INSERT INTO max_identity (
         max_identity_id, mini_app_user_id, delivery_chat_id, delivery_chat_type,
         bot_user_id, link_status, app_user_id, first_seen_at, last_seen_at, linked_at
-      ) VALUES ($1, $2, $3, $4, NULL, 'LINKED_CONFIRMED', NULL, $5, $5, $5)
+      ) VALUES ($1, $2, $3, $4, NULL, $5, NULL, $6, $6, $7)
       ON CONFLICT (mini_app_user_id) WHERE mini_app_user_id IS NOT NULL
-      DO UPDATE SET delivery_chat_id = EXCLUDED.delivery_chat_id,
-        delivery_chat_type = EXCLUDED.delivery_chat_type,
-        link_status = 'LINKED_CONFIRMED', last_seen_at = EXCLUDED.last_seen_at,
-        linked_at = COALESCE(max_identity.linked_at, EXCLUDED.linked_at)
+      DO UPDATE SET delivery_chat_id = CASE
+          WHEN EXCLUDED.delivery_chat_type = 'DIALOG' THEN EXCLUDED.delivery_chat_id
+          WHEN max_identity.delivery_chat_type = 'DIALOG'
+            AND max_identity.delivery_chat_id IS NOT NULL
+            AND max_identity.link_status = 'LINKED_CONFIRMED' THEN max_identity.delivery_chat_id
+          ELSE NULL END,
+        delivery_chat_type = CASE
+          WHEN EXCLUDED.delivery_chat_type = 'DIALOG' THEN 'DIALOG'
+          WHEN max_identity.delivery_chat_type = 'DIALOG'
+            AND max_identity.delivery_chat_id IS NOT NULL
+            AND max_identity.link_status = 'LINKED_CONFIRMED' THEN 'DIALOG'
+          ELSE NULL END,
+        link_status = CASE
+          WHEN EXCLUDED.delivery_chat_type = 'DIALOG' OR
+            (max_identity.delivery_chat_type = 'DIALOG'
+              AND max_identity.delivery_chat_id IS NOT NULL
+              AND max_identity.link_status = 'LINKED_CONFIRMED') THEN 'LINKED_CONFIRMED'
+          ELSE 'UNLINKED' END,
+        last_seen_at = EXCLUDED.last_seen_at,
+        linked_at = CASE
+          WHEN EXCLUDED.delivery_chat_type = 'DIALOG' THEN COALESCE(max_identity.linked_at, EXCLUDED.linked_at)
+          WHEN max_identity.delivery_chat_type = 'DIALOG'
+            AND max_identity.delivery_chat_id IS NOT NULL
+            AND max_identity.link_status = 'LINKED_CONFIRMED' THEN max_identity.linked_at
+          ELSE NULL END
       RETURNING max_identity_id, mini_app_user_id, delivery_chat_id,
         delivery_chat_type, link_status, app_user_id
-    `, [randomUUID(), launch.miniAppUserId, launch.chatId, launch.chatType, now]);
+    `, [randomUUID(), launch.miniAppUserId, personal ? launch.chatId : null,
+      personal ? 'DIALOG' : null, personal ? 'LINKED_CONFIRMED' : 'UNLINKED', now, personal ? now : null]);
     const row = result.rows[0];
     if (!row) throw new Error('MAX_IDENTITY_UPSERT_FAILED');
     return row;
