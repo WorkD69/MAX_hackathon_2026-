@@ -2,7 +2,7 @@
 
 Wave 0–1 завершены по прежнему strict SDD и **grandfathered**: TG-001…TG-005 `COMPLETE`, `IC-0 = PASS`, `IC-1 = PASS`. `IC1_CHECKPOINT_SHA = 56d24135bb30f9f957b4f56b261bb3bd472ee253`. Их контракты и review history не переписываются. Lean Hackathon SDD действует только с Wave 2. Текущий статус — [PROJECT_STATE](../docs/08_PROJECT_STATE.md).
 
-[Canonical Task Graph](TASK_GRAPH.md) остаётся единственным источником task IDs, definitions, `Depends On`, `Unlocks`, wave numbering и lanes: **35 tasks, 74 direct dependency edges, 17 waves, 4 lanes**. Его исторические gate/status-блоки не задают текущий workflow. Ни одной зависимости, назначения wave или задачи эта governance-правка не меняет.
+[Canonical Task Graph](TASK_GRAPH.md) остаётся единственным источником task IDs, definitions, `Depends On`, `Unlocks`, wave numbering и lanes: **35 tasks, 75 direct dependency edges, 17 waves, 4 lanes** после targeted gap closure, ожидающего independent review. Его исторические gate/status-блоки не задают текущий workflow. Новый direct edge только TG-014→TG-022; TG-014/TG-018 cross-module production races закреплены за TG-026 без прямой зависимости между TG-014 и TG-018. Волны TG-018 и финальной совместимости TG-022 следуют графу; продуктовый scope не меняется.
 
 | Этап | Статус |
 | --- | --- |

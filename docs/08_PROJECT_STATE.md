@@ -8,7 +8,7 @@
 | `TECHNICAL_ARCHITECTURE` | `APPROVED / PASS` |
 | `DATA_MODEL` | `APPROVED` |
 | `INTERFACE_CONTRACTS` | `APPROVED` |
-| `TASK_GRAPH` | `APPROVED / PASS; 35 tasks / 74 direct dependency edges / 17 waves / 4 lanes` |
+| `TASK_GRAPH` | `APPROVED baseline; targeted closure candidate pending independent review: 35 tasks / 75 direct dependency edges / 17 waves / 4 lanes` |
 | `TG-001` | `COMPLETE; IC-0 PASS` |
 | `TG-002` | `COMPLETE` |
 | `TG-003` | `COMPLETE` |

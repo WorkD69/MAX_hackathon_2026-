@@ -613,6 +613,54 @@ Optional `GET /api/v1/cases/{caseId}/activity` may paginate the same projection,
 
 ---
 
+## 9A. Resident CreateCase Options Read
+
+```text
+GET /api/v1/cases/create-options
+GET /api/v1/cases/create-options?premises_id={uuid}
+```
+
+Владелец реализации — TG-014; endpoint регистрируется через его module/plugin boundary при центральной композиции TG-029. Это узкая read surface формы нового Case, а не часть `UK_ADMIN` configuration API §24. Static route `create-options` должен разрешаться раньше `GET /api/v1/cases/{caseId}`.
+
+### Request / authority
+
+- Auth: действующая application session с effective `RESIDENT`; в DEMO_MODE effective actor/run выводятся сервером из текущей session по обычному DemoRun contract. Клиент не передаёт organization/tenant, role, actor или DemoRun selector.
+- Единственный query parameter — optional `premises_id` UUID. Без него ответ содержит доступные помещения и пустой список категорий; с ним — помещения и категории, применимые к указанному помещению.
+- На **каждом** чтении сервер заново проверяет active actor/binding, `ResidentPremisesAccess.active` и принадлежность `Organization → House → Premises`. В списке только активные Organization/House/Premises с действующим доступом этого Resident; category принадлежит выведенной из выбранного помещения Organization и активна. Category с non-null default доступна как option только если соответствующие Contractor и OrganizationContractor сейчас active, как требуется для нового CreateCase.
+- Нет глобального списка организаций, категорий или подрядчиков и нет сведений о `default_contractor_id`, `OrganizationContractor`, admin audit/metadata, чужих tenants/users или внутренних routing decisions.
+
+### Success `200`
+
+```json
+{
+  "premises": [
+    {
+      "premises_id": "11111111-1111-4111-8111-111111111111",
+      "house_address": "Казань, ...",
+      "premises_label": "Квартира 12"
+    }
+  ],
+  "selected_premises_id": "11111111-1111-4111-8111-111111111111",
+  "categories": [
+    {
+      "category_id": "22222222-2222-4222-8222-222222222222",
+      "name": "Отопление / стояк",
+      "description": "...",
+      "requires_premises_access": true,
+      "result_requirement": "PHOTO"
+    }
+  ]
+}
+```
+
+Response schema: top-level strict object с обязательными `premises: PremiseOption[]`, `selected_premises_id: UUID | null`, `categories: CategoryOption[]`. `PremiseOption` — strict object `{premises_id: UUID, house_address: string, premises_label: string}`; `CategoryOption` — strict object `{category_id: UUID, name: string, description: string | null, requires_premises_access: boolean, result_requirement: "NONE" | "PHOTO" | "FILE"}`. Дополнительные/internal fields не сериализуются. Массивы детерминированно сортируются для стабильного UI. `requires_premises_access` и `result_requirement` — только Resident-visible display/pre-submit guidance. При выбранном `premises_id` поле `selected_premises_id` равно ему, а категории относятся только к его Organization. При отсутствии доступных помещений возвращаются пустые массивы. При отсутствии `premises_id` `selected_premises_id=null`, `categories=[]`. Ответ не является reservation, snapshot или полномочием на создание Case.
+
+### Errors / freshness
+
+- `401` — отсутствующая/недействительная/истёкшая session; `403` — действующий actor без роли Resident; `400` — malformed UUID, unknown query field или неверная структура запроса.
+- `404` — выбранное помещение отсутствует, находится в чужой Organization, неактивно или уже недоступно этому Resident; без раскрытия причины или foreign data. Для read endpoint отдельной `422` нет.
+- После config/access изменения UI обновляет options. Независимо от ранее полученного `200`, `POST /api/v1/cases` повторно проверяет current ResidentPremisesAccess, active Organization/House/Premises/Category и необходимые default dependencies в своей transaction по §10; stale/inactive selection отклоняется по canonical command errors без частичного Case.
+
 ---
 
 ## 10. Create Case Command
@@ -2037,6 +2085,8 @@ Config writer and Case command use one lock protocol:
 
 `CreateCase`, `SelectContractor`, `SendAssignment` revalidate relevant active rows while holding compatible locks. Therefore a Case snapshot cannot mix configuration versions and a concurrently disabled contractor/category cannot be used after the disabling transaction wins.
 
+TG-014 и TG-018 проверяют собственные lock/revalidation/config-write границы локально. Совместные гонки production TG-014 handlers с production TG-018 writer в обоих commit orders принимает TG-026 на real PostgreSQL; ни один из двух feature contracts не зависит напрямую от другого.
+
 ### 24.10. Errors
 
 - non-admin → 403;
@@ -2579,7 +2629,7 @@ Automated/API integration tests must prove at least:
 - duplicate/concurrent same idempotency key waits then canonical-replays;
 - multipart same key with changed file bytes → key reuse conflict;
 - circular Case/Iteration insert commits with both non-null-valid FKs;
-- config update/deactivation races serialize with CreateCase/Select/Send;
+- TG-026: config update/deactivation races serialize with production TG-014 CreateCase/SelectContractor/SendAssignment handlers in both commit orders on real PostgreSQL;
 - duplicate Result produces one Result/EVT-008/notification intent;
 - outbox concurrent workers honor claim token/lease;
 - permanent failure redrive reuses same NotificationIntent;
