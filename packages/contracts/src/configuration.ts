@@ -74,3 +74,14 @@ export const UserReadSchema = z.strictObject({
   uk_house_access: z.array(z.strictObject({ house_id: UuidSchema, active: z.boolean() })),
 });
 export const UsersReadResponseSchema = z.array(UserReadSchema);
+
+// Mutation responses reuse the own-scope read projections, not command/audit envelopes.
+export const OrganizationPatchSuccessSchema = OrganizationReadResponseSchema;
+export const HouseCreateSuccessSchema = HouseReadSchema;
+export const HousePatchSuccessSchema = HouseReadSchema;
+export const CategoryCreateSuccessSchema = CategoryReadSchema;
+export const CategoryPatchSuccessSchema = CategoryReadSchema;
+export const ContractorCreateSuccessSchema = ContractorReadSchema;
+export const ContractorBindingPutSuccessSchema = ContractorReadSchema;
+export const UserRoleBindingPutSuccessSchema = UserReadSchema;
+export const ContractorEmployeePutSuccessSchema = UserReadSchema;

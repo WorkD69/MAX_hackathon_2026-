@@ -58,6 +58,10 @@ export {
   HouseReadSchema, HousesReadResponseSchema, CategoryReadSchema,
   CategoriesReadResponseSchema, ContractorReadSchema, ContractorsReadResponseSchema,
   UserReadSchema, UsersReadResponseSchema,
+  OrganizationPatchSuccessSchema, HouseCreateSuccessSchema, HousePatchSuccessSchema,
+  CategoryCreateSuccessSchema, CategoryPatchSuccessSchema,
+  ContractorCreateSuccessSchema, ContractorBindingPutSuccessSchema,
+  UserRoleBindingPutSuccessSchema, ContractorEmployeePutSuccessSchema,
 } from './configuration.js';
 export { ActorSwitchRequestSchema, DemoRunStartRequestSchema, DemoRunStartResponseSchema } from './demo.js';
 export {
@@ -263,6 +267,24 @@ export type UserReadInput = z.input<typeof F.UserReadSchema>;
 export type UserReadOutput = z.output<typeof F.UserReadSchema>;
 export type UsersReadResponseInput = z.input<typeof F.UsersReadResponseSchema>;
 export type UsersReadResponseOutput = z.output<typeof F.UsersReadResponseSchema>;
+export type OrganizationPatchSuccessInput = z.input<typeof F.OrganizationPatchSuccessSchema>;
+export type OrganizationPatchSuccessOutput = z.output<typeof F.OrganizationPatchSuccessSchema>;
+export type HouseCreateSuccessInput = z.input<typeof F.HouseCreateSuccessSchema>;
+export type HouseCreateSuccessOutput = z.output<typeof F.HouseCreateSuccessSchema>;
+export type HousePatchSuccessInput = z.input<typeof F.HousePatchSuccessSchema>;
+export type HousePatchSuccessOutput = z.output<typeof F.HousePatchSuccessSchema>;
+export type CategoryCreateSuccessInput = z.input<typeof F.CategoryCreateSuccessSchema>;
+export type CategoryCreateSuccessOutput = z.output<typeof F.CategoryCreateSuccessSchema>;
+export type CategoryPatchSuccessInput = z.input<typeof F.CategoryPatchSuccessSchema>;
+export type CategoryPatchSuccessOutput = z.output<typeof F.CategoryPatchSuccessSchema>;
+export type ContractorCreateSuccessInput = z.input<typeof F.ContractorCreateSuccessSchema>;
+export type ContractorCreateSuccessOutput = z.output<typeof F.ContractorCreateSuccessSchema>;
+export type ContractorBindingPutSuccessInput = z.input<typeof F.ContractorBindingPutSuccessSchema>;
+export type ContractorBindingPutSuccessOutput = z.output<typeof F.ContractorBindingPutSuccessSchema>;
+export type UserRoleBindingPutSuccessInput = z.input<typeof F.UserRoleBindingPutSuccessSchema>;
+export type UserRoleBindingPutSuccessOutput = z.output<typeof F.UserRoleBindingPutSuccessSchema>;
+export type ContractorEmployeePutSuccessInput = z.input<typeof F.ContractorEmployeePutSuccessSchema>;
+export type ContractorEmployeePutSuccessOutput = z.output<typeof F.ContractorEmployeePutSuccessSchema>;
 export type ActorSwitchRequestInput = z.input<typeof D.ActorSwitchRequestSchema>;
 export type ActorSwitchRequestOutput = z.output<typeof D.ActorSwitchRequestSchema>;
 export type DemoRunStartRequestInput = z.input<typeof D.DemoRunStartRequestSchema>;
