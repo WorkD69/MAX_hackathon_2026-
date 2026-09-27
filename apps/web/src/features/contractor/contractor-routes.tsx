@@ -2,7 +2,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import type { AppRouteModule } from '../../app/routes.js';
 import { useSession } from '../session/session-provider.js';
 import { createHttpCaseReadTransport } from '../cases/read/read-transport.js';
-import { createContractorCommandTransport } from './command-transport.js';
+import { useContractorCommands } from './contractor-command-provider.js';
 import { ContractorCaseList, ContractorCaseView } from './contractor-case.js';
 
 function contextKey(session: ReturnType<typeof useSession>): string {
@@ -26,13 +26,14 @@ export function createContractorRouteModule(): AppRouteModule {
   function DetailsRoute() {
     const session = useSession();
     const { caseId } = useParams();
+    const commands = useContractorCommands();
     if (session.status !== 'ready') return <p role="status">Ожидание сессии…</p>;
     if (session.session?.effective_actor.role !== 'CONTRACTOR_EMPLOYEE' || !caseId) {
       return <p role="alert">Случай недоступен.</p>;
     }
     return <ContractorCaseView caseId={caseId} contextKey={contextKey(session)}
       read={createHttpCaseReadTransport(session.authorizedFetch)}
-      commands={createContractorCommandTransport(session.authorizedFetch, contextKey(session))} />;
+      commands={commands} />;
   }
 
   return { id: 'contractor', routes: [

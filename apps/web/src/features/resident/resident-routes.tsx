@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { AppRouteModule } from '../../app/routes.js';
 import type { CaseReadTransport } from '../cases/read/read-transport.js';
@@ -19,17 +19,16 @@ export function createResidentRouteModule(dependencies: ResidentRouteDependencie
   function CreateCaseRoute() {
     const navigate = useNavigate();
     const { session, refreshSession } = useSession();
-    const [awaitingPrimary, setAwaitingPrimary] = useState(false);
     useEffect(() => {
-      if (awaitingPrimary && session?.primary_case_id) {
-        navigate(`/resident/cases/${encodeURIComponent(session.primary_case_id)}`);
+      if (session?.primary_case_id) {
+        void navigate(`/resident/cases/${encodeURIComponent(session.primary_case_id)}`, { replace: true });
       }
-    }, [awaitingPrimary, session?.primary_case_id, navigate]);
+    }, [session?.primary_case_id, navigate]);
     const onCreated = useCallback((caseId: string) => {
       navigate(`/resident/cases/${encodeURIComponent(caseId)}`);
     }, [navigate]);
     return <CreateCaseForm transport={residentTransport} onCreated={onCreated} contextKey={contextKey}
-      onPrimaryCaseExists={async () => { await refreshSession(); setAwaitingPrimary(true); }} />;
+      onPrimaryCaseExists={refreshSession} />;
   }
 
   function ResidentCaseRoute() {

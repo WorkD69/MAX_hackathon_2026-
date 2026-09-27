@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { SessionProvider, useSession } from '../features/session/session-provider.js';
 import { SessionGate } from '../features/session/session-gate.js';
+import { ContractorCommandProvider } from '../features/contractor/contractor-command-provider.js';
 import './session-demo.css';
 
 function SessionOutlet() {
@@ -18,7 +19,7 @@ export function AppShell() {
         <header className="app-shell__header">MAX Smart City</header>
         <main className="app-shell__main">
           <SessionGate />
-          <SessionOutlet />
+          <ContractorCommandProvider><SessionOutlet /></ContractorCommandProvider>
         </main>
       </div>
     </SessionProvider>
