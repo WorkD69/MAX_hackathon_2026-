@@ -12,6 +12,14 @@ const context = {
   demo_mode: true, demo_run_id: u, primary_case_id: null,
   effective_actor: { app_user_id: u, role: 'RESIDENT', display_name: 'Resident' },
 };
+const startContext = {
+  ...context, effective_actor: { app_user_id: null, role: null, display_name: '' },
+};
+const startResponse = {
+  demo_run_id: u, status: 'ACTIVE', primary_case_id: null,
+  role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'],
+  session_token: 'new-opaque-token', expires_at: t, session: startContext,
+};
 const activity = {
   activity_id: u, event_id: u, event_seq: 1, semantic_code: 'EVT_001', occurred_at: t,
   iteration_no: 1, actor: { role: 'RESIDENT', display_name: 'Resident' }, text: 'Created',
@@ -41,7 +49,7 @@ const fixtures: [string, Schema, unknown, unknown][] = [
   ['07 error code', C.SemanticErrorCodeSchema, 'STALE_ASSIGNMENT', 'UNKNOWN_ERROR'],
   ['08 session', C.SessionReadResponseSchema, context, { ...context, session_token: 'secret' }],
   ['09 actor switch', C.ActorSwitchRequestSchema, { role_view: 'CONTRACTOR_EMPLOYEE' }, { role_view: 'CONTRACTOR_EMPLOYEE', actor_alias: 'A' }],
-  ['10 demo run', C.DemoRunStartResponseSchema, { demo_run_id: u, status: 'ACTIVE', primary_case_id: null, role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'] }, { demo_run_id: u, status: 'ACTIVE', primary_case_id: null, role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE', 'CONTRACTOR_EMPLOYEE'] }],
+  ['10 demo run', C.DemoRunStartResponseSchema, startResponse, { ...startResponse, role_views: [...startResponse.role_views, 'CONTRACTOR_EMPLOYEE'] }],
   ['11 list query', C.CaseListQuerySchema, { limit: '50' }, { limit: '1.5' }],
   ['12 list response', C.CaseListResponseSchema, { items: [{ case_id: u, display_number: 'C-1', state: 'CREATED', category: 'Heating', location_label: '1', current_iteration_no: 1, updated_at: t, responsibility: 'UK' }], next_cursor: null }, { items: [], next_cursor: 9 }],
   ['13 snapshot wrapper', C.CaseSnapshotSchema, { case: snapshot }, snapshot],
@@ -254,6 +262,13 @@ test('bootstrap, switch and session read have distinct token semantics', () => {
 test('demo start and normalized headers reject invented client authority', () => {
   expect(C.DemoRunStartRequestSchema.safeParse({ scenario_key: 'primary-housing-demo' }).success).toBe(true);
   expect(C.DemoRunStartRequestSchema.safeParse({ scenario_key: 'primary-housing-demo', actor_alias: 'A' }).success).toBe(false);
+  expect(C.DemoRunStartResponseSchema.safeParse(startResponse).success).toBe(true);
+  expect(C.DemoRunStartResponseSchema.safeParse({ ...startResponse, session_token: undefined }).success).toBe(false);
+  expect(C.DemoRunStartResponseSchema.safeParse({ ...startResponse, session: context }).success).toBe(false);
+  expect(C.DemoRunStartResponseSchema.safeParse({ ...startResponse,
+    session: { ...startContext, demo_run_id: v } }).success).toBe(false);
+  expect(C.DemoRunStartResponseSchema.safeParse({ ...startResponse,
+    session: { ...startContext, primary_case_id: v } }).success).toBe(false);
   expect(C.RequestIdHeaderSchema.safeParse(u).success).toBe(true);
   expect(C.RequestIdHeaderSchema.safeParse('bad').success).toBe(false);
   expect(C.IdempotencyKeyHeaderSchema.safeParse('opaque-key').success).toBe(true);
