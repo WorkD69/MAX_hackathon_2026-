@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RuntimeConfig } from '../../config/types.js';
 import { createMaxWebhookPlugin } from '../../integrations/max/webhook.js';
 import { MaxAdapterError } from '../max-adapter/errors.js';
-import { RealMaxAdapter } from '../max-adapter/real.js';
+import { PerChatSendCoordinator, RealMaxAdapter } from '../max-adapter/real.js';
 import type { MaxAdapter } from '../max-adapter/types.js';
 import { parseMaxUpdate } from '../max-adapter/update.js';
 import { redriveNotificationIntent } from './redrive-command.js';
@@ -177,6 +177,42 @@ describe('DurableNotificationWorker', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('drains a public processOne already in progress before stop resolves', async () => {
+    const store = new MemoryStore();
+    const sendResult = deferred<{ providerMessageId: string }>();
+    const send = vi.fn(() => sendResult.promise);
+    const worker = new DurableNotificationWorker(store, adapter(send), config());
+    const operation = worker.processOne();
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    let stopped = false;
+    const stop = worker.stop().then(() => { stopped = true; });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    sendResult.resolve({ providerMessageId: 'mid.1' });
+    await Promise.all([operation, stop]);
+    expect(store.intent?.status).toBe('DELIVERED');
+    expect(stopped).toBe(true);
+  });
+
+  it('waits for all public jobs after one rejects and refuses new jobs while stopping', async () => {
+    const store = new MemoryStore();
+    const waiting = deferred<NotificationIntentRecord | undefined>();
+    const recover = vi.spyOn(store, 'recoverExpiredExhausted')
+      .mockRejectedValueOnce(new Error('DATABASE_UNAVAILABLE'))
+      .mockImplementationOnce(() => waiting.promise);
+    const worker = new DurableNotificationWorker(store, adapter(async () => ({ providerMessageId: 'mid.1' })), config());
+    const settled = Promise.allSettled([worker.processOne(), worker.processOne()]);
+    let stopped = false;
+    const stop = worker.stop().then(() => { stopped = true; });
+    await expect(worker.processOne()).rejects.toThrow('NOTIFICATION_WORKER_STOPPING');
+    expect(recover).toHaveBeenCalledTimes(2);
+    expect(stopped).toBe(false);
+    waiting.resolve(undefined);
+    expect((await settled).map(result => result.status)).toEqual(['rejected', 'fulfilled']);
+    await stop;
+    expect(stopped).toBe(true);
+  });
+
   it('waits for every operation after one cycle operation fails', async () => {
     const store = new MemoryStore();
     const second = deferred<Awaited<ReturnType<DurableNotificationWorker['processOne']>>>();
@@ -232,10 +268,10 @@ describe('DurableNotificationWorker', () => {
       sentAt.push(time);
       return new Response(JSON.stringify({ message: { body: { mid: `mid.${sentAt.length}` } } }), { status: 200 });
     });
-    const max = new RealMaxAdapter(liveConfig, fetcher, {
+    const max = new RealMaxAdapter(liveConfig, new PerChatSendCoordinator({
       now: () => time,
       sleep: ms => new Promise<void>(resolve => { sleeping.push({ ms, wake: resolve }); }),
-    });
+    }), fetcher);
     const scheduled: Array<() => void> = [];
     const app = fastify({ logger: false });
     await app.register(createMaxWebhookPlugin({ config: liveConfig, adapter: max,
