@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { writeFile, rename, mkdtemp } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import pg from 'pg';
@@ -7,7 +7,52 @@ import { Kysely, PostgresDialect } from 'kysely';
 
 const ident = value => '"' + value.replaceAll('"', '""') + '"';
 const literal = value => "'" + value.replaceAll("'", "''") + "'";
-const suites = ['tg026', 'tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam', 'tg015_auth'];
+const suites = ['tg026', 'tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam', 'tg015_auth', 'tg019'];
+export const LEGACY_TEST_TARGETS = Object.freeze([
+  { key: 'TG005_FOUNDATION', suite: 'tg005' },
+  { key: 'TG005_CONSTRAINTS', suite: 'tg005' },
+  { key: 'TG006', suite: 'tg006' },
+  { key: 'TG007', suite: 'tg007' },
+  { key: 'TG008', suite: 'tg008' },
+  { key: 'TG012_KERNEL', suite: 'tg012' },
+  { key: 'TG012_POLICY', suite: 'tg012' },
+  { key: 'TG013', suite: 'tg013' },
+  { key: 'TG013_SEAM', suite: 'tg013_seam' },
+  { key: 'TG015', suite: 'tg015_auth' },
+  { key: 'TG019', suite: 'tg019' },
+].map(target => Object.freeze(target)));
+
+export function assertDistinctLegacyTargets(env = process.env) {
+  const receipts = new Set();
+  const databases = new Set();
+  for (const { key } of LEGACY_TEST_TARGETS) {
+    const url = env[`${key}_TEST_DATABASE_URL`];
+    const receipt = env[`${key}_TEST_DATABASE_RECEIPT`];
+    if (!url && !receipt) continue;
+    if (!url || !receipt) throw new Error(`MISSING_OWNED_TARGET_INPUT:${key}`);
+    let database;
+    try { database = new URL(url).pathname; }
+    catch { throw new Error(`INVALID_TEST_TARGET_URL:${key}`); }
+    if (receipts.has(receipt) || databases.has(database)) throw new Error('REUSED_OWNED_TARGET');
+    receipts.add(receipt);
+    databases.add(database);
+  }
+}
+
+export async function verifyOwnedLegacySuite(key, env = process.env) {
+  requireTestProvisioning(env);
+  const target = LEGACY_TEST_TARGETS.find(candidate => candidate.key === key);
+  if (!target) throw new Error('UNKNOWN_LEGACY_TEST_SUITE');
+  assertDistinctLegacyTargets(env);
+  const url = env[`${key}_TEST_DATABASE_URL`];
+  const receiptPath = env[`${key}_TEST_DATABASE_RECEIPT`];
+  if (!url || !receiptPath) throw new Error(`MISSING_OWNED_TARGET_INPUT:${key}`);
+  const receipt = JSON.parse(await readFile(receiptPath, 'utf8'));
+  validateReceipt(receipt);
+  if (receipt.suite !== target.suite || receipt.legacyKey !== key) throw new Error('OWNERSHIP_MISMATCH:suite');
+  await verifyOwnedPostgresConnection({ adminUrl: env.TEST_POSTGRES_ADMIN_URL, env }, receipt, url);
+  return url;
+}
 
 export function requireTestProvisioning(env = process.env) {
   if (env.APP_ENV !== 'test') throw new Error('TEST_ENV_REQUIRED');
@@ -17,6 +62,8 @@ export function requireTestProvisioning(env = process.env) {
 export function validateReceipt(receipt) {
   const prefix = `${receipt?.suite}_${receipt?.runId}`;
   if (receipt?.version !== 1 || !suites.includes(receipt.suite) ||
+      (receipt.legacyKey !== undefined && !LEGACY_TEST_TARGETS.some(target =>
+        target.key === receipt.legacyKey && target.suite === receipt.suite)) ||
       !/^[a-f0-9]{32}$/.test(receipt.runId) || !/^[a-f0-9]{64}$/.test(receipt.ownerToken) ||
       !/^\d+$/.test(receipt.systemIdentifier) || !Number.isInteger(receipt.provisionerOid) ||
       receipt.database !== `${prefix}_${receipt.suite}_test` ||
@@ -29,7 +76,8 @@ export function validateReceipt(receipt) {
 export function ownershipMarker(receipt) {
   validateReceipt(receipt);
   // Keep the capability secret in the private receipt. Catalogs reveal only its digest.
-  const digest = createHash('sha256').update(receipt.ownerToken).digest('hex');
+  const digest = createHash('sha256').update(receipt.ownerToken)
+    .update(receipt.legacyKey === undefined ? '' : `:${receipt.legacyKey}`).digest('hex');
   return `DISPOSABLE_TEST_ONLY:v1:${receipt.runId}:${digest}`;
 }
 
@@ -164,6 +212,8 @@ export async function provisionPostgres(options) {
   }
   const suite = options.suite ?? 'tg026';
   if (!suites.includes(suite)) throw new Error('UNSAFE_TEST_RECEIPT');
+  if (options.legacyKey !== undefined && !LEGACY_TEST_TARGETS.some(target =>
+    target.key === options.legacyKey && target.suite === suite)) throw new Error('UNSAFE_LEGACY_TEST_KEY');
   const runId = randomBytes(16).toString('hex');
   const prefix = `${suite}_${runId}`;
   const migrationPassword = randomBytes(32).toString('hex');
@@ -177,7 +227,7 @@ export async function provisionPostgres(options) {
   try {
     const identity = await serverIdentity(admin);
     receipt = {
-      version: 1, suite, runId, ownerToken: randomBytes(32).toString('hex'),
+      version: 1, suite, legacyKey: options.legacyKey, runId, ownerToken: randomBytes(32).toString('hex'),
       systemIdentifier: identity.system_identifier, provisionerOid: identity.principal_oid,
       database: `${prefix}_${suite}_test`, migrationRole: `${prefix}_migration`, runtimeRole: `${prefix}_runtime`,
       databaseOid: null, migrationRoleOid: null, runtimeRoleOid: null,

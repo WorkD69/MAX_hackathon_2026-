@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { verifyOwnedLegacySuite } from '../../../../../tests/support/postgres.mjs';
 import { loadConfig } from '../../config/load-config.js';
 import { PostgresNotificationStore } from './store.js';
 
@@ -28,6 +29,7 @@ describe.skipIf(!DATABASE_URL)('TG-019 notification store with real PostgreSQL',
   let store: PostgresNotificationStore;
 
   beforeAll(async () => {
+    await verifyOwnedLegacySuite('TG019');
     const parsed = new URL(DATABASE_URL!);
     if (!decodeURIComponent(parsed.pathname).endsWith('_tg019_test')) throw new Error('UNSAFE_TEST_DATABASE');
     const admin = new Pool({ connectionString: DATABASE_URL, max: 1 });

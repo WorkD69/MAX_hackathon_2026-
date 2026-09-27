@@ -64,6 +64,9 @@ export function createRuntimeLogger(config: RuntimeConfig, destination?: Destina
     redact: { paths: [
       'req.headers.authorization', 'req.headers.cookie', 'req.headers.x-max-bot-api-secret',
       'req.body.init_data', 'req.body.initData',
+      'TEST_MAX_INIT_DATA_SIGNING_KEY', 'test_max_init_data_signing_key',
+      'config.TEST_MAX_INIT_DATA_SIGNING_KEY', 'config.test_max_init_data_signing_key',
+      'req.body.TEST_MAX_INIT_DATA_SIGNING_KEY', 'req.body.test_max_init_data_signing_key',
     ], censor: '[REDACTED]' },
     serializers: { err: () => '[REDACTED]' },
     hooks: {

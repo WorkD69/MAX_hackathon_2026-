@@ -1,10 +1,10 @@
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool, PoolClient } from 'pg';
 import { expect, test } from 'vitest';
+import { verifyOwnedLegacySuite } from '../../../tests/support/postgres.mjs';
 import { createMigrator, rollbackAll } from './index.js';
 
-const DATABASE_URL = process.env.TG006_TEST_DATABASE_URL;
-if (!DATABASE_URL) throw new Error('MISSING_TG006_TEST_DATABASE_URL');
+const DATABASE_URL = await verifyOwnedLegacySuite('TG006');
 
 const parsed = new URL(DATABASE_URL);
 const DB_NAME = decodeURIComponent(parsed.pathname.slice(1));

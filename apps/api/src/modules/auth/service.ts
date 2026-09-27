@@ -77,7 +77,6 @@ export class AuthService {
   }
 
   async bootstrap(rawInitData: string): Promise<AuthMaxSuccessOutput> {
-    if (!this.config.MAX_BOT_TOKEN) throw new AuthContextError('AUTH_BOOTSTRAP_FAILED');
     const now = this.nowSeconds();
     const launch = validateMaxInitData(rawInitData, this.config, now);
     const identity = await this.repository.upsertValidated(launch, new Date(now * 1000));

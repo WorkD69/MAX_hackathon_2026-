@@ -2,6 +2,7 @@ import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
 import type { PoolClient } from 'pg';
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { verifyOwnedLegacySuite } from '../../../../tests/support/postgres.mjs';
 import { recoverSyntheticDemo, SYNTHETIC_DEMO_ORGANIZATION_ID } from '../../../../apps/api/src/maintenance/recovery.js';
 
 const dbModule = await import(new URL('../index.ts', import.meta.url).href) as {
@@ -18,8 +19,7 @@ const seedModule = await import(new URL('./index.ts', import.meta.url).href) as 
 const { DEMO_ACTOR_ALLOWLIST, DEMO_BUSINESS_KEYS, DEMO_IDS, DEFAULT_CONTRACTOR_ACTOR,
   seedDemoCatalog, seedDemoCatalogInTransaction } = seedModule;
 
-const databaseUrl = process.env.TG008_TEST_DATABASE_URL;
-if (!databaseUrl) throw new Error('MISSING_TG008_TEST_DATABASE_URL');
+const databaseUrl = await verifyOwnedLegacySuite('TG008');
 
 const parsed = new URL(databaseUrl);
 const databaseName = decodeURIComponent(parsed.pathname.slice(1));

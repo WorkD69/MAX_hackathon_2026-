@@ -25,12 +25,42 @@ const integers = [
 ] as const;
 
 describe('runtime config', () => {
-  it('has exactly 23 unique canonical keys and ignores unknown keys', () => {
-    expect(ENV_KEYS).toHaveLength(23);
-    expect(new Set(ENV_KEYS).size).toBe(23);
+  it('has exactly 25 unique canonical keys and ignores unknown keys', () => {
+    expect(ENV_KEYS).toHaveLength(25);
+    expect(new Set(ENV_KEYS).size).toBe(25);
     const config = loadConfig({ ...base(), UNRECOGNIZED_SECRET: 'should-not-appear' });
     expect(Object.keys(config)).toEqual([...ENV_KEYS]);
     expect(JSON.stringify(config)).not.toContain('should-not-appear');
+  });
+
+  it('allows paired TEST signing fields only in the exact demo fake profile', () => {
+    const fields = {
+      TEST_AUTH_DEMO_PROFILE: 'TEST_DEMO_E2E_V1',
+      TEST_MAX_INIT_DATA_SIGNING_KEY: 'ab'.repeat(32),
+    };
+    const approved = { ...base(), DEMO_MODE: 'true', ...fields };
+    expect(loadConfig(approved).TEST_MAX_INIT_DATA_SIGNING_KEY).toBe(fields.TEST_MAX_INIT_DATA_SIGNING_KEY);
+    for (const invalid of [
+      { ...approved, TEST_AUTH_DEMO_PROFILE: undefined },
+      { ...approved, TEST_MAX_INIT_DATA_SIGNING_KEY: undefined },
+      { ...approved, TEST_AUTH_DEMO_PROFILE: 'TEST:DEMO' },
+      { ...approved, TEST_MAX_INIT_DATA_SIGNING_KEY: 'AB'.repeat(32) },
+      { ...approved, TEST_MAX_INIT_DATA_SIGNING_KEY: 'a'.repeat(63) },
+      { ...approved, TEST_MAX_INIT_DATA_SIGNING_KEY: 'g'.repeat(64) },
+      { ...approved, DEMO_MODE: 'false' },
+      { ...approved, APP_ENV: 'development' },
+      { ...approved, MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: '12345678', MAX_WEBHOOK_SECRET: 'w'.repeat(32) },
+      { ...approved, MAX_BOT_TOKEN: '12345678' },
+      { ...approved, MAX_WEBHOOK_SECRET: 'w'.repeat(32) },
+      { ...approved, APP_ENV: 'production', MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: '12345678', MAX_WEBHOOK_SECRET: 'w'.repeat(32), PUBLIC_APP_URL: 'https://city.example/', PUBLIC_API_BASE_URL: 'https://api.city.example/api/v1' },
+    ]) {
+      expect(() => loadConfig(invalid)).toThrow(ConfigValidationError);
+    }
+    const sentinel = 'ab'.repeat(32);
+    expect(() => loadConfig({ ...approved, TEST_MAX_INIT_DATA_SIGNING_KEY: sentinel.toUpperCase() }))
+      .toThrow(ConfigValidationError);
+    try { loadConfig({ ...approved, TEST_MAX_INIT_DATA_SIGNING_KEY: sentinel.toUpperCase() }); }
+    catch (error) { expect(JSON.stringify(error)).not.toContain(sentinel.toUpperCase()); }
   });
 
   it('normalizes defaults and booleans', () => {

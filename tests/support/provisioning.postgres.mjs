@@ -63,6 +63,33 @@ test('real PostgreSQL: callback failure still removes only owned target', async 
   await absent(receipt);
 });
 
+test('real PostgreSQL: legacy suite verifies its own receipt and rejects shared targets', async () => {
+  let receipt;
+  await infra.withDisposablePostgres({ ...options, suite: 'tg005', legacyKey: 'TG005_FOUNDATION' }, async target => {
+    receipt = target.receipt;
+    const env = {
+      ...options.env, TEST_POSTGRES_ADMIN_URL: options.adminUrl,
+      TG005_FOUNDATION_TEST_DATABASE_URL: target.migrationUrl,
+      TG005_FOUNDATION_TEST_DATABASE_RECEIPT: target.receiptPath,
+    };
+    assert.equal(await infra.verifyOwnedLegacySuite('TG005_FOUNDATION', env), target.migrationUrl);
+    await assert.rejects(infra.verifyOwnedLegacySuite('TG005_CONSTRAINTS', {
+      ...env,
+      TG005_CONSTRAINTS_TEST_DATABASE_URL: target.migrationUrl,
+      TG005_CONSTRAINTS_TEST_DATABASE_RECEIPT: target.receiptPath,
+    }), /REUSED_OWNED_TARGET/);
+    await assert.rejects(infra.verifyOwnedLegacySuite('TG005_CONSTRAINTS', {
+      ...options.env, TEST_POSTGRES_ADMIN_URL: options.adminUrl,
+      TG005_CONSTRAINTS_TEST_DATABASE_URL: target.migrationUrl,
+      TG005_CONSTRAINTS_TEST_DATABASE_RECEIPT: target.receiptPath,
+    }), /OWNERSHIP_MISMATCH:suite/);
+    await assert.rejects(infra.verifyOwnedLegacySuite('TG005_FOUNDATION', {
+      ...env, TG005_FOUNDATION_TEST_DATABASE_RECEIPT: '',
+    }), /MISSING_OWNED_TARGET_INPUT/);
+  });
+  await absent(receipt);
+});
+
 test('real PostgreSQL: arbitrary DB, forged receipt and changed marker are rejected without deletion', async () => {
   assert.equal(typeof infra.provisionPostgres, 'function');
   await assert.rejects(infra.provisionPostgres({ ...options, targetUrl: options.adminUrl }), /ARBITRARY_TARGET/);
