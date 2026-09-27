@@ -2,7 +2,7 @@ import type { MigrationResultSet } from 'kysely';
 
 export interface TestDatabaseReceipt {
   readonly version: 1;
-  readonly suite: 'tg026' | 'tg005' | 'tg006';
+  readonly suite: 'tg026' | 'tg005' | 'tg006' | 'tg007' | 'tg008' | 'tg012';
   readonly runId: string;
   readonly ownerToken: string;
   readonly systemIdentifier: string;

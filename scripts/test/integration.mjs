@@ -38,7 +38,7 @@ export async function runIntegration(root = process.cwd()) {
     if (group.cwd === 'packages/db') {
       try {
         const { verifyOwnedPostgresConnection } = await import('../../tests/support/postgres.mjs');
-        for (const prefix of ['TG005', 'TG006']) {
+        for (const prefix of ['TG005', 'TG006', 'TG007', 'TG008', 'TG012']) {
           const receiptPath = process.env[`${prefix}_TEST_DATABASE_RECEIPT`];
           if (!receiptPath) throw new Error('MISSING_OWNED_RECEIPT');
           const receipt = JSON.parse(await readFile(receiptPath, 'utf8'));
