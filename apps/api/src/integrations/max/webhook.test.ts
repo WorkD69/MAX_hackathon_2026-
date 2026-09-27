@@ -1,5 +1,8 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { Writable } from 'node:stream';
+import { ErrorResponseSchema } from '@max-smart-city/contracts';
 import fastify from 'fastify';
+import pino from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import type { RuntimeConfig } from '../../config/types.js';
 import type { MaxAdapter } from '../../modules/max-adapter/types.js';
@@ -33,17 +36,50 @@ function adapter(): MaxAdapter & { sendMessage: ReturnType<typeof vi.fn> } {
 }
 
 describe('protected MAX webhook', () => {
-  it.each([undefined, 'wrong-secret'])('rejects missing/wrong secret before side effects', async supplied => {
+  it.each([
+    { caseName: 'missing secret and valid request ID', supplied: undefined, incomingId: randomUUID() },
+    { caseName: 'wrong secret and invalid request ID', supplied: 'wrong-secret', incomingId: 'not-a-uuid' },
+    { caseName: 'wrong secret and absent request ID', supplied: 'wrong-secret', incomingId: undefined },
+  ])('rejects $caseName before side effects', async ({ supplied, incomingId }) => {
     const max = adapter();
-    const app = fastify({ logger: false });
-    await app.register(createMaxWebhookPlugin({ config: config(), adapter: max }));
+    const parseUpdate = vi.spyOn(max, 'parseUpdate');
+    const scheduled: Array<() => void> = [];
+    let logs = '';
+    const stream = new Writable({ write(chunk, _encoding, done) { logs += String(chunk); done(); } });
+    const app = fastify({ loggerInstance: pino({ level: 'info' }, stream) });
+    await app.register(createMaxWebhookPlugin({
+      config: config(), adapter: max, schedule: task => { scheduled.push(task); },
+    }));
     const response = await app.inject({
       method: 'POST', url: '/integrations/max/webhook',
-      headers: supplied ? { 'x-max-bot-api-secret': supplied } : {},
-      payload: { update_type: 'bot_started', timestamp: 1, chat_id: 42, user: { user_id: 7 } },
+      headers: {
+        ...(supplied ? { 'x-max-bot-api-secret': supplied } : {}),
+        ...(incomingId ? { 'x-request-id': incomingId } : {}),
+      },
+      payload: {
+        update_type: 'bot_started', timestamp: 1, chat_id: 42, user: { user_id: 7 },
+        body_marker: 'sensitive-event-marker',
+      },
     });
     expect(response.statusCode).toBe(401);
+    const body = ErrorResponseSchema.parse(response.json());
+    expect(body.error.code).toBe('UNAUTHENTICATED');
+    expect(body.error.message).toBe('UNAUTHENTICATED');
+    expect(body.error.request_id).toMatch(/^[0-9a-f-]{36}$/i);
+    if (incomingId && incomingId !== 'not-a-uuid') expect(body.error.request_id).toBe(incomingId);
+    else expect(body.error.request_id).not.toBe(incomingId);
     expect(response.body).not.toContain(secret);
+    expect(response.body).not.toContain('wrong-secret');
+    expect(response.body).not.toContain(createHash('sha256').update(secret).digest('hex'));
+    expect(response.body).not.toContain('sensitive-event-marker');
+    expect(logs).not.toBe('');
+    expect(logs).not.toContain(secret);
+    expect(logs).not.toContain('wrong-secret');
+    expect(logs).not.toContain(createHash('sha256').update(secret).digest('hex'));
+    expect(logs).not.toContain('bot_started');
+    expect(logs).not.toContain('sensitive-event-marker');
+    expect(parseUpdate).not.toHaveBeenCalled();
+    expect(scheduled).toHaveLength(0);
     expect(max.sendMessage).not.toHaveBeenCalled();
     await app.close();
   });
