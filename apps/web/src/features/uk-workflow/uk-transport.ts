@@ -9,6 +9,7 @@ import {
   CompleteWithExplanationSuccessSchema, AddCommentSuccessSchema,
   type SemanticErrorCodeInput,
   type AllowedActionOutput,
+  ContractorCandidatesResponseSchema, type ContractorCandidatesResponseOutput,
 } from '@max-smart-city/contracts';
 import type { ActionPayload } from '../cases/read/case-read.js';
 import { MutationIntent } from '../../app/intent/mutation-intent.js';
@@ -17,6 +18,21 @@ export interface UkActionContext {
   caseId: string;
   authorizedFetch: (path: string, init?: RequestInit) => Promise<Response>;
   contextKey?: string;
+}
+
+export async function readContractorCandidates(
+  caseId: string, authorizedFetch: UkActionContext['authorizedFetch'],
+): Promise<ContractorCandidatesResponseOutput> {
+  const response = await authorizedFetch(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/contractor-candidates`,
+    { method: 'GET', cache: 'no-store' },
+  );
+  if (!response.ok) {
+    const raw: unknown = await response.clone().json().catch(() => null);
+    const parsed = ErrorResponseSchema.safeParse(raw);
+    throw new UkCommandError(response.status, parsed.success ? parsed.data.error.code : undefined);
+  }
+  return ContractorCandidatesResponseSchema.parse(await response.json());
 }
 
 export class UkCommandError extends Error {

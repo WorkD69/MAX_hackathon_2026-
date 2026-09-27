@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { CreateCasePayloadOutput, CreateCaseSuccessOutput } from '@max-smart-city/contracts';
 import { MutationIntent } from '../../../app/intent/mutation-intent.js';
@@ -17,13 +17,19 @@ export interface CreateCaseFormProps {
 }
 
 export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, contextKey = '' }: CreateCaseFormProps) {
-  const options = useQuery({
-    queryKey: ['resident', 'create-case-options'],
+  const [premisesId, setPremisesId] = useState('');
+  const initialOptions = useQuery({
+    queryKey: ['resident', 'create-case-options', contextKey, 'initial'],
     queryFn: () => transport.createCaseOptions(),
     retry: false, staleTime: 0, refetchOnMount: 'always',
   });
+  const options = useQuery({
+    queryKey: ['resident', 'create-case-options', contextKey, premisesId],
+    queryFn: () => transport.createCaseOptions(premisesId),
+    enabled: premisesId !== '',
+    retry: false, staleTime: 0, refetchOnMount: 'always',
+  });
   const [categoryId, setCategoryId] = useState('');
-  const [premisesId, setPremisesId] = useState('');
   const [description, setDescription] = useState('');
   const [files, setFiles] = useState<readonly File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -31,17 +37,14 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
   const intent = useRef(new MutationIntent());
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const activeCategories = useMemo(
-    () => (options.data?.categories ?? []).filter((category) => category.active),
-    [options.data],
-  );
-  const activePremises = useMemo(
-    () => (options.data?.premises ?? []).filter((premise) => premise.active),
-    [options.data],
-  );
-  const selectedCategory = activeCategories.find((category) => category.categoryId === categoryId);
-  const requirement = selectedCategory ? REQUIREMENT_LABELS[selectedCategory.resultRequirement] : null;
-  const canSubmit = categoryId !== '' && premisesId !== '' && description.trim() !== '' && !options.isPending;
+  const currentOptions = !options.isFetching && options.data?.selected_premises_id === premisesId
+    ? options.data : undefined;
+  const categories = currentOptions?.categories ?? [];
+  const premises = currentOptions?.premises ?? initialOptions.data?.premises ?? [];
+  const selectedCategory = categories.find((category) => category.category_id === categoryId);
+  const requirement = selectedCategory ? REQUIREMENT_LABELS[selectedCategory.result_requirement] : null;
+  const canSubmit = Boolean(selectedCategory && premises.some((premise) => premise.premises_id === premisesId)
+    && description.trim() && !options.isFetching);
 
   const create = useMutation<CreateCaseSuccessOutput, unknown, CreateCasePayloadOutput>({
     mutationFn: async (payload) => {
@@ -86,8 +89,8 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
     }
   }
 
-  if (options.isPending) return <section aria-label="Создание обращения"><h1>Создание обращения</h1><p role="status">Загрузка категорий и адресов…</p></section>;
-  if (options.isError) return <section aria-label="Создание обращения">
+  if (initialOptions.isPending) return <section aria-label="Создание обращения"><h1>Создание обращения</h1><p role="status">Загрузка категорий и адресов…</p></section>;
+  if (initialOptions.isError) return <section aria-label="Создание обращения">
     <h1>Создание обращения</h1>
     <p role="alert">Не удалось загрузить категории и адреса. Обновите список.</p>
   </section>;
@@ -95,15 +98,18 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
   return <section className="resident-create-case" aria-label="Создание обращения">
     <h1>Создание обращения</h1>
     {stale && <p role="alert" className="resident-create-case__stale">{STALE_MESSAGE}</p>}
-    {activeCategories.length === 0 && <p role="alert">Сейчас нет доступных категорий для обращения.</p>}
+    {premises.length === 0 && <p role="alert">Сейчас нет доступных адресов для обращения.</p>}
+    {options.isPending && premisesId && <p role="status">Загрузка категорий…</p>}
+    {options.isError && <p role="alert">Не удалось загрузить категории. Выберите адрес ещё раз.</p>}
+    {categories.length === 0 && premisesId && options.isSuccess && <p role="alert">Сейчас нет доступных категорий для обращения.</p>}
     <form onSubmit={(event) => { void submit(event); }}>
       <div className="resident-create-case__field">
         <label htmlFor="resident-category">Категория</label>
         <select id="resident-category" data-testid="category-select" value={categoryId}
-          disabled={activeCategories.length === 0}
+          disabled={categories.length === 0}
           onChange={(event) => setCategoryId(event.target.value)}>
           <option value="">Выберите категорию</option>
-          {activeCategories.map((category) => <option key={category.categoryId} value={category.categoryId}>
+          {categories.map((category) => <option key={category.category_id} value={category.category_id}>
             {category.name}
           </option>)}
         </select>
@@ -112,11 +118,11 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
       <div className="resident-create-case__field">
         <label htmlFor="resident-premises">Адрес</label>
         <select id="resident-premises" data-testid="premise-select" value={premisesId}
-          disabled={activePremises.length === 0}
-          onChange={(event) => setPremisesId(event.target.value)}>
+          disabled={premises.length === 0}
+          onChange={(event) => { setPremisesId(event.target.value); setCategoryId(''); }}>
           <option value="">Выберите адрес</option>
-          {activePremises.map((premise) => <option key={premise.premisesId} value={premise.premisesId}>
-            {premise.label}
+          {premises.map((premise) => <option key={premise.premises_id} value={premise.premises_id}>
+            {premise.house_address} · {premise.premises_label}
           </option>)}
         </select>
       </div>

@@ -8,17 +8,9 @@ import './comment-feed.css';
 const STALE_MESSAGE = 'Случай изменился с момента открытия. Данные обновлены.';
 const SEMANTIC_ERROR = 'Не удалось отправить сообщение. Обновите случай и повторите.';
 
-export interface ClarificationTarget {
-  /** Machine-checkable clarification_request_id echoed into the command payload. */
-  readonly commentId: string;
-  readonly body: string;
-  readonly createdAt: string;
-}
-
 export interface ResidentCommentFeedProps {
   readonly transport: ResidentTransport;
   readonly snapshot: ResidentCaseSnapshotOutput;
-  readonly clarificationTargets?: readonly ClarificationTarget[];
   readonly onMutated: () => void | Promise<void>;
   readonly contextKey?: string;
 }
@@ -30,8 +22,6 @@ interface FeedEntry {
   readonly actorName: string;
   readonly iterationNo: number;
 }
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** One observable feed: coordination and clarification comments share a single ordered list. */
 export function commentFeedEntries(snapshot: ResidentCaseSnapshotOutput): readonly FeedEntry[] {
@@ -49,7 +39,7 @@ export function commentFeedEntries(snapshot: ResidentCaseSnapshotOutput): readon
     }));
 }
 
-export function ResidentCommentFeed({ transport, snapshot, clarificationTargets = [], onMutated, contextKey = '' }: ResidentCommentFeedProps) {
+export function ResidentCommentFeed({ transport, snapshot, onMutated, contextKey = '' }: ResidentCommentFeedProps) {
   const [body, setBody] = useState('');
   const [files, setFiles] = useState<readonly File[]>([]);
   const [targetId, setTargetId] = useState('');
@@ -61,7 +51,7 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
   const state = snapshot.case.state;
   const canComment = snapshot.case.allowed_actions.some((action) => action.code === 'ADD_COMMENT');
   const requiresTarget = state === 'REMARKS_REVIEW';
-  const validTargets = clarificationTargets.filter((target) => UUID_PATTERN.test(target.commentId));
+  const validTargets = snapshot.case.actionable_clarification_requests;
   const targetRequired = requiresTarget && validTargets.length === 0;
   const composerOpen = canComment && !targetRequired;
 
@@ -81,7 +71,7 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!canComment || targetRequired || body.trim() === '' || addComment.isPending) return;
-    if (requiresTarget && !UUID_PATTERN.test(targetId)) {
+    if (requiresTarget && !validTargets.some((target) => target.clarification_request_id === targetId)) {
       setError('Выберите запрос уточнения, на который отвечаете.');
       return;
     }
@@ -98,6 +88,7 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
     } catch (cause) {
       if (isStaleResponse(cause)) {
         intent.current.close();
+        setTargetId('');
         setStale(true);
         setError(STALE_MESSAGE);
         await onMutated();
@@ -130,7 +121,7 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
         <select id="resident-clarification" data-testid="clarification-select" value={targetId} disabled={addComment.isPending}
           onChange={(event) => setTargetId(event.target.value)}>
           <option value="">Выберите запрос уточнения</option>
-          {validTargets.map((target) => <option key={target.commentId} value={target.commentId}>
+          {validTargets.map((target) => <option key={target.clarification_request_id} value={target.clarification_request_id}>
             {target.body}
           </option>)}
         </select>

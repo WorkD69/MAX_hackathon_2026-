@@ -4,9 +4,9 @@ import {
   type AddCommentSuccessOutput, type CaseStateOutput, type CreateCaseSuccessOutput,
   type DownloadCapabilityResponseOutput, type ResidentCaseSnapshotOutput,
   type ResidentConfirmationSuccessOutput, type ResidentRemarkSuccessOutput,
-  type ResultRequirementOutput,
+  type ResultRequirementOutput, type ResidentCategoryOptionOutput, type ResidentPremiseOptionOutput,
 } from '@max-smart-city/contracts';
-import type { CategoryOption, CreateCaseOptions, PremiseOption } from './resident-transport.js';
+import type { CreateCaseOptions } from './resident-transport.js';
 
 export const FIXTURE_DATE = '2026-09-25T00:00:00Z';
 
@@ -27,27 +27,25 @@ export const IDS = {
   contractorId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
 } as const;
 
-export const categoryFixture: CategoryOption = {
-  categoryId: IDS.categoryId, name: 'Отопление / стояк', resultRequirement: 'PHOTO', active: true,
+export const categoryFixture: ResidentCategoryOptionOutput = {
+  category_id: IDS.categoryId, name: 'Отопление / стояк', description: null,
+  requires_premises_access: true, result_requirement: 'PHOTO',
 };
-export const inactiveCategoryFixture: CategoryOption = {
-  categoryId: IDS.inactiveCategoryId, name: 'Архивная категория', resultRequirement: 'NONE', active: false,
+export const inactiveCategoryFixture: ResidentCategoryOptionOutput = {
+  category_id: IDS.inactiveCategoryId, name: 'Архивная категория', description: null,
+  requires_premises_access: false, result_requirement: 'NONE',
 };
-export const premiseFixture: PremiseOption = {
-  premisesId: IDS.premisesId, label: 'Дом 1 · Кв. 2', active: true,
+export const premiseFixture: ResidentPremiseOptionOutput = {
+  premises_id: IDS.premisesId, house_address: 'Дом 1', premises_label: 'Кв. 2',
 };
-export const inactivePremiseFixture: PremiseOption = {
-  premisesId: IDS.inactivePremisesId, label: 'Дом 9 · Кв. 9', active: false,
+export const inactivePremiseFixture: ResidentPremiseOptionOutput = {
+  premises_id: IDS.inactivePremisesId, house_address: 'Дом 9', premises_label: 'Кв. 9',
 };
 
 export const createCaseOptionsFixture: CreateCaseOptions = {
   categories: [categoryFixture],
   premises: [premiseFixture],
-};
-
-export const optionsWithInactiveFixture: CreateCaseOptions = {
-  categories: [categoryFixture, inactiveCategoryFixture],
-  premises: [premiseFixture, inactivePremiseFixture],
+  selected_premises_id: IDS.premisesId,
 };
 
 interface SnapshotOverrides {
@@ -56,12 +54,14 @@ interface SnapshotOverrides {
   readonly withResult?: boolean;
   readonly feedbackType?: 'CONFIRMATION' | 'REMARK' | null;
   readonly residentFeedback?: boolean;
+  readonly actionableClarifications?: ResidentCaseSnapshotOutput['case']['actionable_clarification_requests'];
 }
 
 export function residentSnapshot(overrides: SnapshotOverrides = {}): ResidentCaseSnapshotOutput {
   const {
     state = 'AWAITING_RESULT_CHECK', resultRequirement = 'PHOTO', withResult = true,
     feedbackType = null, residentFeedback = false,
+    actionableClarifications = [],
   } = overrides;
   const result = withResult ? {
     result_id: IDS.resultId, iteration_id: IDS.iterationId,
@@ -77,6 +77,7 @@ export function residentSnapshot(overrides: SnapshotOverrides = {}): ResidentCas
       current_iteration: { iteration_id: IDS.iterationId, number: 2 },
       responsibility: { semantic_code: 'SERVER_NEXT', text: 'Ожидается решение УК' },
       initial_attachments: [],
+      actionable_clarification_requests: actionableClarifications,
       selection: null, assignment: null, current_executor: null,
       current_result: result,
       resident_feedback: residentFeedback && feedbackType ? {
