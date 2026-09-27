@@ -23,16 +23,19 @@
 
 **Для будущей implementation:** `apps/web/src/features/session/**`, `apps/web/src/features/demo/**` и только session/demo navigation в `apps/web/src/shell/**` (включая соответствующие тесты). Использовать foundation/PlatformAdapter TG-004 и публичный `@max-smart-city/contracts` TG-002. Feature route contribution допускается в owned feature paths; final central router registry принадлежит TG-029.
 
+Текущий targeted canonical forward delta обновляет этот контракт совместно с Interface Contracts и TG-002 schema; implementation в эту правку не входит. Исторические branch/base и scope authoring выше относятся к первоначальной стадии TG-020.
+
 ## 6. Forbidden scope
 
-Не менять Product Freeze/Spec, Architecture, Interface Contracts, Task Graph, shared Zod contracts, backend auth/authorization/DemoRun, Case workflow screens и final central router. Не добавлять production login flow, пятый role view, client-side IAM, fake local session или optimistic workflow authority. На contract stage не менять manifests/lockfile и не создавать authoring/review/recheck artifacts.
+Для первоначальной TG-020 implementation не менять Product Freeze/Spec, Architecture, Interface Contracts, Task Graph, shared Zod contracts, backend auth/authorization/DemoRun, Case workflow screens и final central router. Текущий явно назначенный cross-contract delta изменяет только перечисленные в его scope canonical файлы и публичную схему, без runtime implementation. Не добавлять production login flow, пятый role view, client-side IAM, fake local session или optimistic workflow authority. На contract stage не менять manifests/lockfile и не создавать authoring/review/recheck artifacts.
 
 ## 7. Required behavior / invariants
 
 - **MAX и session.** Raw signed `initData` поступает только через approved platform/Bridge adapter и передаётся как `init_data` в `POST /api/v1/auth/max`. Frontend не валидирует его как security decision, не логирует raw/token и не доверяет `initDataUnsafe`, client identity/role/contractor fields или `startapp` как authority. Server валидирует подпись и freshness, определяет identity/context, подписывает и проверяет short-lived Bearer session; Bot Token остаётся только на server.
 - **Lifecycle.** Явные `pending/loading`, `authenticated/ready`, `auth/bootstrap error`, `retry`. Ошибка не заменяется фиктивной session. Успешный Bearer token хранится только в runtime memory: без `localStorage`, `sessionStorage`, `IndexedDB`, persistent cookie или иного persistent browser storage. После full reload — новый MAX bootstrap/auth; при истечении/ошибке session frontend возвращается к безопасному bootstrap/error flow. Direct browser без valid signed MAX context не может создать production MAX session; client-side признак Mini App не подменяет server validation.
 - **DEMO_MODE.** Режим явно test-only, доступен только при разрешении canonical server configuration/context. Controls скрыты или disabled вне demo; изменение одной client variable не включает server-enforced switch. Один эксперт работает с одним current DemoRun/Case/history через ровно `RESIDENT`, `UK_EMPLOYEE`, `UK_ADMIN`, `CONTRACTOR_EMPLOYEE`; Contractor A/B не являются отдельными views.
-- **DemoRun и switch.** UI запускает `POST /api/v1/demo/runs` по canonical request/idempotency contract, восстанавливает current `demo_run_id` и `primary_case_id` из authoritative bootstrap/`GET /api/v1/session` context; reload сам не создаёт run. В `POST /api/v1/demo/session/actor` отправляется только разрешённый `role_view` (и обязательные HTTP headers), без actor/user/contractor identity или organization authority. Server выбирает concrete effective actor, включая contractor mapping, проверяет DemoRun, bindings и tenant context и выдаёт новый token/context. После success frontend заменяет in-memory session, invalidates/refetches relevant server state; прежние права и `allowed_actions` не сохраняются как authority.
+- **DemoRun и switch.** UI запускает `POST /api/v1/demo/runs` по canonical request/idempotency contract. Успех Start уже содержит **новый** `session_token`, `expires_at` и actor-null `session` для нового run той же MAX identity; frontend устанавливает их атомарно как один runtime context, очищает относящийся к прежнему run query/cache state и только затем допускает explicit role switch. Повторный `/auth/max` после Start не требуется и не используется: исходный MAX `initData` может истечь при ещё действующей application session. `GET /api/v1/session`/fresh MAX bootstrap остаются путём восстановления current `demo_run_id` и `primary_case_id` при reload; reload сам не создаёт run. В `POST /api/v1/demo/session/actor` отправляется только разрешённый `role_view` (и обязательные HTTP headers), без actor/user/contractor identity или organization authority. Server выбирает concrete effective actor, включая contractor mapping, проверяет DemoRun, bindings и tenant context и выдаёт новый token/context. После switch frontend заменяет in-memory session, invalidates/refetches relevant server state; прежние права и `allowed_actions` не сохраняются как authority.
+- **Generation и переходы.** Каждая установленная application session получает локальное поколение; авторизованный request захватывает пару `(session_token, generation)`. Поздний `401` очищает session только если **оба** значения совпадают с текущей установленной session. Ответ `200`, иная ошибка, refresh callback или expiry timer старого поколения не могут заменить/очистить новый context. Start и switch защищены отдельным epoch перехода: асинхронное завершение может установить token/session или выполнить failure cleanup только для всё ещё актуального intent/epoch; новый переход или bootstrap делает прежние результаты недействительными. При Start success проверяются new run ID, actor-null context и новая expiry до установки. Старый Bearer не используется для switch/Case нового run.
 - **Server-authoritative UI.** Frontend показывает role-filtered server data, но не решает authorization и не считает visibility или cached `allowed_actions` security boundary. После relevant mutations, switch и stale/conflict — invalidate/refetch authoritative state. До server success workflow state не меняется optimistically.
 
 ## 8. Dependency requests
@@ -43,9 +46,10 @@
 
 1. Trusted MAX path даёт server-issued session и отображает lifecycle; untrusted/direct-browser path не фабрикует production session, ошибка и retry наблюдаемы.
 2. Token только в памяти; reload повторяет bootstrap/auth; Bot Token отсутствует во frontend bundle/config.
-3. Demo controls включаются только server-authoritative demo context, помечены test-only; Start/restore возвращает текущий run и primary Case без локальной подмены истории.
+3. Demo controls включаются только server-authoritative demo context, помечены test-only; Start устанавливает выданную в `201` новую session для того же MAX identity/new run с actor-null и без повторного `/auth/max`, restore возвращает текущий run и primary Case без локальной подмены истории.
 4. Ровно четыре views; switch передаёт только `role_view`, получает server-issued effective context и refetches данные; старые `allowed_actions` не дают прав.
 5. Session/demo feature seam работает с responsive TG-004 shell для mobile/web MAX; central router и будущие workflow screens не реализованы.
+6. Локальное поколение и epoch исключают stale completion: старый `401`, `200`, ошибка, refresh или timer не меняют новую session; concurrent Start/switch не перезаписывают победивший transition. Старый token не получает полномочий нового run.
 
 ## 10. Required tests
 
@@ -54,10 +58,11 @@
 1. Platform/Bridge adapter fixtures; trusted MAX bootstrap и direct-browser/untrusted negative path.
 2. Auth success, bootstrap failure UI, retry; full reload вызывает новый bootstrap вместо восстановления Bearer token.
 3. Token отсутствует в `localStorage`, `sessionStorage`, `IndexedDB`, persistent cookies и другом запрещённом storage; Bot Token отсутствует в frontend runtime bundle/config.
-4. Start DemoRun, restore current DemoRun, restore `primary_case_id`/run context; ровно четыре role views.
+4. Start DemoRun с новым token/context из `201` без MAX reauth; actor-null до switch; restore current DemoRun/`primary_case_id`; ровно четыре role views.
 5. Switch body содержит только permitted `role_view` без actor/user/contractor/organization identity; после switch выполнен invalidate/refetch relevant server state.
 6. DEMO controls hidden/disabled вне `DEMO_MODE`; UI не использует cached `allowed_actions` как authority и не делает optimistic workflow mutation.
 7. Responsive Mini App session/demo shell на mobile/web viewport в пределах ownership TG-020. Тесты не требуют экранов TG-021–TG-025.
+8. Отложенный `401` от request со старым `(token,generation)` после Start/switch не сбрасывает новую session; совпадающий текущий `401` сбрасывает. Старые `200`, error, refresh и timer не перезаписывают context; задержанные Start/switch outcomes проходят epoch gate.
 
 ## 11. Git / integration handoff
 

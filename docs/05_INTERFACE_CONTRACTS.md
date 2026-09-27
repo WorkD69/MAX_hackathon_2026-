@@ -2058,7 +2058,7 @@ All writes emit `ConfigurationChange`.
 POST /api/v1/demo/runs
 ```
 
-Principal: validated real `MAX_IDENTITY`; effective AppUser may be absent.
+Principal: real `MAX_IDENTITY`, выведенная из действующей авторизованной и повторно проверенной application Bearer session; effective AppUser может отсутствовать. Start не использует `init_data` и не вызывает повторно `POST /api/v1/auth/max`. Истёкшая MAX initData по-прежнему отклоняется самим bootstrap endpoint.
 
 Request:
 
@@ -2071,15 +2071,16 @@ Preconditions:
 - server `DEMO_MODE=true`;
 - real MAX identity validated;
 - usable outbound MAX target (`chat_id/type`) confirmed; otherwise run is not advertised as runnable.
+- Bearer token указывает на ту же real MAX identity, которую определил сервер; переданные клиентом identity, run, actor или binding не являются authority.
 
 Transaction:
 
-1. idempotency reservation under MAX_IDENTITY principal;
-2. lock real MaxIdentity/current DemoRun relation;
-3. archive previous ACTIVE run, if any, setting only technical run status/timestamp;
-4. create new ACTIVE DemoRun;
-5. bind deterministic preseed DemoRunActors;
-6. previous Cases/history untouched.
+1. Проверить текущий Bearer и его authority, вывести ту же real MAX identity и зарезервировать `(MAX_IDENTITY, Idempotency-Key, fingerprint)`;
+2. сериализовать команды по MaxIdentity и её связи с current DemoRun;
+3. архивировать прежний ACTIVE run, если он есть, изменяя только технический status/timestamp;
+4. создать новый ACTIVE DemoRun и привязать deterministic preseed DemoRunActors; прежние Cases/history не меняются;
+5. выпустить новый application session token из **той же** server-derived MAX identity для нового run с `primary_case_id=null`, без effective actor и выбранной role/binding;
+6. сохранить точный canonical ответ `201` вместе с token, expiry и session body в той же transaction, затем commit. Ошибка выпуска, сериализации или сохранения token/response откатывает весь Start, включая архивирование и новый run.
 
 Success `201`:
 
@@ -2093,11 +2094,30 @@ Success `201`:
     "UK_EMPLOYEE",
     "UK_ADMIN",
     "CONTRACTOR_EMPLOYEE"
-  ]
+  ],
+  "session_token": "<new signed opaque/bearer token>",
+  "expires_at": "2026-09-21T12:00:00Z",
+  "session": {
+    "real_max_identity": {
+      "max_identity_id": "uuid-of-current-bearer-identity",
+      "display_name": "Эксперт MAX",
+      "outbound_max_ready": true
+    },
+    "demo_mode": true,
+    "demo_run_id": "same-uuid-as-demo_run_id-above",
+    "primary_case_id": null,
+    "effective_actor": {
+      "app_user_id": null,
+      "role": null,
+      "display_name": ""
+    }
+  }
 }
 ```
 
-Exactly four Product role views. Contractor A/B are internal actors, not additional role views.
+Поля token/session используют существующую форму выдачи TG-010 из §2.1/§3.3. Сохраняются ровно четыре Product role views; Contractor A/B — внутренние actors. Start не выбирает роль и не создаёт Case. До actor-scoped действий необходим явный actor switch.
+
+При разрешённом replay с теми же key/fingerprint вернуть в точности сохранённые `201` status/body/token/`expires_at`; не выпускать token, не продлевать TTL и не менять run. К моменту replay сохранённый token может истечь. Replay всё равно проходит current identity/current-run security gate команды. Старый Bearer никогда не перенастраивается на новый run и не даёт там business authority. Узкое существующее исключение Start-only actor-null retry можно сохранить лишь для получения сохранённого success той же identity/key/fingerprint, пока сохранённый run остаётся current; оно не даёт actor/Case authority и не применяется к switch, reads или другим mutations. После архивирования run protected replay отклоняется без раскрытия archived response.
 
 ### 25.2. Current-run restore
 
