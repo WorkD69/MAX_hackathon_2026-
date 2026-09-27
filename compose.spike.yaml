@@ -1,0 +1,37 @@
+# Disposable local smoke only. No persistent volume and no production credentials.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: spike
+      POSTGRES_USER: spike
+      POSTGRES_PASSWORD: spike_only_disposable
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spike -d spike"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  app:
+    image: max-hackathon:docker-spike
+    build:
+      context: .
+      dockerfile: Dockerfile.spike
+    environment:
+      APP_ENV: test
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DEMO_MODE: "true"
+      DATABASE_URL: postgresql://spike:spike_only_disposable@db:5432/spike
+      APP_SESSION_SECRET: spike_only_0123456789_0123456789_0123456789
+      MAX_ADAPTER_MODE: fake
+      PUBLIC_APP_URL: http://127.0.0.1:33030
+      PUBLIC_API_BASE_URL: http://127.0.0.1:33030/api/v1
+      BUILD_SHA: 6b4a3a3aad2c01c4357c432ad00db89e708cd462
+    ports:
+      - "127.0.0.1:33030:3000"
+    depends_on:
+      db:
+        condition: service_healthy

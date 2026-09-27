@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1.7
+# Experimental packaging probe only. The canonical TG-030 Dockerfile is separate.
+FROM node:24.21.0-bookworm-slim AS toolchain
+RUN npm install --global npm@11.19.0 \
+    && test "$(node --version)" = v24.21.0 \
+    && test "$(npm --version)" = 11.19.0
+WORKDIR /app
+
+FROM toolchain AS build
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/domain/package.json packages/domain/package.json
+COPY packages/db/package.json packages/db/package.json
+RUN npm ci
+COPY tsconfig.base.json ./
+COPY apps ./apps
+COPY packages ./packages
+RUN npm run build \
+    && test -s apps/api/dist/app/main.js \
+    && test -s apps/web/dist/index.html \
+    && test -s packages/db/dist/migrations/0001_foundation.js \
+    && test -s packages/db/dist/migrations/0002_case_workflow.js \
+    && test -s packages/db/dist/migrations/0003_operational_persistence.js \
+    && npm prune --omit=dev
+
+FROM toolchain AS runtime
+ENV NODE_ENV=production
+COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/package.json
+COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /app/apps/web/dist ./apps/web/dist
+COPY --from=build --chown=node:node /app/packages/contracts/package.json ./packages/contracts/package.json
+COPY --from=build --chown=node:node /app/packages/contracts/dist ./packages/contracts/dist
+COPY --from=build --chown=node:node /app/packages/domain/package.json ./packages/domain/package.json
+COPY --from=build --chown=node:node /app/packages/domain/dist ./packages/domain/dist
+COPY --from=build --chown=node:node /app/packages/db/package.json ./packages/db/package.json
+COPY --from=build --chown=node:node /app/packages/db/dist ./packages/db/dist
+# Current TG-008 CLI is source TypeScript, interpreted by Node 24 type stripping.
+COPY --from=build --chown=node:node /app/packages/db/src/seed/cli.ts ./packages/db/src/seed/cli.ts
+COPY --from=build --chown=node:node /app/packages/db/src/seed/index.ts ./packages/db/src/seed/index.ts
+COPY --chown=node:node spike/entrypoint.mjs ./spike/entrypoint.mjs
+COPY --chown=node:node spike/migrate.mjs ./spike/migrate.mjs
+USER node
+EXPOSE 3000
+CMD ["node", "spike/entrypoint.mjs"]
