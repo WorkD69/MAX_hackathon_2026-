@@ -2217,8 +2217,9 @@ Production contract:
 - hostname matches certificate CN/SAN;
 - server presents full certificate chain;
 - subscription is created with a strong `secret`;
-- backend verifies exact `X-Max-Bot-Api-Secret` before processing;
-- returns HTTP 200 within **30 seconds**;
+- backend verifies exact `X-Max-Bot-Api-Secret` before parsing/processing update and any side effects;
+- missing or invalid secret returns HTTP `401` in existing TG-002 `ErrorResponseSchema`: `error.code = UNAUTHENTICATED`, fixed safe `error.message = UNAUTHENTICATED`, `error.request_id` is a canonical UUID (valid incoming `X-Request-Id` or a newly generated UUID). Response does not reflect expected or provided secret;
+- valid secret with a valid or unknown update retains normal webhook handling and acknowledgement semantics: HTTP 200 within **30 seconds**;
 - long business processing not inline.
 
 MAX retries failed webhook delivery with exponential intervals (up to 10 retries in current docs). If no successful response is obtained within roughly 8 hours, MAX automatically unsubscribes the bot. Therefore operations must reconcile subscriptions using current subscriptions API and recreate missing expected subscription.
