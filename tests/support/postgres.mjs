@@ -7,7 +7,7 @@ import { Kysely, PostgresDialect } from 'kysely';
 
 const ident = value => '"' + value.replaceAll('"', '""') + '"';
 const literal = value => "'" + value.replaceAll("'", "''") + "'";
-const suites = ['tg026', 'tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam'];
+const suites = ['tg026', 'tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam', 'tg015_auth'];
 
 export function requireTestProvisioning(env = process.env) {
   if (env.APP_ENV !== 'test') throw new Error('TEST_ENV_REQUIRED');

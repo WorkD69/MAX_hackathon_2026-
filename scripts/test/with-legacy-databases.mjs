@@ -5,16 +5,19 @@ import { withDisposablePostgres } from '../../tests/support/postgres.mjs';
 const mode = process.argv[2];
 if (!['test', 'test:integration'].includes(mode)) throw new Error('EXPECTED_TEST_OR_INTEGRATION_COMMAND');
 const options = { adminUrl: process.env.TEST_POSTGRES_ADMIN_URL };
-const suites = ['tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam'];
+const suites = [
+  ...['tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam'].map(suite => ({ suite, prefix: suite.toUpperCase() })),
+  { suite: 'tg015_auth', prefix: 'TG015' },
+];
 
 try {
   async function runWithTargets(index, env) {
     if (index < suites.length) {
-      const suite = suites[index];
+      const { suite, prefix } = suites[index];
       return withDisposablePostgres({ ...options, suite }, async target => runWithTargets(index + 1, {
         ...env,
-        [`${suite.toUpperCase()}_TEST_DATABASE_URL`]: target.migrationUrl,
-        [`${suite.toUpperCase()}_TEST_DATABASE_RECEIPT`]: target.receiptPath,
+        [`${prefix}_TEST_DATABASE_URL`]: target.migrationUrl,
+        [`${prefix}_TEST_DATABASE_RECEIPT`]: target.receiptPath,
       }));
     }
     // npm_execpath is the caller's pinned npm CLI; invoke without a shell.

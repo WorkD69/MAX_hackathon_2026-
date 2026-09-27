@@ -12,6 +12,7 @@ export async function discoverIntegrationSuites(root) {
     'packages/*/src/**/*.integration.test.{ts,js,mjs}',
     'apps/*/src/**/*.integration.test.{ts,js,mjs}',
     'apps/*/test-integration/**/*.test.{ts,js,mjs}',
+    'apps/*/tests/**/*.integration.test.{ts,js,mjs}',
   ], { cwd: root })) files.push(file.replaceAll('\\', '/'));
   const groups = new Map();
   for (const file of files.sort()) {
@@ -40,7 +41,7 @@ export async function runIntegration(root = process.cwd()) {
       try {
         const { verifyOwnedPostgresConnection } = await import('../../tests/support/postgres.mjs');
         const prefixes = group.cwd === 'packages/db'
-          ? ['TG005', 'TG006', 'TG007', 'TG008', 'TG012'] : ['TG013', 'TG013_SEAM'];
+          ? ['TG005', 'TG006', 'TG007', 'TG008', 'TG012'] : ['TG013', 'TG013_SEAM', 'TG015'];
         for (const prefix of prefixes) {
           const receiptPath = process.env[`${prefix}_TEST_DATABASE_RECEIPT`];
           if (!receiptPath) throw new Error('MISSING_OWNED_RECEIPT');
