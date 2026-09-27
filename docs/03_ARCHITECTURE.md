@@ -455,7 +455,7 @@ Frontend получает **raw signed `initData`**, а не используе�
 `POST /api/v1/auth/max`:
 
 1. получает raw `initData`;
-2. backend проверяет HMAC по актуальному алгоритму MAX с `MAX_BOT_TOKEN`;
+2. backend проверяет HMAC по актуальному алгоритму MAX с единственным signing material, выбранным server-side: `MAX_BOT_TOKEN` в обычном/live режиме либо `TEST_MAX_INIT_DATA_SIGNING_KEY` только при точном TEST-профиле §26.7;
 3. проверяет freshness `auth_date` по configurable policy, по умолчанию не старше рекомендованного MAX окна;
 4. извлекает validated MAX Mini App identity и validated `chat.id/chat.type` delivery context;
 5. разрешает/создаёт application session context и обновляет outbound MAX delivery binding;
@@ -481,6 +481,8 @@ Token хранится frontend только в memory. После reload Mini A
 ### 10.3. Bot Token
 
 `MAX_BOT_TOKEN` никогда не попадает в frontend bundle, API response, logs, seed или repository.
+
+TEST signing key также остаётся только на backend и в test-only launcher. Он не заменяет Bot Token для live MAX, не используется как fallback и не выставляется через endpoint.
 
 ---
 
@@ -1213,6 +1215,11 @@ Production environment должен явно запрещать случайно
 ### 26.7. Browser E2E
 
 Playwright против deployed/local app с test auth harness, не выдаваемого за real MAX:
+
+- Канонический TEST auth profile — ровно `TEST_DEMO_E2E_V1`: launcher input `test_auth_demo_profile` и backend `TEST_AUTH_DEMO_PROFILE` совпадают посимвольно. Общий префикс `TEST:*` и иные значения не принимаются. Этот marker — настройка harness, не параметр `initData` и не право actor selection.
+- Профиль действует только при `APP_ENV=test`, `MAX_ADAPTER_MODE=fake`, `DEMO_MODE=true` и одновременном наличии обоих TEST-полей. `TEST_MAX_INIT_DATA_SIGNING_KEY` — ровно 64 lowercase hex символа, кодирующие 32 случайных байта; ключ генерируется и передаётся вне репозитория. В fake mode `MAX_BOT_TOKEN` и `MAX_WEBHOOK_SECRET` по-прежнему запрещены. Наличие любого TEST-поля вне точной комбинации останавливает startup до listen.
+- Test-only launcher строит fresh synthetic `user`, `chat`, `auth_date`, канонизирует и подписывает raw `initData` теми же 32 байтами как прямым HMAC-SHA256 key. В браузер передаётся только raw signed `initData`; browser вызывает существующий `POST /api/v1/auth/max`. Backend одним выбранным ключом выполняет реальную HMAC/freshness validation, сохраняет validated `MaxIdentity`/chat binding и выдаёт обычную application session. Отдельного auth mock, произвольного actor endpoint, signing endpoint или второго ключа для retry нет.
+- TG-003 владеет typed config, cross-field startup validation и redaction; TG-010 — выбором signing material внутри существующего auth validator; TG-019 — только совместимостью fake outbound transport. TG-027 проверяет API/security boundary, TG-028 потребляет launcher. TEST key/raw initData не попадают в frontend bundle, logs, system info или response; test artifacts не раскрывают key. Fake outbound не доказывает live MAX; §26.8 остаётся отдельным gate.
 
 - happy path;
 - remark → rework → second result;

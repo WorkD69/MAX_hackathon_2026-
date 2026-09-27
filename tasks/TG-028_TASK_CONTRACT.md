@@ -19,15 +19,17 @@
 
 ## 5. Allowed write scope
 
-Сейчас только `tasks/TG-028_TASK_CONTRACT.md`. В будущей implementation: `tests/e2e/**`, включая Playwright config, спецификации, test-only launcher/harness entry и тестовые fixtures. Вызов из общего `test:e2e` script и изменения shared manifests — только через владельца shared files/Integration Agent.
+Для самостоятельной TG-028 authoring-задачи — только `tasks/TG-028_TASK_CONTRACT.md`. Текущий cross-owner canonical TEST-auth delta отдельно обновляет Architecture/Interface и TG-003/TG-010/TG-028 contracts без runtime-кода. В будущей implementation: `tests/e2e/**`, включая Playwright config, спецификации, test-only launcher/harness entry и тестовые fixtures. Вызов из общего `test:e2e` script и изменения shared manifests — только через владельца shared files/Integration Agent.
 
 ## 6. Forbidden scope
 
-Не менять Dockerfile, compose, `.env.example`, production feature/auth code, shared manifests/lockfile, canonical product/architecture/interface documents или Task Graph. Не добавлять production auth bypass, тестовые credentials/actor selector в production build, hardcoded compose ports, `localhost`, hostnames, actor IDs, fixture UUIDs. Не выдавать viewport browser runs за live mobile/web MAX evidence; не менять workflow ради теста и не canonicalize `main` в этой задаче.
+Для TG-028 implementation не менять Dockerfile, compose, `.env.example`, production feature/auth code, shared manifests/lockfile, canonical product/architecture/interface documents или Task Graph. Не добавлять production auth bypass, тестовые credentials/actor selector в production build, hardcoded compose ports, `localhost`, hostnames, actor IDs, fixture UUIDs. Не выдавать viewport browser runs за live mobile/web MAX evidence; не менять workflow ради теста и не canonicalize `main` в этой задаче.
 
 ## 7. Required behavior / invariants
 
 - Launcher валидирует `application_base_url`, optional `api_base_url`, `test_auth_demo_profile`, `seed_scenario_ref`; профили и seed получают извне, fail-fast при отсутствующих/некорректных обязательных значениях. Ни E2E файлы, ни config не содержат адресов или идентификаторов окружения. TG-030 подаёт те же inputs без правки тестов.
+- Для TEST auth launcher принимает только `test_auth_demo_profile=TEST_DEMO_E2E_V1`, совпадающий с backend `TEST_AUTH_DEMO_PROFILE`. Значения `TEST:*` и другие alias отвергаются. Он получает 32-byte signing material через secret-only input `TEST_MAX_INIT_DATA_SIGNING_KEY` (64 lowercase hex), создаёт свежие synthetic `user`/`chat`/`auth_date`, подписывает canonical raw `initData` и передаёт browser только эту строку. Browser вызывает реальный `POST /api/v1/auth/max`; backend проверяет HMAC/freshness, сохраняет identity и выдаёт обычную session. Key не передаётся browser, не сохраняется в E2E файлах, логах или artifacts.
+- E2E запуск требует `APP_ENV=test`, `MAX_ADAPTER_MODE=fake`, `DEMO_MODE=true`, оба TEST-поля и отсутствие `MAX_BOT_TOKEN`/`MAX_WEBHOOK_SECRET`. Никаких signing/auth mock endpoints или произвольного actor selector; смена четырёх views идёт через существующий server-authoritative DemoRun flow. TG-027 отдельно проверяет startup/security negatives и API auth path; TG-019 подтверждает только fake outbound compatibility.
 - Auth применяется только явно маркированным `TEST` профилем и test-only harness; production сборка не содержит секретов, тестового actor selector или обхода MAX auth. Сценарии работают с разрешёнными test actors и проверяют реальные backend права; A/B — разные actors одной роли, а не пятая role view.
 - Каждый сценарий следует одному `Case ID`; смена роли, Result, remark, доработка и завершение не создают новый Case. Проверять серверные состояние, историю, текущие iteration/assignment/result и `allowed_actions`, а не только текст экрана. После success и `409` — authoritative refetch; нет optimistic workflow, stale auto-retry или auto-retarget.
 - Happy path: Resident → UK → Contractor (явное принятие) → Result → Resident confirmation → UK completion. Confirmation сама не закрывает Case.
@@ -43,14 +45,14 @@
 
 ## 9. Acceptance criteria
 
-1. Launcher принимает четыре указанных input и отвергает неверный профиль; одинаковые E2E файлы проходят с injected local app и предоставленным позднее TG-030 compose profile без адресных правок.
+1. Launcher принимает четыре указанных input и отвергает любой профиль кроме точного `TEST_DEMO_E2E_V1`; signing key поступает отдельно как secret-only input. Одинаковые E2E файлы проходят с injected local app и предоставленным позднее TG-030 compose profile без адресных правок.
 2. Девять отдельных сценариев: happy path, remark/rework, rework A→B, initial rejection A→B, comments/clarification, four role views, repeat DemoRun, configuration effect, recoverable semantic/stale error. Проверяются `Case ID`, iteration, история, rights и отсутствие ложных workflow фактов.
 3. Mobile и web/desktop projects проходят одинаковые обязательные потоки; accessibility smoke проходит для основных controls/forms; результаты не маркируются как доказательство MAX mobile/web.
 4. TEST auth и artifacts не попадают в production build; screenshots/traces/video сохраняются предпочтительно при failure и без секретов. Diff ограничен разрешённым test scope.
 
 ## 10. Required tests
 
-На будущей implementation branch: validation тесты launcher inputs (обязательные/optional/invalid/TEST-only), девять именованных E2E сценариев из §9, отдельные mobile/web projects, accessibility smoke. Запустить E2E против injected local app; после TG-030 повторить тот же suite через compose-provided inputs без изменения файлов. Проверить fail-only artifacts и отсутствие секретов, `git diff --check <implementation-base>`, `git diff --name-only <implementation-base>`. `NO_SUITE_YET` не считается успешным тестом; фактическая команда runner фиксируется после shared-script wiring.
+На будущей implementation branch: validation тесты launcher inputs (обязательные/optional/invalid/TEST-only, включая `TEST:*` rejection), fresh signed `initData` и реальный auth bootstrap; девять именованных E2E сценариев из §9, отдельные mobile/web projects, accessibility smoke. Запустить E2E против injected local app; после TG-030 повторить тот же suite через compose-provided inputs без изменения файлов. Проверить fail-only artifacts и отсутствие секретов, `git diff --check <implementation-base>`, `git diff --name-only <implementation-base>`. `NO_SUITE_YET` не считается успешным тестом; фактическая команда runner фиксируется после shared-script wiring.
 
 ## 11. Git / integration handoff
 

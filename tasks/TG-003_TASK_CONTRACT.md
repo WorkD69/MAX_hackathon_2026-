@@ -835,3 +835,18 @@ SPEC_OR_ARCHITECTURE_GAPS = 0
 LOCAL_REGRESSION = NONE
 CODING = UNBLOCKED
 ```
+
+## 24. Post-completion delta: TEST-only auth config
+
+Этот узкий последующий контракт не меняет исторический статус/BASE_SHA TG-003, продукт или runtime в данном authoring commit. Для будущей TEST-auth implementation он **заменяет только** прежнее требование `23` ключей в §§8–9, 17, 22–23 на `25`; остальные TG-003 constraints сохраняются. TG-003 остаётся единственным владельцем `apps/api/src/config/**` и startup/redaction правил.
+
+| Новый key | Typed constraint | Secret |
+| --- | --- | --- |
+| `TEST_AUTH_DEMO_PROFILE` | optional; exact enum с единственным значением `TEST_DEMO_E2E_V1`, без `TEST:*`, case folding, trim или alias | no |
+| `TEST_MAX_INIT_DATA_SIGNING_KEY` | optional; `^[0-9a-f]{64}$`, decoded 32 bytes, сгенерированные вне репозитория | yes |
+
+Оба поля появляются в readonly `RuntimeConfig` и `ENV_KEYS` (итоговый count 25, уникальные имена). Они обязательны друг для друга и допускаются **только** при `APP_ENV=test`, `MAX_ADAPTER_MODE=fake`, `DEMO_MODE=true`. Это разрешённый TEST E2E профиль; сама тройка без TEST-полей остаётся обычной fake-test конфигурацией без TEST auth. В fake mode по-прежнему запрещены `MAX_BOT_TOKEN` и `MAX_WEBHOOK_SECRET`, в том числе в E2E профиле. Для любого иного `APP_ENV`/adapter/demo сочетания наличие даже одного TEST-поля вызывает startup failure до listen. Неизвестные env keys по прежнему игнорируются, но эти два ключа обязаны входить в typed inventory, чтобы запрет нельзя было обойти игнорированием.
+
+`TEST_MAX_INIT_DATA_SIGNING_KEY` не имеет default, не выводится в rejected-value errors, logger, `/api/v1/system/info`, health, API responses или frontend bundle. Вложенный sanitizer §10.2 дополняется exact normalized alias `testmaxinitdatasigningkey`; прямой Pino redact/safe-event boundary и exception serialization не раскрывают значение. Raw signed `initData` и session token сохраняют прежнюю redaction. TEST key предоставляется backend и test-only launcher секретным каналом; `.env.example` содержит только имя и безопасное описание без значения. Синтетический пример ключа не становится рабочим fixture secret.
+
+Startup/config tests: обе строки присутствуют и корректны — success только для точной тройки; missing one, неверный enum, `TEST:*`, uppercase/non-hex/не-64 key, TEST fields в development/production/live/`DEMO_MODE=false`, fake mode с любым MAX secret — failure до listen. Отдельные sentinel tests подтверждают отсутствие значения TEST key и raw `initData` в ошибках валидации, nested logs, system info и response. TG-010 потребляет только injected typed config и выбирает signing material внутри существующего validator; TG-019 владеет лишь fake outbound compatibility, не auth.

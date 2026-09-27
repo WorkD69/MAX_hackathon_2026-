@@ -107,7 +107,7 @@ Frontend передаёт **raw signed initData**. `initDataUnsafe` не явл�
 Backend:
 
 1. не логирует raw `init_data`;
-2. валидирует текущим официальным HMAC-SHA256 algorithm MAX с server-only Bot Token;
+2. валидирует текущим официальным HMAC-SHA256 algorithm MAX с ровно одним server-side signing material: Bot Token в обычном/live режиме либо прямыми 32 байтами TEST key только в точной конфигурации §2.1.1;
 3. проверяет freshness `auth_date`;
 4. извлекает validated `user.id` и `chat.id/chat.type`;
 5. обновляет/создаёт `MaxIdentity`, включая usable outbound chat target; `LINKED_CONFIRMED` допустим только вместе с non-null validated `delivery_chat_id/type`;
@@ -150,6 +150,14 @@ Backend:
 - `401 MAX_INIT_DATA_EXPIRED`;
 - `403 APP_USER_NOT_MAPPED` — normal mode;
 - `500 AUTH_BOOTSTRAP_FAILED`.
+
+### 2.1.1. TEST-only signed bootstrap
+
+`TEST_AUTH_DEMO_PROFILE=TEST_DEMO_E2E_V1` и `TEST_MAX_INIT_DATA_SIGNING_KEY` разрешены вместе только при `APP_ENV=test`, `MAX_ADAPTER_MODE=fake`, `DEMO_MODE=true`. Key — 64 lowercase hex символа (32 случайных байта); оба TEST-поля обязательны друг для друга. В fake mode `MAX_BOT_TOKEN` и `MAX_WEBHOOK_SECRET` отсутствуют. Любое TEST-поле вне этой точной комбинации, неверный marker/key или присутствие MAX secrets в fake mode вызывает startup failure до listen. В production/live нет fallback на TEST key и нет попытки проверить подпись двумя ключами.
+
+Test-only launcher принимает ровно `test_auth_demo_profile=TEST_DEMO_E2E_V1` как marker, строит свежие synthetic `user`/`chat` и `auth_date`, подписывает canonical launch params HMAC-SHA256 прямым decoded TEST key и передаёт browser только raw signed `initData`. Никакие значения вида `TEST:*` не являются синонимом профиля. Browser отправляет существующий request §2.1; backend применяет обычные signature/freshness checks, persistence validated identity/delivery context и application session issuance. Marker не передаётся как дополнительное поле auth request или query param и не выбирает actor. Отдельного signing/auth mock endpoint нет; client identity/role остаётся недоверенной.
+
+TEST signing key никогда не попадает в frontend bundle, API response, `/api/v1/system/info`, logs, traces или test artifacts; raw signed `initData` также не логируется. Fake MAX adapter касается только outbound/webhook test compatibility и не владеет auth. Этот TEST path не считается live MAX evidence.
 
 ## 2.2. Application session
 
@@ -2651,6 +2659,7 @@ Automated/API integration tests must prove at least:
 - frontend exposes four role views; backend resolves Contractor A/B actor;
 - webhook wrong secret rejected; expected subscription reconciliation detects/recreates lost subscription;
 - machine-readable `/api/v1/system/info.build_sha` matches deployed build.
+- TG-027: точный TEST profile принимает свежий корректно подписанный synthetic `initData` через реальный `/api/v1/auth/max` и выдаёт session после сохранения validated identity; malformed, изменённая подпись и expired/future `auth_date` отклоняются теми же canonical errors. TEST fields при любой иной комбинации, неверном формате/profile, а также MAX secrets в fake mode дают startup failure; production/live не принимает TEST-подпись, не делает dual-key retry и не раскрывает TEST key в logs/system info/response.
 
 Live MAX tests additionally prove real notification and native/web download on judging environment.
 
