@@ -1,0 +1,92 @@
+AUDIT_STATUS = DELIVERY BLOCKED; подготовка возможна. После git fetch --prune origin и повторной проверки удалённого main установлено: контракты TG-030–035 существуют в отдельных ветках, но реализация и evidence цепочки отсутствуют на main. Контрактный SHA не считается завершённой реализацией или результатом теста.
+Граф зависимостей: https://github.com/WorkD69/MAX_hackathon_2026-/blob/6b4a3a3aad2c01c4357c432ad00db89e708cd462/tasks/TASK_GRAPH.md
+
+CURRENT_MAIN_SHA = 6b4a3a3aad2c01c4357c432ad00db89e708cd462
+
+ОСТАВШИЕСЯ ТРЕБОВАНИЯ ПО ТИПАМ
+
+CODE_DEPENDENCY: TG-013 имеет проверенный композиционный кандидат ab58321637f052787e24777b9a28241ecb10b068, но он не интегрирован в main. Нужны завершение и интеграция следующих продуктовых модулей, прежде всего TG-014–018, затем финальная композиция TG-029. После неё нужны реальные suites TG-026/027/028 и артефакты TG-030/031. На main уже есть PostgreSQL и Playwright runners, но обязательных suites и delivery-файлов ещё нет.
+
+CONTRACT_DEPENDENCY: перед исполнением использовать принятые версии контрактов и назначить новый implementation BASE_SHA; старые CONTRACT_BASE_SHA для этого не годятся. TG-031 дополнительно требует independent review по собственному контракту; подтверждения его PASS в удалённых refs нет. Для YAML/OpenAPI проверки нужно закрепить работающее tooling; прямой зависимости валидатора в корневом manifest сейчас не видно, а изменение shared manifest требует Integration Agent.
+
+INTEGRATION_DEPENDENCY: отдельные стабильные checkpoints main, результаты проверок и SHA предшественников, затем единый immutable candidate с прослеживаемыми Git SHA, image digest и build_sha. Требуется заранее согласовать release cut: коммиты с TG-033 evidence и TG-034 документацией меняют SHA репозитория после первичного деплоя; TG-035 требует совпадения frozen SHA с build_sha. Новый candidate влечёт повтор затронутых deployment/live gates.
+
+HUMAN/INFRA_DEPENDENCY: для TG-032 понадобятся hosting, публичный домен и доверенный TLS, приватная постоянная PostgreSQL, secret manager, действующий Bot/Mini App и доступ к настройке webhook. Позже понадобятся реальные web/mobile MAX клиенты и проверочный аккаунт, независимый читатель runbook и отдельное человеческое решение о подаче.
+
+LIVE_EVIDENCE_DEPENDENCY: публичный deployment TG-032 и фактические проверки в MAX TG-033 на одном candidate; затем точные ссылки в TG-034 и полный повторный gate TG-035. Fake adapter и браузерный mobile viewport живое evidence не заменяют.
+
+TG030
+CAN_START_WHEN = TG-029 завершён, интегрирован и выдан новый стабильный implementation BASE_SHA.
+DIRECT_BLOCKERS = нет финальной TG-029 композиции; Docker/compose ещё не реализованы.
+CAN_PREPARE_NOW = сверить ENV_KEYS, интерфейсы migration/seed/worker и уже имеющийся нейтральный Playwright launcher; спланировать parity и compose checks.
+MUST_WAIT_FOR = deployable app registry и startup entrypoints TG-029; согласование любых shared manifest изменений.
+REQUIRED_MAIN_SHA_INPUT = новый checkpoint после TG-029, не текущий 6b4a3a3….
+REQUIRED_EXTERNAL_INPUT = Docker/Compose и среда измерения сборки; реальные MAX credentials для локального synthetic profile не нужны.
+REQUIRED_EVIDENCE = сборка ≤5 минут, clean/repeat startup, migrations и idempotent seed, readiness, работающий outbox, сохранность данных после down/up, fail-closed migration, env parity, неизменённый E2E launcher, secret scan.
+CAN_RUN_IN_PARALLEL_WITH = TG-027 и TG-031; подготовка интерфейса TG-028 может идти одновременно.
+Контракт: https://github.com/WorkD69/MAX_hackathon_2026-/blob/9f616d241e682ae4238103203e814d1e17b10072/tasks/TG-030_TASK_CONTRACT.md
+
+TG031
+CAN_START_WHEN = TG-002, TG-017, TG-018, TG-019 и TG-029 завершены на стабильном main; известен один фактический production route registry.
+DIRECT_BLOCKERS = TG-017/018/029 ещё не представлены завершённой композицией на main; review PASS контракта не подтверждён remote refs; tooling проверки нужно закрепить.
+CAN_PREPARE_NOW = составить черновой список схем, ролей и проверок DATA-API; выбрать точный parser/linter и оформить dependency request при необходимости.
+MUST_WAIT_FOR = финальные маршруты TG-029 и TG-002 exports, review/решение по tooling; нельзя утверждать OpenAPI по предполагаемым endpoints.
+REQUIRED_MAIN_SHA_INPUT = checkpoint, содержащий все пять прямых зависимостей.
+REQUIRED_EXTERNAL_INPUT = нет для описания API; добавление пакета или shared script — через Integration Agent.
+REQUIRED_EVIDENCE = валидный OpenAPI 3.1, проверка примеров против TG-002, пустой diff «зарегистрировано ↔ документировано», полная role/error матрица DATA-API и secret scan.
+CAN_RUN_IN_PARALLEL_WITH = TG-027 и TG-030.
+Контракт: https://github.com/WorkD69/MAX_hackathon_2026-/blob/cc4f13b18ff8218aade5cb54cd3d7ce412b5158f/tasks/TG-031_TASK_CONTRACT.md
+
+TG032
+CAN_START_WHEN = TG-026, TG-027, TG-028, TG-030 и TG-031 завершены, проверены и интегрированы; вырезан fixed image candidate.
+DIRECT_BLOCKERS = отсутствуют обязательные suites TG-026/027/028 и delivery outputs TG-030/031; инфраструктура и secrets ещё не подтверждены.
+CAN_PREPARE_NOW = выбрать hosting и составить безсекретный план DNS/TLS, private DB, runtime secrets, MAX webhook и проверки digest/SHA.
+MUST_WAIT_FOR = PASS всех пяти предшественников, stable main, immutable image digest; затем реальные доступы к инфраструктуре.
+REQUIRED_MAIN_SHA_INPUT = candidate Git/build SHA плюс checkpoint с пятью завершёнными зависимостями.
+REQUIRED_EXTERNAL_INPUT = публичный always-on hosting, домен/TLS, persistent private DB, secret manager, Bot Token, webhook и session secrets, доступ к настройке Mini App/subscription.
+REQUIRED_EVIDENCE = HTTPS/443 и полная доверенная цепочка, private DB и persistence, automatic recovery, real adapter и webhook reconciliation, outbound TLS к MAX, readiness negatives, отсутствие секретов, build_sha == candidate SHA и запущенный image digest.
+CAN_RUN_IN_PARALLEL_WITH = NONE.
+Контракт: https://github.com/WorkD69/MAX_hackathon_2026-/blob/0f72052767f334d192e424e7eb82b88ff0c65b74/tasks/TG-032_TASK_CONTRACT.md
+
+TG033
+CAN_START_WHEN = TG-032 принят; deployed build_sha повторно совпал с его candidate SHA.
+DIRECT_BLOCKERS = публичного принятого deployment пока нет.
+CAN_PREPARE_NOW = чеклист V-01…V-04 и §27.2, формат обезличенного evidence, сценарии retry/redrive и cross-client continuity.
+MUST_WAIT_FOR = работающий Bot → Mini App на fixed deployment и доступ к реальным MAX web/mobile клиентам.
+REQUIRED_MAIN_SHA_INPUT = SHA именно deployed candidate и checkpoint TG-032; новый build означает новый evidence set.
+REQUIRED_EXTERNAL_INPUT = действующий judging/test MAX account, Bot/dialog и validated delivery target, web и mobile MAX, возможность безопасно проверить subscription recovery и notification failures.
+REQUIRED_EVIDENCE = реальный initData и отрицательные проверки, webhook, proactive сообщение после Result, полный путь отдельно в web и mobile MAX, тот же DemoRun/Case после fresh bootstrap, native/web downloads и picker, retry/redrive без второго Result/intent, датированные артефакты с client/account/SHA.
+CAN_RUN_IN_PARALLEL_WITH = NONE.
+Контракт: https://github.com/WorkD69/MAX_hackathon_2026-/blob/949a9e7b18a72a1a70eba9cb66d4951427b62191/tasks/TG-033_TASK_CONTRACT.md
+
+TG034
+CAN_START_WHEN = TG-033 принят с полным live evidence того же deployed candidate.
+DIRECT_BLOCKERS = нет TG-032/033 фактов, URL, скриншотов и подтверждённого маршрута MAX.
+CAN_PREPARE_NOW = структуру README/runbook и презентации, список требуемых полей первого слайда, шаблон матрицы «утверждение → evidence».
+MUST_WAIT_FOR = точные deployment/live значения; финализировать README, PDF и проверочный маршрут до этого нельзя.
+REQUIRED_MAIN_SHA_INPUT = новый checkpoint после TG-033 с привязкой к deployed candidate SHA.
+REQUIRED_EXTERNAL_INPUT = независимый человек для fresh-reader rehearsal; актуальный адрес репозитория и доступ эксперта к MAX.
+REQUIRED_EVIDENCE = реально исполненный runbook с чистого checkout, открывающийся PDF и полный технический первый слайд, точные ссылки/команды, раскрытие синтетических данных и ограничений, secret/link scan.
+CAN_RUN_IN_PARALLEL_WITH = NONE для исполнения; черновая структура допустима сейчас.
+Контракт: https://github.com/WorkD69/MAX_hackathon_2026-/blob/36bf1a33e9cf4c0bc1cb2679e5aa3acb96b19000/tasks/TG-034_TASK_CONTRACT.md
+
+TG035
+CAN_START_WHEN = TG-034 принят и release candidate/идентификаторы приведены к одному проверяемому состоянию.
+DIRECT_BLOCKERS = вся upstream delivery цепочка; не согласован окончательный SHA после документации и evidence.
+CAN_PREPARE_NOW = manifest финальной матрицы, список 23 проверок, правила checksums, inventory зависимостей и лицензий, план secret/security scan.
+MUST_WAIT_FOR = полный TG-034 package, fixed source/image/deployment identity и повтор всех затронутых gates после любого нового SHA.
+REQUIRED_MAIN_SHA_INPUT = окончательный frozen source SHA; публичный build_sha должен точно ему соответствовать по контракту.
+REQUIRED_EXTERNAL_INPUT = доступность MAX/API в окно проверки; утверждённые инструменты scans; после технического PASS — отдельное человеческое решение о подаче.
+REQUIRED_EVIDENCE = все 23 группы регрессии с фактическими командами и результатами, чистое воспроизведение, live MAX evidence, build ≤5 минут, security/dependency/license review, SHA/digest/checksums, сверенные README/PDF/URL и freeze timestamp. NOT_RUN не равен PASS.
+CAN_RUN_IN_PARALLEL_WITH = NONE.
+Контракт: https://github.com/WorkD69/MAX_hackathon_2026-/blob/33da464b9430807a80eaaa089ec3c66b3b6c2826/tasks/TG-035_TASK_CONTRACT.md
+
+EARLIEST_DELIVERY_PARALLELISM = После завершения и интеграции TG-029 одновременно исполняются TG-027 ∥ TG-030 ∥ TG-031. Раньше TG-026 может идти параллельно TG-029, когда готовы его собственные TG-016/018 и остальные зависимости. TG-028 следует после TG-027; TG-032→033→034→035 последовательны.
+
+HUMAN_ACTIONS_NOT_NEEDED_YET = Секреты, доступ к hosting/MAX и решение о подаче сейчас не нужны для контрактной и технической подготовки TG-030/031 и upstream кода. Не требуется преждевременный live-прогон.
+
+HUMAN_ACTIONS_NEEDED_BEFORE_DEPLOY = Предоставить или подтвердить hosting, DNS/TLS, persistent private DB, secret manager, MAX Bot/Mini App и полномочия настройки webhook; назначить ответственного за стабильный candidate cut. Проверочный аккаунт и реальные web/mobile MAX клиенты понадобятся непосредственно для TG-033.
+
+CRITICAL_PATH = TG-013 candidate → TG-014–018 и прочие предшественники → TG-029 → {TG-027 → TG-028; TG-030; TG-031; независимо TG-026} → TG-032 → TG-033 → TG-034 → TG-035 → отдельное человеческое решение о подаче. Главный ближайший блокер delivery — отсутствие интегрированной TG-029 композиции, а не отсутствие написанных контрактов.
+
+REPO_MUTATED = NO моими действиями при исходном аудите. Я выполнял только чтение и git fetch. В общей рабочей папке параллельно другая работа переключила локальную ветку и создала незакоммиченные изменения; они не включены в аудит и не считаются main evidence.
