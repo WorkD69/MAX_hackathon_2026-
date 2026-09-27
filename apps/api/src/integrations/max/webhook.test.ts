@@ -27,6 +27,7 @@ function adapter(): MaxAdapter & { sendMessage: ReturnType<typeof vi.fn> } {
     sendMessage: vi.fn(async () => ({ providerMessageId: 'mid.1' })),
     listSubscriptions: vi.fn(async () => []),
     createSubscription: vi.fn(async () => {}),
+    deleteSubscription: vi.fn(async () => {}),
     parseUpdate: parseMaxUpdate,
   };
 }

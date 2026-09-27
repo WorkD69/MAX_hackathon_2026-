@@ -14,7 +14,7 @@ export class AuthContextError extends Error {
 
 const outboundReady = (identity: MaxIdentityRow): boolean =>
   identity.link_status === 'LINKED_CONFIRMED' && identity.delivery_chat_id !== null &&
-  (identity.delivery_chat_type === 'DIALOG' || identity.delivery_chat_type === 'CHAT' || identity.delivery_chat_type === 'CHANNEL');
+  identity.delivery_chat_type === 'DIALOG';
 
 const activeNormalActor = (rows: NormalActorRow[]): NormalActorRow | null => {
   if (rows.length !== 1) return null;
@@ -81,7 +81,7 @@ export class AuthService {
     const now = this.nowSeconds();
     const launch = validateMaxInitData(rawInitData, this.config, now);
     const identity = await this.repository.upsertValidated(launch, new Date(now * 1000));
-    if (!outboundReady(identity)) throw new AuthContextError('AUTH_BOOTSTRAP_FAILED');
+    const ready = outboundReady(identity);
 
     let context: NewSessionContext;
     let session: SessionReadResponseOutput;
@@ -93,7 +93,7 @@ export class AuthService {
         demo_run_id: run?.demo_run_id ?? null, real_display_name: launch.displayName,
       };
       session = {
-        real_max_identity: { max_identity_id: identity.max_identity_id, display_name: launch.displayName, outbound_max_ready: true },
+        real_max_identity: { max_identity_id: identity.max_identity_id, display_name: launch.displayName, outbound_max_ready: ready },
         demo_mode: true, demo_run_id: run?.demo_run_id ?? null, primary_case_id: run?.primary_case_id ?? null,
         effective_actor: { app_user_id: null, role: null, display_name: '' },
       };
@@ -107,7 +107,7 @@ export class AuthService {
         demo_run_id: null, real_display_name: launch.displayName,
       };
       session = {
-        real_max_identity: { max_identity_id: identity.max_identity_id, display_name: launch.displayName, outbound_max_ready: true },
+        real_max_identity: { max_identity_id: identity.max_identity_id, display_name: launch.displayName, outbound_max_ready: ready },
         demo_mode: false, demo_run_id: null, primary_case_id: null,
         effective_actor: { app_user_id: actor.app_user_id, role: actor.role, display_name: actor.display_name },
       };

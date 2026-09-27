@@ -13,6 +13,7 @@ export interface FakeSentMessage {
 export class FakeMaxAdapter implements MaxAdapter {
   readonly sent: FakeSentMessage[] = [];
   readonly createdSubscriptions: ExpectedMaxSubscription[] = [];
+  readonly deletedSubscriptionUrls: string[] = [];
   subscriptions: MaxSubscription[] = [];
 
   constructor(config: RuntimeConfig) {
@@ -32,7 +33,15 @@ export class FakeMaxAdapter implements MaxAdapter {
 
   async createSubscription(expected: ExpectedMaxSubscription): Promise<void> {
     this.createdSubscriptions.push(expected);
-    this.subscriptions = [...this.subscriptions, { url: expected.url, updateTypes: expected.updateTypes }];
+    this.subscriptions = [
+      ...this.subscriptions.filter(subscription => subscription.url !== expected.url),
+      { url: expected.url, updateTypes: expected.updateTypes },
+    ];
+  }
+
+  async deleteSubscription(url: string): Promise<void> {
+    this.deletedSubscriptionUrls.push(url);
+    this.subscriptions = this.subscriptions.filter(subscription => subscription.url !== url);
   }
 
   parseUpdate(value: unknown): ParsedMaxUpdate {

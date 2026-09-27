@@ -22,6 +22,23 @@ function isExact(subscription: MaxSubscription, expected: ExpectedMaxSubscriptio
     canonicalTypes(subscription.updateTypes) === canonicalTypes(expected.updateTypes);
 }
 
+function isOwnedStaleWebhook(url: string, desiredUrl: string): boolean {
+  if (url === desiredUrl) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' &&
+      parsed.port === '' &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      parsed.search === '' &&
+      parsed.hash === '' &&
+      parsed.pathname === '/integrations/max/webhook' &&
+      parsed.toString() === url;
+  } catch {
+    return false;
+  }
+}
+
 export function expectedMaxSubscription(config: RuntimeConfig): ExpectedMaxSubscription {
   if (!config.MAX_WEBHOOK_SECRET) throw new Error('MAX_WEBHOOK_SECRET_REQUIRED');
   const url = new URL('/integrations/max/webhook', config.PUBLIC_API_BASE_URL);
@@ -36,6 +53,7 @@ export function expectedMaxSubscription(config: RuntimeConfig): ExpectedMaxSubsc
 export class MaxSubscriptionReconciler {
   private inFlight: Promise<'unchanged' | 'created'> | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
+  private refreshedSecret = false;
 
   constructor(
     private readonly adapter: MaxAdapter,
@@ -65,17 +83,31 @@ export class MaxSubscriptionReconciler {
 
   private async reconcileOnce(): Promise<'unchanged' | 'created'> {
     const subscriptions = await this.adapter.listSubscriptions();
-    if (subscriptions.some(subscription => isExact(subscription, this.expected))) return 'unchanged';
-    await this.adapter.createSubscription(this.expected);
-    this.diagnostics.info('max_subscription_reconciled', { webhook_url: this.expected.url });
-    return 'created';
+    const shouldRefresh = !this.refreshedSecret ||
+      !subscriptions.some(subscription => isExact(subscription, this.expected));
+    if (shouldRefresh) {
+      // GET does not expose the secret. POST refreshes it on each process start.
+      await this.adapter.createSubscription(this.expected);
+      this.refreshedSecret = true;
+    }
+
+    // A prior successful POST is required before removing the old endpoint.
+    const staleUrls = new Set(subscriptions
+      .map(subscription => subscription.url)
+      .filter(url => isOwnedStaleWebhook(url, this.expected.url)));
+    for (const url of staleUrls) await this.adapter.deleteSubscription(url);
+
+    if (shouldRefresh || staleUrls.size > 0) {
+      this.diagnostics.info('max_subscription_reconciled', { webhook_url: this.expected.url });
+    }
+    return shouldRefresh ? 'created' : 'unchanged';
   }
 
   private async safeReconcile(): Promise<void> {
     try { await this.reconcile(); }
-    catch (error) {
+    catch {
       this.diagnostics.error('max_subscription_reconcile_failed', {
-        error_code: error instanceof MaxAdapterError ? error.safeCode : 'MAX_SUBSCRIPTION_RECONCILE_FAILED',
+        error_code: 'MAX_SUBSCRIPTION_RECONCILE_FAILED',
       });
     }
   }

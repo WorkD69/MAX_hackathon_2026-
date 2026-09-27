@@ -37,6 +37,7 @@ function safeFailure(error: unknown): { disposition: 'transient' | 'permanent'; 
 export class DurableNotificationWorker {
   private timer: ReturnType<typeof setInterval> | undefined;
   private cycle: Promise<void> | undefined;
+  private stopping: Promise<void> | undefined;
 
   constructor(
     private readonly store: NotificationStore,
@@ -63,6 +64,20 @@ export class DurableNotificationWorker {
       maxAttempts: this.config.NOTIFICATION_MAX_ATTEMPTS,
     });
     if (!intent) return { kind: 'idle' };
+
+    if (intent.delivery_chat_type !== 'DIALOG') {
+      const failure = {
+        code: 'NON_PERSONAL_DELIVERY_TARGET',
+        message: 'Notification target is not a personal DIALOG',
+      };
+      const finalized = await this.store.markPermanentFailure(intent.notification_intent_id, claimToken, failure);
+      if (!finalized) return { kind: 'claim_lost', intentId: intent.notification_intent_id };
+      this.diagnostics.error('notification_permanent_failure', {
+        notification_intent_id: intent.notification_intent_id,
+        error_code: failure.code,
+      });
+      return { kind: 'permanent_failure', intentId: intent.notification_intent_id, errorCode: failure.code };
+    }
 
     let sent: Awaited<ReturnType<MaxAdapter['sendMessage']>>;
     try {
@@ -113,29 +128,41 @@ export class DurableNotificationWorker {
     return { kind: 'delivered', intentId: intent.notification_intent_id };
   }
 
-  async runCycle(): Promise<void> {
-    await Promise.all(Array.from(
+  runCycle(): Promise<void> {
+    if (this.stopping) return this.stopping;
+    if (this.cycle) return this.cycle;
+    const cycle = Promise.allSettled(Array.from(
       { length: this.config.NOTIFICATION_WORKER_CONCURRENCY },
       () => this.processOne(),
-    ));
+    )).then(results => {
+      const failed = results.find(result => result.status === 'rejected');
+      if (failed?.status === 'rejected') throw failed.reason;
+    });
+    this.cycle = cycle;
+    void cycle.finally(() => {
+      if (this.cycle === cycle) this.cycle = undefined;
+    }).catch(() => {});
+    return cycle;
   }
 
   start(): void {
-    if (this.timer) return;
+    if (this.timer || this.stopping) return;
     const trigger = (): void => {
-      if (this.cycle) return;
-      this.cycle = this.runCycle()
-        .catch(() => { this.diagnostics.error('notification_worker_cycle_failed', { error_code: 'WORKER_CYCLE_FAILED' }); })
-        .finally(() => { this.cycle = undefined; });
+      if (this.cycle || this.stopping) return;
+      void this.runCycle().catch(() => {
+        this.diagnostics.error('notification_worker_cycle_failed', { error_code: 'WORKER_CYCLE_FAILED' });
+      });
     };
     trigger();
     this.timer = setInterval(trigger, this.config.NOTIFICATION_WORKER_POLL_INTERVAL_MS);
     this.timer.unref?.();
   }
 
-  stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
+  stop(): Promise<void> {
+    if (this.stopping) return this.stopping;
+    if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    this.stopping = this.cycle?.then(() => {}, () => {}) ?? Promise.resolve();
+    return this.stopping;
   }
 }

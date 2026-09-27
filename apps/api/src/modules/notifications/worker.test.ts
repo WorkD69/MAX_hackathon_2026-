@@ -1,7 +1,10 @@
 import type { NotificationIntentRecord } from '@max-smart-city/db';
+import fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 import type { RuntimeConfig } from '../../config/types.js';
+import { createMaxWebhookPlugin } from '../../integrations/max/webhook.js';
 import { MaxAdapterError } from '../max-adapter/errors.js';
+import { RealMaxAdapter } from '../max-adapter/real.js';
 import type { MaxAdapter } from '../max-adapter/types.js';
 import { parseMaxUpdate } from '../max-adapter/update.js';
 import { redriveNotificationIntent } from './redrive-command.js';
@@ -110,8 +113,15 @@ function adapter(send: MaxAdapter['sendMessage']): MaxAdapter {
     sendMessage: send,
     listSubscriptions: vi.fn(async () => []),
     createSubscription: vi.fn(async () => {}),
+    deleteSubscription: vi.fn(async () => {}),
     parseUpdate: parseMaxUpdate,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
 }
 
 describe('DurableNotificationWorker', () => {
@@ -130,6 +140,129 @@ describe('DurableNotificationWorker', () => {
       openAppAction: { type: 'open_app', text: 'Открыть приложение' },
     });
     expect(store.intent).toMatchObject({ status: 'DELIVERED', attempt_count: 1, provider_message_id: 'mid.1' });
+  });
+
+  it.each(['CHAT', 'CHANNEL', 'private'])('rejects %s as a personal delivery target before network', async deliveryChatType => {
+    const store = new MemoryStore();
+    store.intent = record({ delivery_chat_type: deliveryChatType });
+    const send = vi.fn(async () => ({ providerMessageId: 'mid.1' }));
+    const worker = new DurableNotificationWorker(store, adapter(send), config(), undefined, () => now, () => claimToken);
+    await expect(worker.processOne()).resolves.toEqual({
+      kind: 'permanent_failure', intentId, errorCode: 'NON_PERSONAL_DELIVERY_TARGET',
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(store.intent).toMatchObject({ status: 'PERMANENT_FAILURE', last_error_code: 'NON_PERSONAL_DELIVERY_TARGET' });
+  });
+
+  it('awaits the active send and finalization before stop resolves, and stop is idempotent', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore();
+      const sendResult = deferred<{ providerMessageId: string }>();
+      const send = vi.fn(() => sendResult.promise);
+      const worker = new DurableNotificationWorker(store, adapter(send), config({ NOTIFICATION_WORKER_POLL_INTERVAL_MS: 10 }));
+      worker.start();
+      await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+      const stop = worker.stop();
+      expect(worker.stop()).toBe(stop);
+      let stopped = false;
+      void stop.then(() => { stopped = true; });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(stopped).toBe(false);
+      expect(send).toHaveBeenCalledTimes(1);
+      sendResult.resolve({ providerMessageId: 'mid.1' });
+      await stop;
+      expect(store.intent?.status).toBe('DELIVERED');
+      expect(stopped).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('waits for every operation after one cycle operation fails', async () => {
+    const store = new MemoryStore();
+    const second = deferred<Awaited<ReturnType<DurableNotificationWorker['processOne']>>>();
+    const error = vi.fn();
+    const worker = new DurableNotificationWorker(store, adapter(async () => ({ providerMessageId: 'mid.1' })),
+      config(), { info: vi.fn(), error });
+    vi.spyOn(worker, 'processOne')
+      .mockRejectedValueOnce(new Error('DATABASE_UNAVAILABLE'))
+      .mockImplementationOnce(() => second.promise);
+    worker.start();
+    const stop = worker.stop();
+    let stopped = false;
+    void stop.then(() => { stopped = true; });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    second.resolve({ kind: 'idle' });
+    await stop;
+    expect(error).toHaveBeenCalledWith('notification_worker_cycle_failed', { error_code: 'WORKER_CYCLE_FAILED' });
+  });
+
+  it('does not overlap cycles or restart after stopping begins', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore();
+      const first = deferred<Awaited<ReturnType<DurableNotificationWorker['processOne']>>>();
+      const worker = new DurableNotificationWorker(store, adapter(async () => ({ providerMessageId: 'mid.1' })),
+        config({ NOTIFICATION_WORKER_POLL_INTERVAL_MS: 10, NOTIFICATION_WORKER_CONCURRENCY: 1 }));
+      const work = vi.spyOn(worker, 'processOne').mockImplementationOnce(() => first.promise)
+        .mockResolvedValue({ kind: 'idle' });
+      worker.start();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(work).toHaveBeenCalledTimes(1);
+      const stop = worker.stop();
+      worker.start();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(work).toHaveBeenCalledTimes(1);
+      first.resolve({ kind: 'idle' });
+      await stop;
+      worker.start();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(work).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('shares one per-chat limit between notification worker and bot_started greeting', async () => {
+    const liveConfig = config({ MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: 'test-token',
+      MAX_WEBHOOK_SECRET: 'test-webhook-secret' });
+    let time = 0;
+    const sleeping: Array<{ ms: number; wake: () => void }> = [];
+    const sentAt: number[] = [];
+    const fetcher = vi.fn(async () => {
+      sentAt.push(time);
+      return new Response(JSON.stringify({ message: { body: { mid: `mid.${sentAt.length}` } } }), { status: 200 });
+    });
+    const max = new RealMaxAdapter(liveConfig, fetcher, {
+      now: () => time,
+      sleep: ms => new Promise<void>(resolve => { sleeping.push({ ms, wake: resolve }); }),
+    });
+    const scheduled: Array<() => void> = [];
+    const app = fastify({ logger: false });
+    await app.register(createMaxWebhookPlugin({ config: liveConfig, adapter: max,
+      schedule: task => { scheduled.push(task); } }));
+    try {
+      const store = new MemoryStore();
+      const worker = new DurableNotificationWorker(store, max, liveConfig);
+      const notification = worker.processOne();
+      await vi.waitFor(() => expect(sentAt).toHaveLength(1));
+      const webhook = await app.inject({ method: 'POST', url: '/integrations/max/webhook',
+        headers: { 'x-max-bot-api-secret': liveConfig.MAX_WEBHOOK_SECRET! },
+        payload: { update_type: 'bot_started', timestamp: 1,
+          chat_id: -70801090403050, user: { user_id: 7 } },
+      });
+      expect(webhook.statusCode).toBe(200);
+      expect(scheduled).toHaveLength(1);
+      scheduled[0]!();
+      await vi.waitFor(() => expect(sentAt).toHaveLength(2));
+      const third = max.sendMessage('-70801090403050', { text: 'third' });
+      await vi.waitFor(() => expect(sleeping).toHaveLength(1));
+      expect(sentAt).toEqual([0, 0]);
+      expect(sleeping[0]!.ms).toBe(1000);
+      time = 1000;
+      sleeping[0]!.wake();
+      await Promise.all([notification, third]);
+      expect(sentAt).toEqual([0, 0, 1000]);
+    } finally { await app.close(); }
   });
 
   it('allows only one of two concurrent workers to claim the same intent', async () => {

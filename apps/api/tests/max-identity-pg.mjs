@@ -26,6 +26,15 @@ try {
     miniAppUserId: '9007199254740993', chatId: '9007199254740993123',
     chatType: 'DIALOG', displayName: 'Max User', authDate: 1771409719,
   };
+  for (const chatType of ['CHAT', 'CHANNEL']) {
+    const groupLaunch = { ...launch, miniAppUserId: `${launch.miniAppUserId}${chatType}`, chatId: '-500', chatType };
+    const group = await repository.upsertValidated(groupLaunch, new Date());
+    assert.equal(group.delivery_chat_id, null); assertions++;
+    assert.equal(group.delivery_chat_type, null); assertions++;
+    assert.equal(group.link_status, 'UNLINKED'); assertions++;
+    const fromDb = await pool.query('SELECT bot_user_id FROM max_identity WHERE max_identity_id = $1', [group.max_identity_id]);
+    assert.equal(fromDb.rows[0].bot_user_id, null); assertions++;
+  }
   const results = await Promise.all(Array.from({ length: 24 }, () => repository.upsertValidated(launch, new Date())));
   assert.equal(new Set(results.map(row => row.max_identity_id)).size, 1); assertions++;
   const count = await pool.query('SELECT count(*)::int AS n FROM max_identity WHERE mini_app_user_id = $1', [launch.miniAppUserId]);
@@ -33,8 +42,11 @@ try {
   await pool.query('UPDATE max_identity SET app_user_id = $1 WHERE mini_app_user_id = $2', [userId, launch.miniAppUserId]);
   const updated = await repository.upsertValidated({ ...launch, chatId: '12345', chatType: 'CHAT' }, new Date());
   assert.equal(updated.app_user_id, userId); assertions++;
-  assert.equal(updated.delivery_chat_id, '12345'); assertions++;
-  assert.equal(updated.delivery_chat_type, 'CHAT'); assertions++;
+  assert.equal(updated.delivery_chat_id, launch.chatId); assertions++;
+  assert.equal(updated.delivery_chat_type, 'DIALOG'); assertions++;
+  const channel = await repository.upsertValidated({ ...launch, chatId: '-999', chatType: 'CHANNEL' }, new Date());
+  assert.equal(channel.delivery_chat_id, launch.chatId); assertions++;
+  assert.equal(channel.delivery_chat_type, 'DIALOG'); assertions++;
   assert.equal(updated.mini_app_user_id, '9007199254740993'); assertions++;
   const stored = await pool.query('SELECT * FROM max_identity WHERE max_identity_id = $1', [updated.max_identity_id]);
   assert.equal(stored.rows[0].bot_user_id, null); assertions++;
