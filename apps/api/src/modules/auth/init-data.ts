@@ -43,9 +43,15 @@ export function canonicalizeMaxInitData(raw: string): {
 }
 
 export function validateMaxInitData(raw: string, config: RuntimeConfig, nowSeconds: number): ValidatedMaxLaunch {
-  if (!config.MAX_BOT_TOKEN) return format();
   const { launchParams, suppliedHash, parameters } = canonicalizeMaxInitData(raw);
-  const secretKey = createHmac('sha256', 'WebAppData').update(config.MAX_BOT_TOKEN, 'utf8').digest();
+  const testProfile = config.APP_ENV === 'test' && config.MAX_ADAPTER_MODE === 'fake' &&
+    config.DEMO_MODE && config.TEST_AUTH_DEMO_PROFILE === 'TEST_DEMO_E2E_V1' &&
+    config.TEST_MAX_INIT_DATA_SIGNING_KEY !== undefined;
+  const secretKey = testProfile
+    ? Buffer.from(config.TEST_MAX_INIT_DATA_SIGNING_KEY!, 'hex')
+    : config.MAX_ADAPTER_MODE === 'live' && config.MAX_BOT_TOKEN
+      ? createHmac('sha256', 'WebAppData').update(config.MAX_BOT_TOKEN, 'utf8').digest()
+      : format();
   const expected = createHmac('sha256', secretKey).update(launchParams, 'utf8').digest();
   const supplied = Buffer.from(suppliedHash, 'hex');
   if (!timingSafeEqual(expected, supplied)) throw new InitDataError('MAX_INIT_DATA_INVALID_SIGNATURE');

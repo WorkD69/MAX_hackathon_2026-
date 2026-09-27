@@ -1,7 +1,7 @@
 const sensitiveKeys = new Set([
   'authorization', 'cookie', 'xmaxbotapisecret', 'initdata', 'sessiontoken',
   'token', 'maxbottoken', 'maxwebhooksecret', 'appsessionsecret',
-  'databaseurl', 'password', 'filebytes', 'bytes',
+  'databaseurl', 'password', 'filebytes', 'bytes', 'testmaxinitdatasigningkey',
 ]);
 
 export function canonicalizeLogKey(key: string): string {

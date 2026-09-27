@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import type { DestinationStream } from 'pino';
 import {
   AuthMaxRequestSchema, AuthMaxSuccessSchema, ErrorResponseSchema, SessionReadResponseSchema,
@@ -7,7 +7,9 @@ import fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../../config/load-config.js';
 import { createRuntimeLogger } from '../../logging/logger.js';
-import { canonicalizeMaxInitData } from './init-data.js';
+import { registerHealthRoutes } from '../health/plugin.js';
+import { canonicalizeMaxInitData, validateMaxInitData } from './init-data.js';
+import { signSyntheticMaxInitData } from './test-signing.fixture.js';
 import type { ValidatedMaxLaunch } from './init-data.js';
 import type {
   DemoActorRow, DemoRunRow, MaxIdentityRepository, MaxIdentityRow, NormalActorRow,
@@ -56,6 +58,86 @@ const config = (demo = false) => loadConfig({
   MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: botToken,
   MAX_WEBHOOK_SECRET: 'w'.repeat(32), PUBLIC_APP_URL: 'http://frontend/',
   PUBLIC_API_BASE_URL: 'http://api/api/v1', BUILD_SHA: 'a'.repeat(40),
+});
+
+describe('TEST-only signed initData through real auth HTTP route', () => {
+  it('persists signed identity, restores DemoRun, issues and reads a real session without disclosing the key', async () => {
+    const signingKey = randomBytes(32);
+    const keyHex = signingKey.toString('hex');
+    const clock = Math.floor(Date.now() / 1000);
+    const runtime = loadConfig({
+      APP_ENV: 'test', DEMO_MODE: 'true', DATABASE_URL: 'postgresql://db/city',
+      APP_SESSION_SECRET: 's'.repeat(32), MAX_ADAPTER_MODE: 'fake',
+      TEST_AUTH_DEMO_PROFILE: 'TEST_DEMO_E2E_V1', TEST_MAX_INIT_DATA_SIGNING_KEY: keyHex,
+      PUBLIC_APP_URL: 'http://frontend/', PUBLIC_API_BASE_URL: 'http://api/api/v1', BUILD_SHA: 'a'.repeat(40),
+    });
+    const repository = new FakeRepository();
+    repository.identity.app_user_id = null;
+    repository.run = { demo_run_id: runId, primary_case_id: caseId };
+    const lines: string[] = [];
+    const pair = createRuntimeLogger(runtime, { write: (line: string) => { lines.push(line); return true; } } as DestinationStream);
+    const app = fastify({ loggerInstance: pair.loggerInstance });
+    registerAuthRoutes(app, runtime, { repository, nowSeconds: () => clock });
+    registerHealthRoutes(app, {
+      readiness: { snapshot: async () => ({ databaseReachable: true, migrationsCurrent: true, applicationInitialized: true }) },
+      events: pair.events, buildSha: runtime.BUILD_SHA,
+    });
+    await app.ready();
+    try {
+      const signed = signSyntheticMaxInitData({
+        profile: 'TEST_DEMO_E2E_V1', signingKey, nowSeconds: clock,
+        userId: '67890', chatId: '12345', chatType: 'DIALOG',
+      });
+      const authenticate = (init_data: string) => app.inject({ method: 'POST', url: '/api/v1/auth/max', payload: { init_data } });
+      const good = await authenticate(signed);
+      expect(good.statusCode).toBe(200);
+      const success = AuthMaxSuccessSchema.parse(good.json());
+      expect(repository.identity).toMatchObject({
+        mini_app_user_id: '67890', delivery_chat_id: '12345', delivery_chat_type: 'DIALOG',
+      });
+      expect(repository.upsertCount).toBe(1);
+      expect(success.session).toMatchObject({ demo_mode: true, demo_run_id: runId, primary_case_id: caseId });
+      const read = await app.inject({ method: 'GET', url: '/api/v1/session', headers: { authorization: `Bearer ${success.session_token}` } });
+      expect(read.statusCode).toBe(200);
+      expect(SessionReadResponseSchema.parse(read.json())).toEqual(success.session);
+      const info = await app.inject({ method: 'GET', url: '/api/v1/system/info' });
+      expect(info.json()).toEqual({ build_sha: runtime.BUILD_SHA });
+
+      for (const [invalid, code] of [
+        [signed.replace('67890', '67891'), 'MAX_INIT_DATA_INVALID_SIGNATURE'],
+        [signed.replace('12345', '12346'), 'MAX_INIT_DATA_INVALID_SIGNATURE'],
+        [signed.replace(/hash=[0-9a-f]{64}/, `hash=${'0'.repeat(64)}`), 'MAX_INIT_DATA_INVALID_SIGNATURE'],
+        [signed.replace('auth_date=', 'auth_date=%Q'), 'INVALID_INIT_DATA_FORMAT'],
+        [signSyntheticMaxInitData({ profile: 'TEST_DEMO_E2E_V1', signingKey, nowSeconds: clock - 301, userId: '67890', chatId: '12345' }), 'MAX_INIT_DATA_EXPIRED'],
+        [signSyntheticMaxInitData({ profile: 'TEST_DEMO_E2E_V1', signingKey, nowSeconds: clock + 31, userId: '67890', chatId: '12345' }), 'MAX_INIT_DATA_EXPIRED'],
+      ] as const) {
+        const rejected = await authenticate(invalid);
+        expect(rejected.statusCode).toBe(code === 'INVALID_INIT_DATA_FORMAT' ? 400 : 401);
+        expect(ErrorResponseSchema.parse(rejected.json()).error.code).toBe(code);
+      }
+      expect(repository.upsertCount).toBe(1);
+      const output = lines.join('') + good.body + read.body + info.body;
+      for (const secret of [keyHex, signingKey.toString('base64'), signed]) expect(output).not.toContain(secret);
+      expect(JSON.stringify(repository.identity)).not.toContain(keyHex);
+
+      const live = config(true);
+      expect(() => validateMaxInitData(signed, live, clock)).toThrowError('MAX_INIT_DATA_INVALID_SIGNATURE');
+      expect(() => validateMaxInitData(raw, runtime, clock)).toThrowError('MAX_INIT_DATA_INVALID_SIGNATURE');
+      const noProfile = loadConfig({
+        APP_ENV: 'test', DEMO_MODE: 'true', DATABASE_URL: 'postgresql://db/city',
+        APP_SESSION_SECRET: 's'.repeat(32), MAX_ADAPTER_MODE: 'fake',
+        PUBLIC_APP_URL: 'http://frontend/', PUBLIC_API_BASE_URL: 'http://api/api/v1', BUILD_SHA: 'a'.repeat(40),
+      });
+      expect(() => validateMaxInitData(signed, noProfile, clock)).toThrowError('INVALID_INIT_DATA_FORMAT');
+      const production = loadConfig({
+        APP_ENV: 'production', DEMO_MODE: 'true', DATABASE_URL: 'postgresql://db/city',
+        APP_SESSION_SECRET: 's'.repeat(32), MAX_ADAPTER_MODE: 'live', MAX_BOT_TOKEN: botToken,
+        MAX_WEBHOOK_SECRET: 'w'.repeat(32), PUBLIC_APP_URL: 'https://frontend.example/',
+        PUBLIC_API_BASE_URL: 'https://api.example/api/v1', BUILD_SHA: 'a'.repeat(40),
+      });
+      expect(() => validateMaxInitData(signed, production, clock)).toThrowError('MAX_INIT_DATA_INVALID_SIGNATURE');
+    } finally { await app.close(); }
+  }, 30_000);
 });
 
 async function fixture(repository = new FakeRepository(), demo = false) {
