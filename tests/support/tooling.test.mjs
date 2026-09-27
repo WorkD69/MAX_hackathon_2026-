@@ -57,6 +57,14 @@ test('integration discovery includes canonical and existing workspace suites and
     result = await discoverIntegrationSuites(root);
     assert.deepEqual(result.missing, []);
     assert.equal(result.groups.reduce((n, group) => n + group.files.length, 0), 4);
+    await mkdir(path.join(root, 'apps/api/test-integration'), { recursive: true });
+    await mkdir(path.join(root, 'apps/api/src/modules/demo'), { recursive: true });
+    await writeFile(path.join(root, 'apps/api/test-integration/tg013-seam.test.ts'), '');
+    await writeFile(path.join(root, 'apps/api/src/modules/demo/demo.integration.test.ts'), '');
+    result = await discoverIntegrationSuites(root);
+    assert.deepEqual(result.groups.find(group => group.cwd === 'apps/api').files, [
+      'apps/api/src/modules/demo/demo.integration.test.ts', 'apps/api/test-integration/tg013-seam.test.ts',
+    ]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -83,6 +91,9 @@ test('root integration refuses legacy DB suites with arbitrary URLs and no owned
     await mkdir(path.join(root, 'packages/db/src'), { recursive: true });
     await writeFile(path.join(root, 'packages/db/src/unsafe.integration.test.ts'),
       "throw new Error('UNSAFE_CHILD_MUST_NOT_START');");
+    await mkdir(path.join(root, 'apps/api/test-integration'), { recursive: true });
+    await writeFile(path.join(root, 'apps/api/test-integration/unsafe.test.ts'),
+      "throw new Error('UNSAFE_CHILD_MUST_NOT_START');");
     const result = spawnSync(process.execPath, [path.resolve('scripts/test/integration.mjs')], {
       cwd: root, encoding: 'utf8',
       env: {
@@ -90,6 +101,7 @@ test('root integration refuses legacy DB suites with arbitrary URLs and no owned
         TG005_TEST_DATABASE_URL: 'postgresql://arbitrary.example/customer_tg005_test',
         TG006_TEST_DATABASE_URL: 'postgresql://arbitrary.example/customer_tg006_test',
         TG005_TEST_DATABASE_RECEIPT: '', TG006_TEST_DATABASE_RECEIPT: '',
+        TG013_TEST_DATABASE_RECEIPT: '', TG013_SEAM_TEST_DATABASE_RECEIPT: '',
       },
     });
     assert.notEqual(result.status, 0);

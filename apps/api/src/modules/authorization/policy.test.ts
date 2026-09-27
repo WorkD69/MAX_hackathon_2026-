@@ -60,8 +60,12 @@ function fixture() {
       : id === ids.otherHouse ? { active: true, organization_id: ids.otherOrg } : null,
     premises: async (id) => id === ids.premises ? { active: true, house_id: ids.house } : null,
     residentAccess: async (user, premises) => residentAccess.has(`${user}/${premises}`),
+    residentAnyAccess: async (user) => [...residentAccess].some((entry) => entry.startsWith(`${user}/`)),
     ukHouseAccess: async (user, house) => houseAccess.has(`${user}/${house}`),
+    ukAnyHouseAccess: async (user, organization) => organization === ids.org &&
+      [...houseAccess].some((entry) => entry.startsWith(`${user}/`)),
     organizationContractor: async (org, contractor) => organizationContractors.has(`${org}/${contractor}`),
+    contractorAnyOrganization: async (contractor) => [...organizationContractors].some((entry) => entry.endsWith(`/${contractor}`)),
     caseById: async (id) => id === row.case_id ? { ...row } : null,
     attachmentById: async (id) => attachments.get(id) ?? null,
   };
@@ -69,7 +73,7 @@ function fixture() {
   const policy = new AuthorizationPolicy(repository);
   const claims = (user: string, role: Role, demo = false): SessionClaims => ({
     schema_version: 1, sid: '00000000-0000-4000-8000-000000000001', max_identity_id: ids.max,
-    app_user_id: user, role_binding_id: demo ? null : `binding-${user}`, role,
+    app_user_id: user, role_binding_id: `binding-${user}`, role,
     demo_mode: demo, demo_run_id: demo ? ids.run : null, real_display_name: 'Real', iat: 1, exp: 100,
   });
   const as = (user: string, role: Role) => { currentIdentityUser = user; return claims(user, role); };
@@ -201,6 +205,29 @@ describe('TG-011 per-request authorization', () => {
     await denied(f.policy.case(claim, ids.case), 'FORBIDDEN');
     f.setActorRole('RESIDENT'); f.setRunStatus('ARCHIVED');
     await denied(f.policy.case(claim, ids.case), 'FORBIDDEN');
+  });
+  it('demo uses only its selected binding and never falls back after revoke', async () => {
+    const f = fixture(); const claim = f.demoAs(ids.resident, 'RESIDENT');
+    f.row.demo_run_id = ids.run;
+    f.bindings.get(ids.resident)!.push({ ...binding(ids.resident, 'RESIDENT'), role_binding_id: 'alternate' });
+    expect((await f.policy.case(claim, ids.case)).principal.binding.role_binding_id).toBe(`binding-${ids.resident}`);
+    f.bindings.get(ids.resident)![0]!.active = false;
+    await denied(f.policy.case(claim, ids.case), 'FORBIDDEN');
+  });
+  it('demo session checks current target access before restore and candidate issue', async () => {
+    const f = fixture(); const claim = f.demoAs(ids.resident, 'RESIDENT');
+    f.row.demo_run_id = ids.run;
+    expect((await f.policy.sessionPrincipal(claim, ids.case)).binding.role_binding_id).toBe(`binding-${ids.resident}`);
+    f.residentAccess.clear();
+    await denied(f.policy.sessionPrincipal(claim, ids.case), 'FORBIDDEN');
+    await denied(f.policy.selectDemoActor(claim, ids.resident, 'RESIDENT', ids.case), 'FORBIDDEN');
+  });
+  it('demo candidate selection rejects ambiguous bindings but keeps unrelated roles separate', async () => {
+    const f = fixture(); const claim = f.demoAs(ids.resident, 'RESIDENT');
+    f.bindings.get(ids.resident)!.push({ ...binding(ids.resident, 'UK_ADMIN', ids.org), role_binding_id: 'other-role' });
+    expect((await f.policy.selectDemoActor(claim, ids.resident, 'RESIDENT', null)).binding.role_binding_id).toBe(`binding-${ids.resident}`);
+    f.bindings.get(ids.resident)!.push({ ...binding(ids.resident, 'RESIDENT'), role_binding_id: 'same-role' });
+    await denied(f.policy.selectDemoActor(claim, ids.resident, 'RESIDENT', null), 'FORBIDDEN');
   });
   it('old contractor loses list, snapshot, attachment and mutation after reassignment', async () => {
     const f = fixture(); const claim = f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE');

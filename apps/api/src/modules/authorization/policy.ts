@@ -61,8 +61,11 @@ export interface AuthorizationRepository {
   house(houseId: string): Promise<{ organization_id: string; active: boolean } | null>;
   premises(premisesId: string): Promise<{ house_id: string; active: boolean } | null>;
   residentAccess(appUserId: string, premisesId: string): Promise<boolean>;
+  residentAnyAccess(appUserId: string): Promise<boolean>;
   ukHouseAccess(appUserId: string, houseId: string): Promise<boolean>;
+  ukAnyHouseAccess(appUserId: string, organizationId: string): Promise<boolean>;
   organizationContractor(organizationId: string, contractorId: string): Promise<boolean>;
+  contractorAnyOrganization(contractorId: string): Promise<boolean>;
   caseById(caseId: string): Promise<CaseContext | null>;
   attachmentById(attachmentId: string): Promise<AttachmentContext | null>;
 }
@@ -127,7 +130,7 @@ export class AuthorizationPolicy {
     if (!claims.app_user_id || !claims.role) return forbidden();
     if (!claims.demo_mode && identity.app_user_id !== claims.app_user_id) return unauthenticated();
     if (claims.demo_mode) {
-      if (!claims.demo_run_id || claims.role_binding_id !== null) return forbidden();
+      if (!claims.demo_run_id || !claims.role_binding_id) return forbidden();
       const run = await this.repository.demoRun(claims.demo_run_id);
       if (!run || run.status !== 'ACTIVE' || run.created_by_max_identity_id !== claims.max_identity_id) return forbidden();
       const actor = await this.repository.demoActor(claims.demo_run_id, claims.app_user_id);
@@ -135,10 +138,8 @@ export class AuthorizationPolicy {
     } else if (claims.demo_run_id !== null || !claims.role_binding_id) return forbidden();
     if (!(await this.repository.appUser(claims.app_user_id))?.active) return forbidden();
     const bindings = (await this.repository.bindings(claims.app_user_id)).filter((row) => row.active);
-    const matching = claims.demo_mode
-      ? bindings.filter((row) => row.role === claims.role)
-      : bindings.filter((row) => row.role_binding_id === claims.role_binding_id && row.role === claims.role);
-    // Normal bootstrap has one active binding; demo actor must have one unambiguous binding for its role.
+    const matching = bindings.filter((row) => row.role_binding_id === claims.role_binding_id && row.role === claims.role);
+    // The signed selected binding is authoritative; active peers never provide fallback rights.
     if (matching.length !== 1 || (!claims.demo_mode && bindings.length !== 1)) return forbidden();
     const binding = matching[0]!;
     if (binding.app_user_id !== claims.app_user_id) return forbidden();
@@ -150,6 +151,46 @@ export class AuthorizationPolicy {
     } else if (!binding.organization_id || binding.contractor_id !== null ||
       !(await this.repository.organization(binding.organization_id))?.active) return forbidden();
     return { app_user_id: claims.app_user_id, binding, demo_run_id: claims.demo_run_id };
+  }
+
+  /** Resolve a server-selected demo candidate before TG-010 signs its exact binding. */
+  async selectDemoActor(claims: SessionClaims, appUserId: string, role: Role,
+    primaryCaseId: string | null): Promise<Principal> {
+    if (!claims.demo_mode || !claims.demo_run_id) return forbidden();
+    const matching = (await this.repository.bindings(appUserId))
+      .filter((row) => row.active && row.role === role);
+    if (matching.length !== 1) return forbidden();
+    return this.sessionPrincipal({ ...claims, app_user_id: appUserId,
+      role_binding_id: matching[0]!.role_binding_id, role }, primaryCaseId);
+  }
+
+  /** Current session authority; Case commands still perform their own target/Assignment checks. */
+  async sessionPrincipal(claims: SessionClaims, primaryCaseId: string | null): Promise<Principal> {
+    const principal = await this.principal(claims);
+    if (!claims.demo_mode) return principal;
+    const { binding, app_user_id } = principal;
+    if (primaryCaseId) {
+      const row = await this.repository.caseById(primaryCaseId);
+      if (!row || row.demo_run_id !== claims.demo_run_id) return forbidden();
+      const house = await this.repository.house(row.house_id);
+      const premises = await this.repository.premises(row.premises_id);
+      if (!house?.active || !premises?.active || house.organization_id !== row.organization_id ||
+        premises.house_id !== row.house_id || !(await this.repository.organization(row.organization_id))?.active) return forbidden();
+      if (binding.role === 'RESIDENT' &&
+        (row.resident_user_id !== app_user_id || !(await this.repository.residentAccess(app_user_id, row.premises_id)))) return forbidden();
+      if ((binding.role === 'UK_EMPLOYEE' || binding.role === 'UK_ADMIN') &&
+        binding.organization_id !== row.organization_id) return forbidden();
+      if (binding.role === 'UK_EMPLOYEE' && !(await this.repository.ukHouseAccess(app_user_id, row.house_id))) return forbidden();
+      if (binding.role === 'CONTRACTOR_EMPLOYEE' &&
+        (!binding.contractor_id || !(await this.repository.organizationContractor(row.organization_id, binding.contractor_id)))) return forbidden();
+    } else {
+      if (binding.role === 'RESIDENT' && !(await this.repository.residentAnyAccess(app_user_id))) return forbidden();
+      if (binding.role === 'UK_EMPLOYEE' &&
+        (!binding.organization_id || !(await this.repository.ukAnyHouseAccess(app_user_id, binding.organization_id)))) return forbidden();
+      if (binding.role === 'CONTRACTOR_EMPLOYEE' &&
+        (!binding.contractor_id || !(await this.repository.contractorAnyOrganization(binding.contractor_id)))) return forbidden();
+    }
+    return principal;
   }
 
   async listScope(claims: SessionClaims): Promise<ListScope> {

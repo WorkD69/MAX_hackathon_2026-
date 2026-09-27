@@ -5,7 +5,7 @@ import { withDisposablePostgres } from '../../tests/support/postgres.mjs';
 const mode = process.argv[2];
 if (!['test', 'test:integration'].includes(mode)) throw new Error('EXPECTED_TEST_OR_INTEGRATION_COMMAND');
 const options = { adminUrl: process.env.TEST_POSTGRES_ADMIN_URL };
-const suites = ['tg005', 'tg006', 'tg007', 'tg008', 'tg012'];
+const suites = ['tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam'];
 
 try {
   async function runWithTargets(index, env) {

@@ -68,7 +68,10 @@ export function verifySession(token: string, config: RuntimeConfig, nowSeconds: 
   if (claims.iat > nowSeconds || claims.exp <= claims.iat || claims.exp - claims.iat > 3600) {
     throw new SessionError('UNAUTHENTICATED');
   }
-  if (claims.demo_mode ? claims.role_binding_id !== null : claims.demo_run_id !== null) {
+  if ((!claims.demo_mode && claims.demo_run_id !== null) ||
+    (claims.app_user_id === null && (claims.role_binding_id !== null || claims.role !== null)) ||
+    (claims.app_user_id !== null && (claims.role_binding_id === null || claims.role === null ||
+      (claims.demo_mode && claims.demo_run_id === null)))) {
     throw new SessionError('UNAUTHENTICATED');
   }
   return claims;
