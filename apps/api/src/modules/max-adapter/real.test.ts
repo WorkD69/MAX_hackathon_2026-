@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RuntimeConfig } from '../../config/types.js';
 import { MaxAdapterError } from './errors.js';
 import { FakeMaxAdapter } from './fake.js';
-import { RealMaxAdapter } from './real.js';
+import { PerChatSendCoordinator, RealMaxAdapter } from './real.js';
 
 const token = randomBytes(24).toString('hex');
 
@@ -23,6 +23,40 @@ function config(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
 }
 
 describe('RealMaxAdapter request contract', () => {
+  it('rejects live construction without an injected runtime coordinator', () => {
+    expect(() => new RealMaxAdapter(config(), undefined as unknown as PerChatSendCoordinator))
+      .toThrow('MAX_SEND_COORDINATOR_REQUIRED');
+  });
+
+  it('limits two adapter instances to two sends per chat per second in one runtime', async () => {
+    let now = 0;
+    const sleeping: Array<() => void> = [];
+    const sentAt: number[] = [];
+    const fetcher = vi.fn(async () => {
+      sentAt.push(now);
+      return new Response(JSON.stringify({ message: { body: { mid: `mid.${sentAt.length}` } } }), { status: 200 });
+    });
+    const timing = {
+      now: () => now,
+      sleep: (_ms: number) => new Promise<void>(resolve => { sleeping.push(resolve); }),
+    };
+    const coordinator = new PerChatSendCoordinator(timing);
+    const first = new RealMaxAdapter(config(), coordinator, fetcher);
+    const second = new RealMaxAdapter(config(), coordinator, fetcher);
+    const sends = Promise.all([
+      first.sendMessage('42', { text: 'one' }),
+      second.sendMessage('42', { text: 'two' }),
+      second.sendMessage('42', { text: 'three' }),
+    ]);
+    await vi.waitFor(() => expect(sentAt).toHaveLength(2));
+    expect(sentAt).toEqual([0, 0]);
+    expect(sleeping).toHaveLength(1);
+    now = 1000;
+    sleeping[0]!();
+    await sends;
+    expect(sentAt).toEqual([0, 0, 1000]);
+  });
+
   it('limits three concurrent sends to one chat to two per rolling second', async () => {
     let now = 0;
     const sleeping: Array<{ ms: number; wake: () => void }> = [];
@@ -31,10 +65,10 @@ describe('RealMaxAdapter request contract', () => {
       sentAt.push(now);
       return new Response(JSON.stringify({ message: { body: { mid: `mid.${sentAt.length}` } } }), { status: 200 });
     });
-    const adapter = new RealMaxAdapter(config(), fetcher, {
+    const adapter = new RealMaxAdapter(config(), new PerChatSendCoordinator({
       now: () => now,
       sleep: ms => new Promise<void>(resolve => { sleeping.push({ ms, wake: resolve }); }),
-    });
+    }), fetcher);
     const pending = [1, 2, 3].map(() => adapter.sendMessage('42', { text: 'x' }));
     await vi.waitFor(() => expect(sentAt).toHaveLength(2));
     expect(sleeping).toHaveLength(1);
@@ -53,10 +87,10 @@ describe('RealMaxAdapter request contract', () => {
       calls.push(new URL(String(url)).searchParams.get('chat_id')!);
       return new Response(JSON.stringify({ message: { body: { mid: 'mid.1' } } }), { status: 200 });
     });
-    const adapter = new RealMaxAdapter(config(), fetcher, {
+    const adapter = new RealMaxAdapter(config(), new PerChatSendCoordinator({
       now: () => now,
       sleep: () => new Promise<void>(resolve => { wake = resolve; }),
-    });
+    }), fetcher);
     const first = [1, 2, 3].map(() => adapter.sendMessage('42', { text: 'x' }));
     await vi.waitFor(() => expect(calls).toHaveLength(2));
     await adapter.sendMessage('43', { text: 'y' });
@@ -70,7 +104,7 @@ describe('RealMaxAdapter request contract', () => {
     const fetcher = vi.fn(async (_url: string | URL, _init?: RequestInit) => new Response(JSON.stringify({
       message: { body: { mid: 'mid.123', seq: 1, text: 'ok', attachments: null } },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-    const adapter = new RealMaxAdapter(config(), fetcher);
+    const adapter = new RealMaxAdapter(config(), new PerChatSendCoordinator(), fetcher);
     await expect(adapter.sendMessage('-70801090403050', {
       text: 'Проверка', openAppAction: { type: 'open_app', text: 'Открыть приложение' },
     })).resolves.toEqual({ providerMessageId: 'mid.123' });
@@ -99,7 +133,7 @@ describe('RealMaxAdapter request contract', () => {
   ] as const)('classifies HTTP %s without leaking response or token', async (status, disposition, code) => {
     const fetcher = vi.fn(async (_url: string | URL, _init?: RequestInit) =>
       new Response(status === 204 ? null : `remote body ${token}`, { status }));
-    const adapter = new RealMaxAdapter(config(), fetcher);
+    const adapter = new RealMaxAdapter(config(), new PerChatSendCoordinator(), fetcher);
     const error = await adapter.sendMessage('1', { text: 'x' }).then(
       () => { throw new Error('EXPECTED_MAX_FAILURE'); },
       value => value as MaxAdapterError,
@@ -110,11 +144,13 @@ describe('RealMaxAdapter request contract', () => {
   });
 
   it('treats malformed/non-JSON 200 and network failure as transient sanitized failures', async () => {
-    const malformed = new RealMaxAdapter(config(), async () => new Response('not-json', { status: 200 }));
+    const malformed = new RealMaxAdapter(config(), new PerChatSendCoordinator(),
+      async () => new Response('not-json', { status: 200 }));
     await expect(malformed.sendMessage('1', { text: 'x' })).rejects.toMatchObject({
       disposition: 'transient', safeCode: 'MAX_RESPONSE_MALFORMED',
     });
-    const network = new RealMaxAdapter(config(), async () => { throw new Error(token); });
+    const network = new RealMaxAdapter(config(), new PerChatSendCoordinator(),
+      async () => { throw new Error(token); });
     const error = await network.sendMessage('1', { text: 'x' }).then(
       () => { throw new Error('EXPECTED_MAX_FAILURE'); },
       value => value as MaxAdapterError,
@@ -129,7 +165,7 @@ describe('RealMaxAdapter request contract', () => {
       new Response(JSON.stringify({ success: false, message: token }), { status: 200 }),
     ];
     const fetcher = vi.fn(async (_url: string | URL, _init?: RequestInit) => responses.shift()!);
-    const adapter = new RealMaxAdapter(config(), fetcher);
+    const adapter = new RealMaxAdapter(config(), new PerChatSendCoordinator(), fetcher);
     await expect(adapter.listSubscriptions()).resolves.toEqual([]);
     await expect(adapter.createSubscription({
       url: 'https://api.city.example/integrations/max/webhook',
@@ -148,7 +184,7 @@ describe('RealMaxAdapter request contract', () => {
       new Response(JSON.stringify({ success: false, message: token }), { status: 200 }),
     ];
     const fetcher = vi.fn(async (_url: string | URL, _init?: RequestInit) => responses.shift()!);
-    const adapter = new RealMaxAdapter(config(), fetcher);
+    const adapter = new RealMaxAdapter(config(), new PerChatSendCoordinator(), fetcher);
     await expect(adapter.deleteSubscription(endpoint)).resolves.toBeUndefined();
     const [url, init] = fetcher.mock.calls[0]!;
     expect(String(url)).toBe(`https://platform-api2.max.ru/subscriptions?url=${encodeURIComponent(endpoint)}`);

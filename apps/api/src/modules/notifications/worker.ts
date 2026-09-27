@@ -38,6 +38,7 @@ export class DurableNotificationWorker {
   private timer: ReturnType<typeof setInterval> | undefined;
   private cycle: Promise<void> | undefined;
   private stopping: Promise<void> | undefined;
+  private readonly active = new Set<Promise<NotificationWorkResult>>();
 
   constructor(
     private readonly store: NotificationStore,
@@ -48,7 +49,15 @@ export class DurableNotificationWorker {
     private readonly uuid: () => string = randomUUID,
   ) {}
 
-  async processOne(): Promise<NotificationWorkResult> {
+  processOne(): Promise<NotificationWorkResult> {
+    if (this.stopping) return Promise.reject(new Error('NOTIFICATION_WORKER_STOPPING'));
+    const job = this.processOneActive();
+    this.active.add(job);
+    void job.finally(() => { this.active.delete(job); }).catch(() => {});
+    return job;
+  }
+
+  private async processOneActive(): Promise<NotificationWorkResult> {
     const now = this.now();
     const exhausted = await this.store.recoverExpiredExhausted(now, this.config.NOTIFICATION_MAX_ATTEMPTS);
     if (exhausted) {
@@ -162,7 +171,10 @@ export class DurableNotificationWorker {
     if (this.stopping) return this.stopping;
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
-    this.stopping = this.cycle?.then(() => {}, () => {}) ?? Promise.resolve();
+    this.stopping = Promise.allSettled([
+      ...(this.cycle ? [this.cycle] : []),
+      ...this.active,
+    ]).then(() => {});
     return this.stopping;
   }
 }

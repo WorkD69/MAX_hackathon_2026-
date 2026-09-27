@@ -22,23 +22,6 @@ function isExact(subscription: MaxSubscription, expected: ExpectedMaxSubscriptio
     canonicalTypes(subscription.updateTypes) === canonicalTypes(expected.updateTypes);
 }
 
-function isOwnedStaleWebhook(url: string, desiredUrl: string): boolean {
-  if (url === desiredUrl) return false;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'https:' &&
-      parsed.port === '' &&
-      parsed.username === '' &&
-      parsed.password === '' &&
-      parsed.search === '' &&
-      parsed.hash === '' &&
-      parsed.pathname === '/integrations/max/webhook' &&
-      parsed.toString() === url;
-  } catch {
-    return false;
-  }
-}
-
 export function expectedMaxSubscription(config: RuntimeConfig): ExpectedMaxSubscription {
   if (!config.MAX_WEBHOOK_SECRET) throw new Error('MAX_WEBHOOK_SECRET_REQUIRED');
   const url = new URL('/integrations/max/webhook', config.PUBLIC_API_BASE_URL);
@@ -60,6 +43,7 @@ export class MaxSubscriptionReconciler {
     private readonly expected: ExpectedMaxSubscription,
     private readonly intervalMs: number,
     private readonly diagnostics: MaxIntegrationDiagnostics = silentDiagnostics,
+    private readonly ownedPreviousWebhookUrls: readonly string[] = [],
   ) {}
 
   reconcile(): Promise<'unchanged' | 'created'> {
@@ -92,9 +76,12 @@ export class MaxSubscriptionReconciler {
     }
 
     // A prior successful POST is required before removing the old endpoint.
+    const ownedPreviousUrls = new Set(this.ownedPreviousWebhookUrls);
     const staleUrls = new Set(subscriptions
-      .map(subscription => subscription.url)
-      .filter(url => isOwnedStaleWebhook(url, this.expected.url)));
+      .filter(subscription => subscription.url !== this.expected.url &&
+        ownedPreviousUrls.has(subscription.url) &&
+        canonicalTypes(subscription.updateTypes) === canonicalTypes(this.expected.updateTypes))
+      .map(subscription => subscription.url));
     for (const url of staleUrls) await this.adapter.deleteSubscription(url);
 
     if (shouldRefresh || staleUrls.size > 0) {

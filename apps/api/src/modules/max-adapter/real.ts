@@ -19,11 +19,11 @@ const systemTiming: MaxTiming = {
   sleep: milliseconds => new Promise(resolve => { setTimeout(resolve, milliseconds); }),
 };
 
-class PerChatSendLimiter {
+export class PerChatSendCoordinator {
   private readonly sentAt = new Map<string, number[]>();
   private readonly tails = new Map<string, Promise<void>>();
 
-  constructor(private readonly timing: MaxTiming) {}
+  constructor(private readonly timing: MaxTiming = systemTiming) {}
 
   async enter(chatId: string): Promise<void> {
     const previous = this.tails.get(chatId) ?? Promise.resolve();
@@ -82,21 +82,24 @@ export class RealMaxAdapter implements MaxAdapter {
   private readonly token: string;
   private readonly fetcher: MaxFetch;
   private readonly timeoutMs: number;
-  private readonly sendLimiter: PerChatSendLimiter;
+  private readonly sendCoordinator: PerChatSendCoordinator;
 
-  constructor(config: RuntimeConfig, fetcher: MaxFetch = fetch, timing: MaxTiming = systemTiming) {
+  constructor(config: RuntimeConfig, sendCoordinator: PerChatSendCoordinator, fetcher: MaxFetch = fetch) {
     if (config.MAX_ADAPTER_MODE !== 'live' || !config.MAX_BOT_TOKEN) {
       throw new Error('MAX_LIVE_CONFIGURATION_REQUIRED');
+    }
+    if (!sendCoordinator || typeof sendCoordinator.enter !== 'function') {
+      throw new Error('MAX_SEND_COORDINATOR_REQUIRED');
     }
     this.token = config.MAX_BOT_TOKEN;
     this.timeoutMs = config.MAX_REQUEST_TIMEOUT_MS;
     this.fetcher = fetcher;
-    this.sendLimiter = new PerChatSendLimiter(timing);
+    this.sendCoordinator = sendCoordinator;
   }
 
   async sendMessage(validatedChatId: string, message: MaxOutgoingMessage): Promise<MaxSendResult> {
     const chatId = safeChatId(validatedChatId);
-    await this.sendLimiter.enter(chatId);
+    await this.sendCoordinator.enter(chatId);
     const url = new URL('/messages', MAX_API_BASE_URL);
     url.searchParams.set('chat_id', chatId);
     const response = await this.request(url, {

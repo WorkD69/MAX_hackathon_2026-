@@ -71,11 +71,21 @@ it('recreates a desired subscription if its update types drift after initial ref
 
 it('migrates a canonical old webhook URL after creating the new URL', async () => {
   const oldUrl = 'https://old-api.city.example/integrations/max/webhook';
-  const max = adapter([{ url: oldUrl, updateTypes: expected.updateTypes }]);
-  const reconciler = new MaxSubscriptionReconciler(max, expected, 30000);
+  const foreignUrl = 'https://other.example/integrations/max/webhook';
+  const unrelatedUrl = 'https://events.example/integrations/max/webhook';
+  const max = adapter([
+    { url: oldUrl, updateTypes: expected.updateTypes },
+    { url: foreignUrl, updateTypes: expected.updateTypes },
+    { url: unrelatedUrl, updateTypes: ['message_callback'] },
+  ]);
+  const reconciler = new MaxSubscriptionReconciler(max, expected, 30000, undefined, [oldUrl]);
   await expect(reconciler.reconcile()).resolves.toBe('created');
   expect(max.createSubscription).toHaveBeenCalledExactlyOnceWith(expected);
   expect(max.deleteSubscription).toHaveBeenCalledExactlyOnceWith(oldUrl);
+  expect(await max.listSubscriptions()).toEqual(expect.arrayContaining([
+    { url: foreignUrl, updateTypes: expected.updateTypes },
+    { url: unrelatedUrl, updateTypes: ['message_callback'] },
+  ]));
   expect(max.createSubscription.mock.invocationCallOrder[0]).toBeLessThan(max.deleteSubscription.mock.invocationCallOrder[0]!);
   await expect(reconciler.reconcile()).resolves.toBe('unchanged');
   expect(max.deleteSubscription).toHaveBeenCalledTimes(1);
@@ -91,6 +101,30 @@ it('preserves unrelated subscriptions and noncanonical lookalikes', async () => 
   ];
   const max = adapter(unrelated.map(url => ({ url, updateTypes: expected.updateTypes })));
   await new MaxSubscriptionReconciler(max, expected, 30000).reconcile();
+  expect(max.deleteSubscription).not.toHaveBeenCalled();
+});
+
+it('preserves a foreign canonical webhook path and unrelated event subscriptions', async () => {
+  const foreignUrl = 'https://other.example/integrations/max/webhook';
+  const unrelatedUrl = 'https://events.example/integrations/max/webhook';
+  const max = adapter([
+    { url: foreignUrl, updateTypes: expected.updateTypes },
+    { url: unrelatedUrl, updateTypes: ['message_callback'] },
+  ]);
+  const reconciler = new MaxSubscriptionReconciler(max, expected, 30000);
+  await reconciler.reconcile();
+  await reconciler.reconcile();
+  expect(max.deleteSubscription).not.toHaveBeenCalled();
+  expect(await max.listSubscriptions()).toEqual(expect.arrayContaining([
+    { url: foreignUrl, updateTypes: expected.updateTypes },
+    { url: unrelatedUrl, updateTypes: ['message_callback'] },
+  ]));
+});
+
+it('preserves unrelated event types even at an explicitly owned previous URL', async () => {
+  const oldUrl = 'https://old-api.city.example/integrations/max/webhook';
+  const max = adapter([{ url: oldUrl, updateTypes: ['message_callback'] }]);
+  await new MaxSubscriptionReconciler(max, expected, 30000, undefined, [oldUrl]).reconcile();
   expect(max.deleteSubscription).not.toHaveBeenCalled();
 });
 
@@ -114,7 +148,7 @@ it('retries stale URL cleanup without repeating successful secret refresh', asyn
   const oldUrl = 'https://old-api.city.example/integrations/max/webhook';
   const max = adapter([{ url: oldUrl, updateTypes: expected.updateTypes }]);
   max.deleteSubscription.mockRejectedValueOnce(new MaxAdapterError('transient', 'MAX_HTTP_429'));
-  const reconciler = new MaxSubscriptionReconciler(max, expected, 30000);
+  const reconciler = new MaxSubscriptionReconciler(max, expected, 30000, undefined, [oldUrl]);
   await expect(reconciler.reconcile()).rejects.toMatchObject({ safeCode: 'MAX_HTTP_429' });
   await expect(reconciler.reconcile()).resolves.toBe('unchanged');
   expect(max.createSubscription).toHaveBeenCalledTimes(1);
