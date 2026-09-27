@@ -24,6 +24,8 @@ export {
 export { SemanticErrorCodeSchema, ErrorResponseSchema } from './errors.js';
 export {
   CaseListQuerySchema, CaseListItemSchema, CaseListResponseSchema,
+  ResidentCreateCaseOptionsQuerySchema, ResidentPremiseOptionSchema,
+  ResidentCategoryOptionSchema, ResidentCreateCaseOptionsResponseSchema,
   ContractorReferenceSchema, ResultProjectionSchema, FeedbackProjectionSchema,
   CommentProjectionSchema, ActivityItemSchema, AllowedActionSchema,
   CaseSnapshotProjectionSchema, CaseSnapshotSchema, ResidentCaseSnapshotSchema,
@@ -123,6 +125,14 @@ export type CaseListItemInput = z.input<typeof R.CaseListItemSchema>;
 export type CaseListItemOutput = z.output<typeof R.CaseListItemSchema>;
 export type CaseListResponseInput = z.input<typeof R.CaseListResponseSchema>;
 export type CaseListResponseOutput = z.output<typeof R.CaseListResponseSchema>;
+export type ResidentCreateCaseOptionsQueryInput = z.input<typeof R.ResidentCreateCaseOptionsQuerySchema>;
+export type ResidentCreateCaseOptionsQueryOutput = z.output<typeof R.ResidentCreateCaseOptionsQuerySchema>;
+export type ResidentPremiseOptionInput = z.input<typeof R.ResidentPremiseOptionSchema>;
+export type ResidentPremiseOptionOutput = z.output<typeof R.ResidentPremiseOptionSchema>;
+export type ResidentCategoryOptionInput = z.input<typeof R.ResidentCategoryOptionSchema>;
+export type ResidentCategoryOptionOutput = z.output<typeof R.ResidentCategoryOptionSchema>;
+export type ResidentCreateCaseOptionsResponseInput = z.input<typeof R.ResidentCreateCaseOptionsResponseSchema>;
+export type ResidentCreateCaseOptionsResponseOutput = z.output<typeof R.ResidentCreateCaseOptionsResponseSchema>;
 export type ContractorReferenceInput = z.input<typeof R.ContractorReferenceSchema>;
 export type ContractorReferenceOutput = z.output<typeof R.ContractorReferenceSchema>;
 export type ResultProjectionInput = z.input<typeof R.ResultProjectionSchema>;

@@ -29,6 +29,22 @@ export const CaseListResponseSchema = z.strictObject({
   items: z.array(CaseListItemSchema), next_cursor: z.string().nullable(),
 });
 
+export const ResidentCreateCaseOptionsQuerySchema = z.strictObject({
+  premises_id: UuidSchema.optional(),
+});
+export const ResidentPremiseOptionSchema = z.strictObject({
+  premises_id: UuidSchema, house_address: z.string(), premises_label: z.string(),
+});
+export const ResidentCategoryOptionSchema = z.strictObject({
+  category_id: UuidSchema, name: z.string(), description: z.string().nullable(),
+  requires_premises_access: z.boolean(), result_requirement: ResultRequirementSchema,
+});
+export const ResidentCreateCaseOptionsResponseSchema = z.strictObject({
+  premises: z.array(ResidentPremiseOptionSchema),
+  selected_premises_id: UuidSchema.nullable(),
+  categories: z.array(ResidentCategoryOptionSchema),
+});
+
 export const ContractorReferenceSchema = z.strictObject({
   contractor_id: UuidSchema, name: z.string(),
 });
