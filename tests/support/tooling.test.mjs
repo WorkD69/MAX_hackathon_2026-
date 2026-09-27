@@ -87,9 +87,9 @@ test('root integration refuses legacy DB suites with arbitrary URLs and no owned
       cwd: root, encoding: 'utf8',
       env: {
         ...process.env, APP_ENV: 'test', TEST_DATABASE_TARGET: 'DISPOSABLE_TEST_ONLY',
-        TG005_TEST_DATABASE_URL: 'postgresql://arbitrary.example/customer_tg005_test',
+        TG005_FOUNDATION_TEST_DATABASE_URL: 'postgresql://arbitrary.example/customer_tg005_test',
         TG006_TEST_DATABASE_URL: 'postgresql://arbitrary.example/customer_tg006_test',
-        TG005_TEST_DATABASE_RECEIPT: '', TG006_TEST_DATABASE_RECEIPT: '',
+        TG005_FOUNDATION_TEST_DATABASE_RECEIPT: '', TG006_TEST_DATABASE_RECEIPT: '',
       },
     });
     assert.notEqual(result.status, 0);

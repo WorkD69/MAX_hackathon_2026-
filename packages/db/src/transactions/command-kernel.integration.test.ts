@@ -2,12 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Kysely, PostgresDialect, sql } from 'kysely';
 import { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
+import { verifyOwnedLegacySuite } from '../../../../tests/support/postgres.mjs';
 import type { CommandPlan, Database, DatabaseTransaction } from '../index.js';
 import { migrateToLatest } from '../index.js';
 import { CommandKernelError, CommandTransactionKernel } from './command-kernel.js';
 
-const DATABASE_URL = process.env.TG012_TEST_DATABASE_URL;
-if (!DATABASE_URL) throw new Error('MISSING_TG012_TEST_DATABASE_URL');
+const DATABASE_URL = await verifyOwnedLegacySuite('TG012_KERNEL');
 
 const parsed = new URL(DATABASE_URL);
 const DATABASE_NAME = decodeURIComponent(parsed.pathname.slice(1));

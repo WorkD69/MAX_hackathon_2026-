@@ -37,21 +37,15 @@ export async function runIntegration(root = process.cwd()) {
   for (const group of groups) {
     if (group.cwd === 'packages/db') {
       try {
-        const { verifyOwnedPostgresConnection } = await import('../../tests/support/postgres.mjs');
-        for (const prefix of ['TG005', 'TG006', 'TG007', 'TG008', 'TG012']) {
-          const receiptPath = process.env[`${prefix}_TEST_DATABASE_RECEIPT`];
-          if (!receiptPath) throw new Error('MISSING_OWNED_RECEIPT');
-          const receipt = JSON.parse(await readFile(receiptPath, 'utf8'));
-          await verifyOwnedPostgresConnection({ adminUrl: process.env.TEST_POSTGRES_ADMIN_URL }, receipt,
-            process.env[`${prefix}_TEST_DATABASE_URL`]);
-        }
+        const { LEGACY_TEST_TARGETS, verifyOwnedLegacySuite } = await import('../../tests/support/postgres.mjs');
+        for (const { key } of LEGACY_TEST_TARGETS) await verifyOwnedLegacySuite(key);
       } catch {
         console.error(`OWNED_TEST_TARGET_REQUIRED: ${group.cwd}; no child suite started`);
         failed = true;
         continue;
       }
     }
-    const args = ['run', '--no-file-parallelism', ...group.files.map(file => path.relative(path.resolve(root, group.cwd), path.resolve(root, file)))];
+    const args = ['run', ...group.files.map(file => path.relative(path.resolve(root, group.cwd), path.resolve(root, file)))];
     const code = await new Promise((resolve) => {
       const child = spawn(process.execPath, [cli, ...args], { cwd: path.resolve(root, group.cwd), stdio: 'inherit' });
       child.once('error', () => resolve(1));

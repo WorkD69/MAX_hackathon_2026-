@@ -5,6 +5,7 @@ import { Kysely, PostgresDialect } from 'kysely';
 import { FileMigrationProvider, Migrator } from 'kysely/migration';
 import { Pool } from 'pg';
 import { expect, test } from 'vitest';
+import { verifyOwnedLegacySuite } from '../../../tests/support/postgres.mjs';
 import type { CommandPlan, Database } from '@max-smart-city/db';
 import { CommandTransactionKernel } from '@max-smart-city/db';
 import { MIGRATIONS_DIR } from '../../../packages/db/src/index.js';
@@ -14,8 +15,7 @@ import { createCommandAuthorization } from '../src/modules/commands/kernel/autho
 import type { CommandAuthorizationContext } from '../src/modules/commands/kernel/authorization.js';
 import { createCommandFingerprint } from '../src/modules/commands/kernel/fingerprint.js';
 
-const DATABASE_URL = process.env.TG012_TEST_DATABASE_URL;
-if (!DATABASE_URL) throw new Error('MISSING_TG012_TEST_DATABASE_URL');
+const DATABASE_URL = await verifyOwnedLegacySuite('TG012_POLICY');
 const parsed = new URL(DATABASE_URL);
 const databaseName = decodeURIComponent(parsed.pathname.slice(1));
 const schema = 'tg012_policy';
