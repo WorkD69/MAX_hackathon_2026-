@@ -8,6 +8,7 @@ export interface DemoModuleOptions { database: DatabaseConnection; nowSeconds?: 
 import { SessionError } from '../auth/session-token.js';
 import { DemoError } from './errors.js';
 import { DemoService } from './service.js';
+import { canonicalJson } from './canonical-response.js';
 
 export function registerDemoRoutes(app: RuntimeFastifyInstance, config: RuntimeConfig, options: DemoModuleOptions): void {
   const service = new DemoService(config, options.database, options.nowSeconds);
@@ -34,7 +35,7 @@ export function registerDemoRoutes(app: RuntimeFastifyInstance, config: RuntimeC
       try {
         const result = await service.command(kind, headers.data.authorization.slice('Bearer '.length), key, request.body);
         if (result.replayed) reply.header('Idempotency-Replayed', 'true');
-        return reply.code(result.status).send(result.body);
+        return reply.code(result.status).type('application/json').send(canonicalJson(result.body));
       } catch (error) {
         if (error instanceof SessionError) return fail(401, error.code);
         if (error instanceof DemoError || error instanceof CommandKernelError) return fail(error.status, error.code);
