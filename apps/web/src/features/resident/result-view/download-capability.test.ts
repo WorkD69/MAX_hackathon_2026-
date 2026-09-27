@@ -19,22 +19,28 @@ test('a non-callable bridge is never treated as native', () => {
   expect(nativeDownloadBridge({ WebApp: { downloadFile: 'nope' } })).toBeNull();
 });
 
-test('browser fallback triggers a temporary anchor and cleans it up', () => {
-  const click = vi.fn();
+test('browser fallback fetches bytes, uses only a blob href, then revokes it', async () => {
+  const seenHrefs: string[] = [];
   const anchor = document.createElement('a');
   const append = vi.spyOn(document.body, 'appendChild');
   append.mockImplementation((node) => node);
   const remove = vi.spyOn(anchor, 'remove');
   const createElement = vi.spyOn(document, 'createElement').mockReturnValue(anchor);
-  anchor.click = click;
+  anchor.click = () => { seenHrefs.push(anchor.href); };
+  const fetchBytes = vi.fn().mockResolvedValue(new Response('file bytes'));
+  const urlApi = { createObjectURL: vi.fn().mockReturnValue('blob:https://app.example/temporary'), revokeObjectURL: vi.fn() };
 
   try {
-    deliverDownload(downloadCapabilityFixture, null);
+    await deliverDownload(downloadCapabilityFixture, null, document, fetchBytes, urlApi);
+    expect(fetchBytes).toHaveBeenCalledWith(downloadCapabilityFixture.download_url, {
+      credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer',
+    });
     expect(createElement).toHaveBeenCalledWith('a');
-    expect(anchor.getAttribute('href')).toBe(downloadCapabilityFixture.download_url);
+    expect(seenHrefs).toEqual(['blob:https://app.example/temporary']);
+    expect(anchor.getAttribute('href')).not.toBe(downloadCapabilityFixture.download_url);
     expect(anchor.getAttribute('download')).toBe(downloadCapabilityFixture.file_name);
-    expect(click).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledTimes(1);
+    expect(urlApi.revokeObjectURL).toHaveBeenCalledWith('blob:https://app.example/temporary');
   } finally {
     createElement.mockRestore();
     append.mockRestore();

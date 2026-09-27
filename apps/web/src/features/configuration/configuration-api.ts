@@ -7,6 +7,8 @@ import {
   OrganizationPatchRequestSchema, OrganizationReadResponseSchema,
   UserRoleBindingPutRequestSchema, UsersReadResponseSchema, UuidSchema,
 } from '@max-smart-city/contracts';
+import { MutationIntent } from '../../app/intent/mutation-intent.js';
+import { safeMutationErrorText } from '../../app/intent/safe-error.js';
 
 export type AuthorizedFetch = (path: string, init?: RequestInit) => Promise<Response>;
 export type Organization = z.output<typeof OrganizationReadResponseSchema>;
@@ -16,19 +18,16 @@ export type Contractor = z.output<typeof ContractorsReadResponseSchema>[number];
 export type User = z.output<typeof UsersReadResponseSchema>[number];
 
 export class ConfigurationHttpError extends Error {
-  constructor(readonly status: number, readonly code: string | null) {
-    super(status === 403 ? 'Настройки доступны только администратору УК.'
-      : status === 404 ? 'Запись не найдена или недоступна.'
-        : status === 422 ? 'Настройка не соответствует текущим связям организации.'
-          : status === 409 ? 'Данные изменились. Обновите их и повторите действие.'
-            : `Не удалось выполнить запрос (${status}).`);
+  constructor(readonly status: number, readonly code: string | null, readonly requestId: string | null = null) {
+    super(safeMutationErrorText(code, requestId));
   }
 }
 
 const base = '/api/v1/config';
 const identifier = (value: string) => UuidSchema.parse(value);
 
-export function configurationApi(fetcher: AuthorizedFetch) {
+export function configurationApi(fetcher: AuthorizedFetch, contextKey = '') {
+  const intents = new Map<string, MutationIntent>();
   async function send<T>(path: string, schema: z.ZodType<T>): Promise<T> {
     const response = await fetcher(path, { cache: 'no-store' });
     if (!response.ok) throw await httpError(response);
@@ -36,12 +35,22 @@ export function configurationApi(fetcher: AuthorizedFetch) {
   }
   async function write(path: string, method: 'POST' | 'PATCH' | 'PUT', schema: z.ZodType, value: unknown): Promise<void> {
     const body = schema.parse(value);
+    const slot = `${method}:${path}`;
+    let intent = intents.get(slot);
+    if (!intent) { intent = new MutationIntent(); intents.set(slot, intent); }
+    const resolved = await intent.resolve({ operation: `Configuration ${slot}`, method, path,
+      context: contextKey, targets: path, payload: body });
     const response = await fetcher(path, {
       method, cache: 'no-store',
-      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Idempotency-Key': crypto.randomUUID() },
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Idempotency-Key': resolved.key },
       body: JSON.stringify(body),
     });
-    if (!response.ok) throw await httpError(response);
+    if (!response.ok) {
+      const error = await httpError(response);
+      if (error.status === 409) intent.close();
+      throw error;
+    }
+    intent.close();
   }
   return {
     organization: () => send(`${base}/organization`, OrganizationReadResponseSchema),
@@ -63,9 +72,10 @@ export function configurationApi(fetcher: AuthorizedFetch) {
 
 async function httpError(response: Response): Promise<ConfigurationHttpError> {
   let code: string | null = null;
+  let requestId: string | null = null;
   try {
     const parsed = ErrorResponseSchema.safeParse(await response.json());
-    if (parsed.success) code = parsed.data.error.code;
+    if (parsed.success) { code = parsed.data.error.code; requestId = parsed.data.error.request_id; }
   } catch { /* A transport error may have no canonical JSON body. */ }
-  return new ConfigurationHttpError(response.status, code);
+  return new ConfigurationHttpError(response.status, code, requestId);
 }

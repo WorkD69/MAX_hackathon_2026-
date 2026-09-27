@@ -18,7 +18,8 @@
   font-weight: 600;
 }
 
-.resident-feedback__branch textarea {
+.resident-feedback__branch textarea,
+.resident-feedback__branch input[type='file'] {
   width: 100%;
   min-height: 96px;
   padding: 0.5rem 0.625rem;
@@ -28,8 +29,9 @@
   border: 1px solid #6b7280;
   border-radius: 0.375rem;
   box-sizing: border-box;
-  resize: vertical;
 }
+
+.resident-feedback__branch textarea { resize: vertical; }
 
 .resident-feedback__branch button {
   align-self: flex-start;
@@ -50,6 +52,7 @@
 }
 
 .resident-feedback__branch textarea:focus-visible,
+.resident-feedback__branch input:focus-visible,
 .resident-feedback__branch button:focus-visible {
   outline: 3px solid #1d4ed8;
   outline-offset: 2px;

@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ContractorCaseSnapshotOutput } from '@max-smart-city/contracts';
 import { usePlatform } from '../../platform/platform-context.js';
 import type { CaseReadTransport } from '../cases/read/read-transport.js';
-import type { ContractorCommandTransport } from './command-transport.js';
+import { ContractorCommandError, type ContractorCommandTransport } from './command-transport.js';
+import { safeMutationErrorText } from '../../app/intent/safe-error.js';
 import { contractorSurface, type ContractorSurface } from './surface.js';
 import './contractor-case.css';
 
@@ -200,10 +201,10 @@ export function ContractorCaseView({ caseId, contextKey, read, commands }: {
     setBusy(true); setNotice(''); setError(''); setStale(false);
     try {
       await command();
+      setNotice(messages[kind]);
       await queryClient.invalidateQueries({ queryKey: ['case-read', 'list', contextKey] });
       const fresh = await query.refetch();
-      if (fresh.isError) throw fresh.error;
-      setNotice(messages[kind]);
+      if (fresh.isError) setError('Действие выполнено, но не удалось обновить данные случая. Обновите страницу.');
     } catch (cause) {
       if (isHttpStatus(cause, 409)) {
         setStale(true);
@@ -214,7 +215,8 @@ export function ContractorCaseView({ caseId, contextKey, read, commands }: {
         await query.refetch();
         setError('Случай недоступен.');
       } else {
-        setError(cause instanceof Error ? cause.message : 'Не удалось выполнить действие. Обновите случай.');
+        setError(cause instanceof ContractorCommandError
+          ? safeMutationErrorText(cause.code, cause.requestId) : 'Не удалось выполнить действие. Обновите случай.');
       }
     } finally {
       active.current = false;

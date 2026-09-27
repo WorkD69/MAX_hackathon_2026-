@@ -29,3 +29,28 @@ test('semantic 409 remains distinguishable for authoritative refetch', async () 
   await expect(createContractorCommandTransport(fetch).accept(caseId, assignmentId))
     .rejects.toMatchObject({ status: 409, code: 'STALE_ASSIGNMENT' } satisfies Partial<ContractorCommandError>);
 });
+
+test('material retry keeps its key while SubmitResult uses a separate intent', async () => {
+  const material = { command_id: resultId, case_id: caseId, state: 'EXECUTION', revision: 7,
+    event_ids: [resultId], created: { attachment_id: resultId } };
+  const fetch = vi.fn().mockRejectedValueOnce(new Error('timeout'))
+    .mockResolvedValueOnce(Response.json(material)).mockResolvedValueOnce(Response.json(success));
+  const transport = createContractorCommandTransport(fetch);
+  const file = new File(['bytes'], 'proof.jpg', { type: 'image/jpeg' });
+  await expect(transport.upload(caseId, assignmentId, iterationId, file)).rejects.toThrow();
+  await transport.upload(caseId, assignmentId, iterationId, file);
+  await transport.submit(caseId, { assignment_id: assignmentId, iteration_id: iterationId,
+    description: 'Готово', material_attachment_ids: [resultId] });
+  const keys = fetch.mock.calls.map(([, init]) => new Headers(init.headers).get('Idempotency-Key'));
+  expect(keys[0]).toBe(keys[1]);
+  expect(keys[2]).not.toBe(keys[1]);
+});
+
+test('server error message is never trusted for display', async () => {
+  const fetch = vi.fn().mockResolvedValue(Response.json({ error: {
+    code: 'RESULT_MATERIAL_INVALID', message: '<script>alert(1)</script>', request_id: resultId,
+  } }, { status: 422 }));
+  const error = await createContractorCommandTransport(fetch).accept(caseId, assignmentId).catch((cause: unknown) => cause);
+  expect(error).toBeInstanceOf(ContractorCommandError);
+  expect((error as Error).message).not.toContain('<script>');
+});

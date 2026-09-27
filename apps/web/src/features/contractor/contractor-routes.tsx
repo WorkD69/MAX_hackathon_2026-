@@ -32,7 +32,7 @@ export function createContractorRouteModule(): AppRouteModule {
     }
     return <ContractorCaseView caseId={caseId} contextKey={contextKey(session)}
       read={createHttpCaseReadTransport(session.authorizedFetch)}
-      commands={createContractorCommandTransport(session.authorizedFetch)} />;
+      commands={createContractorCommandTransport(session.authorizedFetch, contextKey(session))} />;
   }
 
   return { id: 'contractor', routes: [

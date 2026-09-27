@@ -65,3 +65,24 @@ test('preserves server status and semantic error for cross-tenant and conflict r
   const api = configurationApi(fetcher);
   await expect(api.houseUpdate(other, { active: false })).rejects.toMatchObject({ status: 404, code: 'RESOURCE_NOT_FOUND' } satisfies Partial<ConfigurationHttpError>);
 });
+
+test('uncertain contractor create retries with the same key, then closes on success', async () => {
+  const fetcher = vi.fn().mockRejectedValueOnce(new Error('timeout'))
+    .mockResolvedValue(ok({}));
+  const api = configurationApi(fetcher, 'admin:run-1');
+  await expect(api.contractorCreate({ display_name: 'Подрядчик' })).rejects.toThrow();
+  await api.contractorCreate({ display_name: 'Подрядчик' });
+  await api.contractorCreate({ display_name: 'Подрядчик' });
+  const keys = fetcher.mock.calls.map(([, init]) => new Headers(init.headers).get('Idempotency-Key'));
+  expect(keys[0]).toBe(keys[1]);
+  expect(keys[2]).not.toBe(keys[1]);
+});
+
+test('configuration errors expose safe fixed text', async () => {
+  const fetcher = vi.fn().mockResolvedValue(Response.json({ error: {
+    code: 'VALIDATION_FAILED', message: '<script>alert(1)</script>', request_id: id,
+  } }, { status: 422 }));
+  const error = await configurationApi(fetcher).contractorCreate({ display_name: 'Тест' }).catch((cause: unknown) => cause);
+  expect(error).toBeInstanceOf(ConfigurationHttpError);
+  expect((error as Error).message).not.toContain('<script>');
+});

@@ -28,10 +28,13 @@
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 0.375rem;
+  min-width: 0;
 }
 
 .resident-result__file-name {
   font-weight: 600;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .resident-result__attachment button {

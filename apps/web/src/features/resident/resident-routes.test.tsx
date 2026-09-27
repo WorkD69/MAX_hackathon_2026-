@@ -8,8 +8,18 @@ import type { PlatformAdapter } from '../../platform/platform-adapter.js';
 import type { CaseReadTransport } from '../cases/read/read-transport.js';
 import { waitForUi, fillCreateCaseForm } from './test-helpers.js';
 import { IDS, createCaseSuccessFixture, createCaseOptionsFixture, residentSnapshot } from './fixtures.js';
-import type { ResidentTransport } from './resident-transport.js';
+import { ResidentHttpError, type ResidentTransport } from './resident-transport.js';
 import { createResidentRouteModule } from './resident-routes.js';
+
+vi.mock('../session/session-provider.js', async () => {
+  const React = await import('react');
+  return { useSession: () => {
+    const [session, setSession] = React.useState<{ primary_case_id: string | null }>({ primary_case_id: null });
+    return { session, refreshSession: async () => {
+      setSession({ primary_case_id: '11111111-1111-4111-8111-111111111111' });
+    } };
+  } };
+});
 
 const adapter: PlatformAdapter = {
   name: 'test', isMiniAppContext: true, getRawInitData: () => null, subscribeForeground: () => () => {},
@@ -83,6 +93,21 @@ test('the new-case route renders the create form and navigates to the created ca
     await act(async () => { (view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).click(); });
     await waitForUi(() => expect(resident.createCase).toHaveBeenCalledTimes(1));
     await waitForUi(() => expect(seenLocation).toBe(`/resident/cases/${IDS.caseId}`));  } finally { view.unmount(); }
+});
+
+test('primary-case conflict refreshes provider and routes to its authoritative ID', async () => {
+  const resident = residentTransport({ createCase: vi.fn().mockRejectedValue(
+    new ResidentHttpError(409, 'exists', 'DEMO_PRIMARY_CASE_EXISTS')) });
+  const read = readTransport();
+  const view = renderRoutes(moduleWith(resident, read), '/resident/cases/new');
+  try {
+    await waitForUi(() => expect(view.container.querySelector('[data-testid="create-case-submit"]')).not.toBeNull());
+    await fillCreateCaseForm(view.container);
+    await act(async () => { (view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).click(); });
+    await waitForUi(() => expect(seenLocation).toBe('/resident/cases/11111111-1111-4111-8111-111111111111'));
+    expect(resident.createCase).toHaveBeenCalledTimes(1);
+    expect(read.snapshot).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'RESIDENT');
+  } finally { view.unmount(); }
 });
 
 test('the case route passes the route param to the read transport', async () => {

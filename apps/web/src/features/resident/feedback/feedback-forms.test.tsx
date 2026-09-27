@@ -70,16 +70,15 @@ test('confirmation sends the exact server action target and reports progress', a
       request: { result_id: IDS.resultId, iteration_id: IDS.iterationId },
       idempotencyKey: expect.any(String),
     });
-    expect(view.container.querySelector('[data-testid="confirm-success"]')?.textContent)
-      .toContain('Ожидается решение УК');
+    expect(view.container.querySelector('[data-testid="confirm-success"]')).toBeNull();
   } finally { view.unmount(); }
 });
 
 test('confirmation never claims that the case is closed', async () => {
-  const { view } = render(withAllowedActions(residentSnapshot(), [confirmAction]));
+  const { view, onMutated } = render(withAllowedActions(residentSnapshot(), [confirmAction]));
   try {
     await confirm(view);
-    await waitForUi(() => expect(view.container.querySelector('[data-testid="confirm-success"]')).not.toBeNull());
+    await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
     expect(view.container.textContent).not.toMatch(/закрыт/i);
   } finally { view.unmount(); }
 });
@@ -91,10 +90,28 @@ test('remark sends result, iteration and trimmed text', async () => {
     await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
     expect(api.remarkResult).toHaveBeenCalledWith(IDS.caseId, {
       request: { result_id: IDS.resultId, iteration_id: IDS.iterationId, remark_text: 'Протечка осталась' },
+      files: [],
       idempotencyKey: expect.any(String),
     });
-    expect(view.container.querySelector('[data-testid="remark-success"]')?.textContent)
-      .toContain('передано в УК');
+    expect(view.container.querySelector('[data-testid="remark-success"]')).toBeNull();
+  } finally { view.unmount(); }
+});
+
+test('remark includes selected supporting files without changing its target', async () => {
+  const { view, api, onMutated } = render(withAllowedActions(residentSnapshot(), [remarkAction]));
+  try {
+    const file = new File(['proof'], 'proof.jpg', { type: 'image/jpeg' });
+    await act(async () => {
+      const input = view.container.querySelector('[data-testid="remark-files"]') as HTMLInputElement;
+      Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await remark(view, 'Протечка осталась');
+    await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
+    expect(api.remarkResult).toHaveBeenCalledWith(IDS.caseId, {
+      request: { ...currentTarget, remark_text: 'Протечка осталась' },
+      files: [file], idempotencyKey: expect.any(String),
+    });
   } finally { view.unmount(); }
 });
 
@@ -106,12 +123,81 @@ test('blank remark is never submitted', () => {
   } finally { view.unmount(); }
 });
 
-test('confirmation and remark branches are mutually exclusive', () => {
+test('both server actions offer both feedback choices before formal feedback', () => {
   const { view } = render(withAllowedActions(residentSnapshot(), [confirmAction, remarkAction]));
   try {
-    expect(view.container.querySelector('[data-testid="feedback-inconsistent"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-testid="confirm-submit"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-testid="remark-submit"]')).not.toBeNull();
+  } finally { view.unmount(); }
+});
+
+test.each(['confirm', 'remark'] as const)('%s-only offers exactly its server choice', (choice) => {
+  const { view } = render(withAllowedActions(residentSnapshot(), [choice === 'confirm' ? confirmAction : remarkAction]));
+  try {
+    expect(view.container.querySelector(`[data-testid="${choice}-submit"]`)).not.toBeNull();
+    expect(view.container.querySelector(`[data-testid="${choice === 'confirm' ? 'remark' : 'confirm'}-submit"]`)).toBeNull();
+  } finally { view.unmount(); }
+});
+
+test.each(['CONFIRMATION', 'REMARK'] as const)('authoritative %s feedback prevents another choice', (feedbackType) => {
+  const { view } = render(withAllowedActions(residentSnapshot({ residentFeedback: true, feedbackType }), [confirmAction, remarkAction]));
+  try {
     expect(view.container.querySelector('[data-testid="confirm-submit"]')).toBeNull();
     expect(view.container.querySelector('[data-testid="remark-submit"]')).toBeNull();
+    expect(view.container.querySelector(`[data-testid="${feedbackType === 'CONFIRMATION' ? 'confirm' : 'remark'}-success"]`)).not.toBeNull();
+  } finally { view.unmount(); }
+});
+
+test.each(['confirm', 'remark'] as const)('%s blocks both commands through command and refetch pending', async (choice) => {
+  let finishCommand!: () => void;
+  let finishRefetch!: () => void;
+  const command = new Promise<void>((resolve) => { finishCommand = resolve; });
+  const refetch = new Promise<void>((resolve) => { finishRefetch = resolve; });
+  const api = transport({
+    confirmResult: vi.fn(async () => { await command; return confirmationSuccessFixture; }),
+    remarkResult: vi.fn(async () => { await command; return remarkSuccessFixture; }),
+  });
+  const onMutated = vi.fn(() => refetch);
+  const { view } = render(withAllowedActions(residentSnapshot(), [confirmAction, remarkAction]), api, onMutated);
+  try {
+    await act(async () => { setValue(view.container.querySelector('[data-testid="remark-input"]') as HTMLTextAreaElement, 'Протечка осталась'); });
+    // Two clicks and an opposite form submit in the same turn must issue one command.
+    await act(async () => {
+      const button = view.container.querySelector(`[data-testid="${choice}-submit"]`) as HTMLButtonElement;
+      button.click();
+      button.click();
+      (view.container.querySelector('[data-testid="confirm-submit"]') as HTMLButtonElement).click();
+      view.container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(api.confirmResult).toHaveBeenCalledTimes(choice === 'confirm' ? 1 : 0);
+    expect(api.remarkResult).toHaveBeenCalledTimes(choice === 'remark' ? 1 : 0);
+    for (const phase of ['command', 'refetch']) {
+      expect((view.container.querySelector('[data-testid="confirm-submit"]') as HTMLButtonElement).disabled).toBe(true);
+      expect((view.container.querySelector('[data-testid="remark-submit"]') as HTMLButtonElement).disabled).toBe(true);
+      expect(view.container.querySelector('[data-testid="confirm-success"]')).toBeNull();
+      expect(view.container.querySelector('[data-testid="remark-success"]')).toBeNull();
+      if (phase === 'command') {
+        await act(async () => { finishCommand(); });
+        await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
+      }
+    }
+  } finally {
+    await act(async () => { finishCommand(); finishRefetch(); });
+    view.unmount();
+  }
+});
+
+test('remark 409 refetches once without retry or retarget', async () => {
+  const api = transport({ remarkResult: vi.fn().mockRejectedValue(new ResidentHttpError(409, 'stale')) });
+  const { view, onMutated } = render(withAllowedActions(residentSnapshot(), [remarkAction]), api);
+  try {
+    await remark(view, 'Протечка осталась');
+    await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
+    expect(api.remarkResult).toHaveBeenCalledTimes(1);
+    expect(api.remarkResult).toHaveBeenCalledWith(IDS.caseId, {
+      request: { ...currentTarget, remark_text: 'Протечка осталась' }, files: [], idempotencyKey: expect.any(String),
+    });
+    expect(view.container.querySelector('[data-testid="remark-success"]')).toBeNull();
   } finally { view.unmount(); }
 });
 
@@ -162,6 +248,18 @@ test('remark semantic failure is reported separately from confirmation', async (
     await remark(view, 'Протечка осталась');
     await waitForUi(() => expect(view.container.textContent).toContain('Не удалось отправить замечание'));
     expect(onMutated).not.toHaveBeenCalled();
+  } finally { view.unmount(); }
+});
+
+test('unchanged remark retry retains the key after an uncertain outcome', async () => {
+  const remarkResult = vi.fn().mockRejectedValueOnce(new Error('connection reset'))
+    .mockResolvedValueOnce(remarkSuccessFixture);
+  const { view } = render(withAllowedActions(residentSnapshot(), [remarkAction]), transport({ remarkResult }));
+  try {
+    await remark(view, 'Протечка осталась');
+    await remark(view, 'Протечка осталась');
+    expect(remarkResult).toHaveBeenCalledTimes(2);
+    expect(remarkResult.mock.calls[0]![1].idempotencyKey).toBe(remarkResult.mock.calls[1]![1].idempotencyKey);
   } finally { view.unmount(); }
 });
 

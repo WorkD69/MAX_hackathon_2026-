@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { UuidSchema, type AllowedActionOutput, type CaseSnapshotOutput, type RoleOutput } from '@max-smart-city/contracts';
 import { CaseDetailsView, type ActionPayload, type ActionRenderers } from '../cases/read/case-read.js';
@@ -44,7 +44,7 @@ export function UkWorkflowFacts({ snapshot }: { snapshot: CaseSnapshotOutput }) 
   </section>;
 }
 
-export function UkActionControl({ action, submit, snapshot }: {
+export function UkActionControl({ action, submit: execute, snapshot }: {
   action: AllowedActionOutput; submit: Submit; snapshot?: CaseSnapshotOutput | undefined;
 }) {
   const [contractorId, setContractorId] = useState('');
@@ -55,6 +55,14 @@ export function UkActionControl({ action, submit, snapshot }: {
   const [explanation, setExplanation] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [pending, setPending] = useState(false);
+  const active = useRef(false);
+  const submit: Submit = async (payload) => {
+    if (active.current) return;
+    active.current = true;
+    setPending(true);
+    try { await execute(payload); } finally { active.current = false; setPending(false); }
+  };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -114,7 +122,8 @@ export function UkActionControl({ action, submit, snapshot }: {
     return <p>Для завершения требуется подтверждение жителя или вручную зафиксированный факт отсутствия ответа.</p>;
   }
 
-  return <form className="uk-workflow__form" onSubmit={onSubmit}>
+  return <form className="uk-workflow__form" onSubmit={onSubmit} aria-busy={pending}>
+    <fieldset disabled={pending} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
     {action.code === 'SELECT_CONTRACTOR' && <label>Идентификатор подрядчика
       <input name="contractor_id" type="text" required value={contractorId}
         onChange={(event) => setContractorId(event.target.value)} placeholder="UUID подрядчика" />
@@ -155,6 +164,8 @@ export function UkActionControl({ action, submit, snapshot }: {
       ACCEPT_ASSIGNMENT: '', REJECT_ASSIGNMENT: '', ADD_RESULT_MATERIAL: '', SUBMIT_RESULT: '',
       RESIDENT_CONFIRM: '', RESIDENT_REMARK: '',
     }[action.code]}</button>
+    </fieldset>
+    {pending && <p role="status">Выполняется действие…</p>}
   </form>;
 }
 
@@ -185,7 +196,7 @@ export function UkWorkflowCaseView({ caseId, role, contextKey, transport, author
     refetchOnMount: 'always', refetchOnWindowFocus: false });
   const [success, setSuccess] = useState(false);
   const [semanticError, setSemanticError] = useState<string | null>(null);
-  const execute = createUkActionExecutor();
+  const execute = useRef(createUkActionExecutor());
   return <div className="uk-workflow">
     {query.data && <UkWorkflowFacts snapshot={query.data} />}
     {success && <p role="status">Команда принята. Обновляем данные случая.</p>}
@@ -195,7 +206,7 @@ export function UkWorkflowCaseView({ caseId, role, contextKey, transport, author
         setSuccess(false);
         setSemanticError(null);
         try {
-          await execute(action, payload, { caseId, authorizedFetch });
+          await execute.current(action, payload, { caseId, authorizedFetch, contextKey });
           setSuccess(true);
         } catch (error) {
           if (error instanceof UkCommandError && error.status !== 409) {

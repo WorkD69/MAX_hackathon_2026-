@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import type { AddCommentSuccessOutput, ResidentCaseSnapshotOutput } from '@max-smart-city/contracts';
-import { newIdempotencyKey } from '../idempotency.js';
+import { MutationIntent, mutationError } from '../../../app/intent/mutation-intent.js';
 import { isStaleResponse, type ResidentTransport } from '../resident-transport.js';
 import './comment-feed.css';
 
@@ -20,6 +20,7 @@ export interface ResidentCommentFeedProps {
   readonly snapshot: ResidentCaseSnapshotOutput;
   readonly clarificationTargets?: readonly ClarificationTarget[];
   readonly onMutated: () => void | Promise<void>;
+  readonly contextKey?: string;
 }
 
 interface FeedEntry {
@@ -48,11 +49,14 @@ export function commentFeedEntries(snapshot: ResidentCaseSnapshotOutput): readon
     }));
 }
 
-export function ResidentCommentFeed({ transport, snapshot, clarificationTargets = [], onMutated }: ResidentCommentFeedProps) {
+export function ResidentCommentFeed({ transport, snapshot, clarificationTargets = [], onMutated, contextKey = '' }: ResidentCommentFeedProps) {
   const [body, setBody] = useState('');
+  const [files, setFiles] = useState<readonly File[]>([]);
   const [targetId, setTargetId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
+  const intent = useRef(new MutationIntent());
+  const fileInput = useRef<HTMLInputElement>(null);
   const entries = commentFeedEntries(snapshot);
   const state = snapshot.case.state;
   const canComment = snapshot.case.allowed_actions.some((action) => action.code === 'ADD_COMMENT');
@@ -62,13 +66,16 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
   const composerOpen = canComment && !targetRequired;
 
   const addComment = useMutation<AddCommentSuccessOutput, unknown, void>({
-    mutationFn: () => transport.addComment(snapshot.case.case_id, {
-      payload: {
+    mutationFn: async () => {
+      const payload = {
         body: body.trim(),
         clarification_request_id: requiresTarget ? targetId || null : null,
-      },
-      idempotencyKey: newIdempotencyKey(),
-    }),
+      };
+      const resolved = await intent.current.resolve({ operation: 'AddComment', method: 'POST',
+        path: `/api/v1/cases/${snapshot.case.case_id}/comments`, context: contextKey,
+        targets: { clarification_request_id: payload.clarification_request_id }, payload, files });
+      return transport.addComment(snapshot.case.case_id, { payload, files, idempotencyKey: resolved.key });
+    },
   });
 
   async function submit(event: React.FormEvent) {
@@ -82,13 +89,21 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
     setStale(false);
     try {
       await addComment.mutateAsync();
+      intent.current.close();
       setBody('');
+      setFiles([]);
+      if (fileInput.current) fileInput.current.value = '';
       setTargetId('');
       await onMutated();
     } catch (cause) {
       if (isStaleResponse(cause)) {
+        intent.current.close();
         setStale(true);
         setError(STALE_MESSAGE);
+        await onMutated();
+      } else if (mutationError(cause).code === 'IDEMPOTENCY_KEY_REUSE') {
+        intent.current.close();
+        setError('Запрос изменился. Данные обновлены; выберите действие заново.');
         await onMutated();
       } else {
         setError(SEMANTIC_ERROR);
@@ -112,7 +127,7 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
     {composerOpen && <form className="resident-comments__form" onSubmit={(event) => { void submit(event); }}>
       {requiresTarget && <div className="resident-comments__field">
         <label htmlFor="resident-clarification">Запрос уточнения</label>
-        <select id="resident-clarification" data-testid="clarification-select" value={targetId}
+        <select id="resident-clarification" data-testid="clarification-select" value={targetId} disabled={addComment.isPending}
           onChange={(event) => setTargetId(event.target.value)}>
           <option value="">Выберите запрос уточнения</option>
           {validTargets.map((target) => <option key={target.commentId} value={target.commentId}>
@@ -122,8 +137,14 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
       </div>}
       <div className="resident-comments__field">
         <label htmlFor="resident-comment">Сообщение</label>
-        <textarea id="resident-comment" data-testid="comment-input" rows={3} value={body}
+        <textarea id="resident-comment" data-testid="comment-input" rows={3} value={body} disabled={addComment.isPending}
           onChange={(event) => setBody(event.target.value)} />
+      </div>
+      <div className="resident-comments__field">
+        <label htmlFor="resident-comment-files">Файлы к сообщению</label>
+        <input id="resident-comment-files" data-testid="comment-files" type="file" multiple ref={fileInput}
+          disabled={addComment.isPending} onChange={(event) => setFiles([...(event.target.files ?? [])])} />
+        {files.length > 0 && <small>Выбрано файлов: {files.length}</small>}
       </div>
       {error && <p role="alert">{error}</p>}
       <button type="submit" data-testid="comment-submit" disabled={addComment.isPending || body.trim() === ''}>

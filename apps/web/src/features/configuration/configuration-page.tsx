@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { ZodError } from 'zod';
 import { ErrorState } from '../../components/ui/error-state.js';
 import { useSession } from '../session/session-provider.js';
 import {
-  configurationApi, type Category, type Contractor, type House, type Organization, type User,
+  configurationApi, ConfigurationHttpError, type Category, type Contractor, type House, type Organization, type User,
 } from './configuration-api.js';
 import './configuration.css';
 
@@ -25,22 +26,33 @@ function useSave<T>(save: (input: T) => Promise<void>): Action<T> {
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ['configuration'] });
     },
+    onError: async (error) => {
+      if (error instanceof ConfigurationHttpError && error.status === 409) {
+        await client.invalidateQueries({ queryKey: ['configuration'] });
+      }
+    },
   });
 }
 
-function Feedback<T>({ action }: { readonly action: Action<T> }) {
+function Feedback<T>({ action, label = 'изменение настроек' }: { readonly action: Action<T>; readonly label?: string }) {
   return <div className="config-feedback" aria-live="polite">
     {action.isPending ? <span role="status">Сохраняем…</span> : null}
     {action.isSuccess ? <span role="status">Сохранено. Данные обновлены с сервера.</span> : null}
     {action.isError ? <div role="alert">
-      {action.error instanceof ZodError ? 'Проверьте обязательные поля и значения.' : action.error.message}
-      {action.variables !== undefined ? <button type="button" onClick={() => action.mutate(action.variables)}>Повторить</button> : null}
+      {action.error instanceof ZodError ? 'Проверьте обязательные поля и значения.'
+        : action.error instanceof ConfigurationHttpError ? action.error.message
+          : 'Не удалось выполнить действие. Обновите данные и повторите вручную.'}
+      {action.variables !== undefined ? <button type="button" disabled={action.isPending}
+        aria-label={`Повторить: ${label}`}
+        onClick={() => action.mutate(action.variables!)}>Повторить</button> : null}
     </div> : null}
   </div>;
 }
 
-function Submit({ pending, label = 'Сохранить' }: { readonly pending: boolean; readonly label?: string }) {
-  return <button type="submit" disabled={pending}>{label}</button>;
+function Submit({ pending, label = 'Сохранить', ariaLabel }: {
+  readonly pending: boolean; readonly label?: string; readonly ariaLabel?: string;
+}) {
+  return <button type="submit" disabled={pending} aria-label={ariaLabel ?? label}>{label}</button>;
 }
 
 function submit(event: React.FormEvent<HTMLFormElement>, run: (form: FormData) => void) {
@@ -55,9 +67,9 @@ function OrganizationForm({ organization, api }: { readonly organization: Organi
     <p className="config-note">Текущее название на сервере: {organization.name}</p>
     <form data-testid="organization-form" onSubmit={(event) => submit(event, (form) => action.mutate({ name: value(form, 'name') }))}>
       <label>Название <input name="name" defaultValue={organization.name} required /></label>
-      <Submit pending={action.isPending} />
+      <Submit pending={action.isPending} label="Сохранить организацию" />
     </form>
-    <Feedback action={action} />
+    <Feedback action={action} label="организацию" />
   </section>;
 }
 
@@ -72,8 +84,9 @@ function HouseForm({ house, api }: { readonly house?: House; readonly api: Api }
     <label>Адрес <input name="address" defaultValue={house?.address ?? ''} required /></label>
     <label>Метка <input name="display_label" defaultValue={house?.display_label ?? ''} /></label>
     <label className="config-check"><input type="checkbox" name="active" defaultChecked={house?.active ?? true} /> Активен</label>
-    <Submit pending={action.isPending} label={house ? 'Обновить дом' : 'Добавить дом'} />
-    <Feedback action={action} />
+    <Submit pending={action.isPending} label={house ? 'Обновить дом' : 'Добавить дом'}
+      ariaLabel={house ? `Обновить дом ${house.address}` : 'Добавить дом'} />
+    <Feedback action={action} label={house ? `дом ${house.address}` : 'новый дом'} />
   </form>;
 }
 
@@ -118,8 +131,9 @@ function CategoryForm({ category, contractors, api }: { readonly category?: Cate
     </select></label>
     <label className="config-check"><input type="checkbox" name="requires_premises_access" defaultChecked={category?.requires_premises_access ?? false} /> Нужен доступ в помещение</label>
     <label className="config-check"><input type="checkbox" name="active" defaultChecked={category?.active ?? true} /> Активна</label>
-    <Submit pending={action.isPending} label={category ? 'Обновить категорию' : 'Добавить категорию'} />
-    <Feedback action={action} />
+    <Submit pending={action.isPending} label={category ? 'Обновить категорию' : 'Добавить категорию'}
+      ariaLabel={category ? `Обновить категорию ${category.name}` : 'Добавить категорию'} />
+    <Feedback action={action} label={category ? `категорию ${category.name}` : 'новую категорию'} />
   </form>;
 }
 
@@ -139,18 +153,21 @@ function ContractorCard({ item, users, api }: { readonly item: Contractor; reado
   const employee = useSave((input: { userId: string; active: boolean }) => api.contractorEmployee(item.contractor.contractor_id, input.userId, input.active));
   return <li><h3>{item.contractor.display_name}</h3>
     <p>Связь с УК: {item.organization_contractor.active ? 'активна' : 'неактивна'}</p>
-    <button type="button" disabled={binding.isPending} onClick={() => binding.mutate(!item.organization_contractor.active)}>
+    <button type="button" disabled={binding.isPending}
+      aria-label={`${item.organization_contractor.active ? 'Деактивировать' : 'Активировать'} связь ${item.contractor.display_name}`}
+      onClick={() => binding.mutate(!item.organization_contractor.active)}>
       {item.organization_contractor.active ? 'Деактивировать связь' : 'Активировать связь'}
     </button>
-    <Feedback action={binding} />
+    <Feedback action={binding} label={`связь ${item.contractor.display_name}`} />
     <form className="config-form" onSubmit={(event) => submit(event, (form) => employee.mutate({ userId: value(form, 'user_id'), active: checked(form, 'active') }))}>
       <label>Заранее созданный сотрудник <select name="user_id" required>
         <option value="">Выберите пользователя</option>
         {users.filter((user) => user.app_user.active).map((user) => <option key={user.app_user.app_user_id} value={user.app_user.app_user_id}>{user.app_user.display_name}</option>)}
       </select></label>
       <label className="config-check"><input type="checkbox" name="active" defaultChecked /> Допущен к заданиям</label>
-      <Submit pending={employee.isPending} label="Сохранить сотрудника" />
-      <Feedback action={employee} />
+      <Submit pending={employee.isPending} label="Сохранить сотрудника"
+        ariaLabel={`Сохранить сотрудника подрядчика ${item.contractor.display_name}`} />
+      <Feedback action={employee} label={`сотрудника подрядчика ${item.contractor.display_name}`} />
     </form>
   </li>;
 }
@@ -189,7 +206,9 @@ function UserForm({ user, houses, contractors, api }: { readonly user: User; rea
       </label>)}
     </fieldset>
     <label className="config-check"><input type="checkbox" name="active" defaultChecked={binding?.active ?? true} /> Привязка активна</label>
-    <Submit pending={action.isPending} label="Сохранить роль и привязки" /><Feedback action={action} />
+      <Submit pending={action.isPending} label="Сохранить роль и привязки"
+        ariaLabel={`Сохранить роль и привязки ${user.app_user.display_name}`} />
+      <Feedback action={action} label={`роль ${user.app_user.display_name}`} />
   </form>;
 }
 
@@ -213,7 +232,8 @@ function AdminContent({ api }: { readonly api: Api }) {
   if (queries.some((query) => query.isPending)) return <p role="status">Загружаем настройки…</p>;
   if (queries.some((query) => query.isError)) {
     const error = queries.find((query) => query.error)?.error;
-    return <ErrorState message={error instanceof Error ? error.message : 'Не удалось загрузить настройки.'} onRetry={() => { queries.forEach((query) => { void query.refetch(); }); }} />;
+    return <ErrorState message={error instanceof ConfigurationHttpError ? error.message : 'Не удалось загрузить настройки.'}
+      onRetry={() => { queries.forEach((query) => { void query.refetch(); }); }} />;
   }
   if (!organization.data || !houses.data || !categories.data || !contractors.data || !users.data) return <ErrorState message="Не удалось загрузить настройки." />;
   return <div className="config-layout">
@@ -227,11 +247,14 @@ function AdminContent({ api }: { readonly api: Api }) {
 
 export function ConfigurationPage() {
   const { status, session, authorizedFetch } = useSession();
+  const contextKey = [session?.effective_actor.app_user_id, session?.effective_actor.role,
+    session?.demo_run_id].join(':');
+  const api = useMemo(() => configurationApi(authorizedFetch, contextKey), [authorizedFetch, contextKey]);
   if (status !== 'ready') return <p role="status">Проверяем сессию…</p>;
   if (session?.effective_actor.role !== 'UK_ADMIN') return <ErrorState message="Недоступно: настройки организации открывает только администратор УК." />;
   return <div className="config-page">
     <h1>Настройка организации</h1>
     <p className="config-note">Сервер проверяет права и принадлежность данных при каждом запросе. Изменения конфигурации не переписывают историю случаев.</p>
-    <AdminContent api={configurationApi(authorizedFetch)} />
+    <AdminContent api={api} />
   </div>;
 }
