@@ -7,7 +7,7 @@ import { AuthorizationBoundary } from './boundary.js';
 import {
   AuthorizationError, AuthorizationPolicy,
 } from './policy.js';
-import type { AuthorizationRepository, Binding, CaseContext, Role } from './policy.js';
+import type { AttachmentContext, AuthorizationRepository, Binding, CaseContext, Role } from './policy.js';
 
 const ids = {
   max: 'max', resident: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', uk: 'uk', admin: 'admin', contractorA: 'contractor-a', contractorB: 'contractor-b',
@@ -24,6 +24,7 @@ const baseCase = (): CaseContext => ({
   current_assignment_id: ids.assignment, current_assignment_contractor_id: ids.contractor,
   current_assignment_decision: 'ACCEPTED', current_executor_contractor_id: ids.contractor,
   current_result_id: null, current_feedback_id: null, current_feedback_type: null,
+  current_iteration_source_feedback_id: null,
   current_clarification_request_id: null,
   no_resident_feedback_recorded: false,
 });
@@ -42,10 +43,10 @@ function fixture() {
   const residentAccess = new Set([`${ids.resident}/${ids.premises}`]);
   const houseAccess = new Set([`${ids.uk}/${ids.house}`]);
   const organizationContractors = new Set([`${ids.org}/${ids.contractor}`, `${ids.org}/${ids.otherContractor}`]);
-  const attachments = new Map([['initial', { attachment_id: 'initial', case_id: ids.case,
-    kind: 'INITIAL' as const, assignment_id: null, iteration_id: null }],
+  const attachments = new Map<string, AttachmentContext>([['initial', { attachment_id: 'initial', case_id: ids.case,
+    kind: 'INITIAL', assignment_id: null, iteration_id: null }],
   ['material', { attachment_id: 'material', case_id: ids.case,
-    kind: 'WORK_MATERIAL' as const, assignment_id: ids.assignment, iteration_id: 'iteration' }]]);
+    kind: 'WORK_MATERIAL', assignment_id: ids.assignment, iteration_id: 'iteration' }]]);
   let runStatus: 'ACTIVE' | 'ARCHIVED' = 'ACTIVE';
   let actorRole: Role | null = 'RESIDENT';
   const repository: AuthorizationRepository = {
@@ -287,8 +288,67 @@ describe('TG-011 per-request authorization', () => {
   it('attachment IDs and mismatched current work material remain hidden', async () => {
     const f = fixture(); const claim = f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE');
     await denied(f.policy.attachment(claim, 'guessed'));
-    f.attachments.get('material')!.assignment_id = 'historical';
+    const material = f.attachments.get('material')!;
+    if (material.kind !== 'WORK_MATERIAL') throw new Error('MATERIAL_FIXTURE_MISSING');
+    material.assignment_id = 'historical';
     await denied(f.policy.attachment(claim, 'material'));
+  });
+  it('feedback attachment follows parent feedback visibility and current rework source', async () => {
+    const f = fixture();
+    f.row.current_state = 'REWORK';
+    f.row.current_iteration_id = 'rework-iteration';
+    f.row.current_iteration_source_feedback_id = 'remark';
+    f.attachments.set('remark-file', { attachment_id: 'remark-file', case_id: ids.case, kind: 'FEEDBACK',
+      feedback_id: 'remark', feedback_type: 'REMARK', feedback_iteration_id: 'old-iteration', feedback_result_id: 'old-result' });
+    f.attachments.set('old-file', { attachment_id: 'old-file', case_id: ids.case, kind: 'FEEDBACK',
+      feedback_id: 'older-remark', feedback_type: 'REMARK', feedback_iteration_id: 'older-iteration', feedback_result_id: 'older-result' });
+    f.attachments.set('confirmation-file', { attachment_id: 'confirmation-file', case_id: ids.case, kind: 'FEEDBACK',
+      feedback_id: 'confirmation', feedback_type: 'CONFIRMATION', feedback_iteration_id: 'old-iteration', feedback_result_id: 'old-result' });
+    expect((await f.policy.attachment(f.as(ids.resident, 'RESIDENT'), 'old-file')).access).toBe('RESIDENT');
+    expect((await f.policy.attachment(f.as(ids.uk, 'UK_EMPLOYEE'), 'old-file')).access).toBe('UK');
+    expect((await f.policy.attachment(f.as(ids.admin, 'UK_ADMIN'), 'old-file')).access).toBe('UK');
+    f.houseAccess.clear();
+    await denied(f.policy.attachment(f.as(ids.uk, 'UK_EMPLOYEE'), 'remark-file'));
+    expect((await f.policy.attachment(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'), 'remark-file')).access).toBe('EXECUTOR');
+    await denied(f.policy.attachment(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'), 'old-file'));
+    await denied(f.policy.attachment(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'), 'confirmation-file'));
+    f.row.current_assignment_id = 'reassigned'; f.row.current_assignment_contractor_id = ids.otherContractor;
+    f.row.current_executor_contractor_id = ids.otherContractor;
+    await denied(f.policy.attachment(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'), 'remark-file'));
+  });
+  it('comment attachment follows parent common-feed visibility, not authorship alone', async () => {
+    const f = fixture();
+    const add = (id: string, role: Role, contractor: string | null, iteration = 'iteration') =>
+      f.attachments.set(id, { attachment_id: id, case_id: ids.case, kind: 'COMMENT',
+        comment_id: `comment-${id}`, comment_iteration_id: iteration, comment_kind: 'WORKING',
+        actor_role_snapshot: role, actor_contractor_id: contractor,
+        context_result_id: null, context_feedback_id: null });
+    add('own', 'CONTRACTOR_EMPLOYEE', ids.contractor);
+    add('resident', 'RESIDENT', null);
+    add('uk', 'UK_EMPLOYEE', null);
+    add('other-contractor', 'CONTRACTOR_EMPLOYEE', ids.otherContractor);
+    add('historical', 'CONTRACTOR_EMPLOYEE', ids.contractor, 'old-iteration');
+    const current = f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE');
+    for (const id of ['own', 'resident', 'uk']) {
+      expect((await f.policy.attachment(current, id)).access).toBe('EXECUTOR');
+    }
+    await denied(f.policy.attachment(current, 'other-contractor'));
+    await denied(f.policy.attachment(current, 'historical'));
+    expect((await f.policy.attachment(f.as(ids.resident, 'RESIDENT'), 'uk')).access).toBe('RESIDENT');
+    expect((await f.policy.attachment(f.as(ids.uk, 'UK_EMPLOYEE'), 'resident')).access).toBe('UK');
+    f.row.current_assignment_id = 'reassigned'; f.row.current_assignment_contractor_id = ids.otherContractor;
+    f.row.current_executor_contractor_id = ids.otherContractor;
+    await denied(f.policy.attachment(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'), 'own'));
+  });
+  it('UK cannot advertise or authorize AddComment in CREATED', async () => {
+    const f = fixture(); f.row.current_state = 'CREATED';
+    const claim = f.as(ids.uk, 'UK_EMPLOYEE');
+    expect((await f.policy.case(claim, ids.case)).allowed_actions).toEqual(['ACCEPT_CASE']);
+    await denied(f.policy.command(claim, ids.case, 'ADD_COMMENT'), 'FORBIDDEN');
+    await denied(f.policy.replay(claim, ids.case, 'ADD_COMMENT'), 'FORBIDDEN');
+    f.row.current_state = 'ACCEPTED_BY_UK';
+    expect((await f.policy.case(claim, ids.case)).allowed_actions).toContain('ADD_COMMENT');
+    expect((await f.policy.command(claim, ids.case, 'ADD_COMMENT')).access).toBe('UK');
   });
   it('list scope carries exact binding and never client-supplied authority', async () => {
     const f = fixture(); const scope = await f.policy.listScope(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'));
