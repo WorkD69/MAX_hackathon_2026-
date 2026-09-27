@@ -53,6 +53,145 @@ async function fillForm(container: HTMLElement) {
   });
 }
 
+async function refetchSelectedOptions() {
+  await act(async () => {
+    await queryClient.refetchQueries({ queryKey: ['resident', 'create-case-options', '', IDS.premisesId], exact: true });
+  });
+  await flush();
+}
+
+for (const status of [404, 401, 403]) {
+  test(`failed ${status} options refresh removes stale choices and prevents CreateCase`, async () => {
+    let selectedRequests = 0;
+    const api = transport({ createCaseOptions: vi.fn(async (id?: string) => {
+      if (!id) return { premises: [premiseFixture], selected_premises_id: null, categories: [] };
+      selectedRequests += 1;
+      if (selectedRequests > 1) throw new ResidentHttpError(status, 'options unavailable');
+      return createCaseOptionsFixture;
+    }) });
+    const view = renderReactTree(<CreateCaseForm transport={api} onCreated={() => {}} />, { adapter });
+    try {
+      await waitForForm(view.container);
+      await fillForm(view.container);
+      expect((view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).disabled).toBe(false);
+      await refetchSelectedOptions();
+      await waitForUi(() => {
+        expect((view.container.querySelector('[data-testid="premise-select"]') as HTMLSelectElement).value).toBe('');
+        expect((view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement).value).toBe('');
+      });
+      expect(view.container.textContent).not.toContain('Дом 1 · Кв. 2');
+      expect(view.container.textContent).not.toContain('Отопление / стояк');
+      const submit = view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement;
+      expect(submit.disabled).toBe(true);
+      await act(async () => {
+        submit.click();
+        submit.form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      expect(api.createCase).not.toHaveBeenCalled();
+    } finally { view.unmount(); }
+  });
+}
+
+test('failed initial options refresh clears a selected case even after the list recovers', async () => {
+  let initialRequests = 0;
+  const api = transport({ createCaseOptions: vi.fn(async (id?: string) => {
+    if (id) return createCaseOptionsFixture;
+    initialRequests += 1;
+    if (initialRequests === 2) throw new ResidentHttpError(401, 'session expired');
+    return { premises: [premiseFixture], selected_premises_id: null, categories: [] };
+  }) });
+  const view = renderReactTree(<CreateCaseForm transport={api} onCreated={() => {}} />, { adapter });
+  try {
+    await waitForForm(view.container);
+    await fillForm(view.container);
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['resident', 'create-case-options', '', 'initial'], exact: true });
+    });
+    await waitForUi(() => expect(view.container.textContent).toContain('Не удалось загрузить категории и адреса'));
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ['resident', 'create-case-options', '', 'initial'], exact: true });
+    });
+    await waitForForm(view.container);
+    expect((view.container.querySelector('[data-testid="premise-select"]') as HTMLSelectElement).value).toBe('');
+    expect((view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement).value).toBe('');
+    expect((view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(api.createCase).not.toHaveBeenCalled();
+  } finally { view.unmount(); }
+});
+
+test('after a failed selected refresh, choosing the address and category again is explicit', async () => {
+  let selectedRequests = 0;
+  const api = transport({ createCaseOptions: vi.fn(async (id?: string) => {
+    if (!id) return { premises: [premiseFixture], selected_premises_id: null, categories: [] };
+    selectedRequests += 1;
+    if (selectedRequests === 2) throw new ResidentHttpError(404, 'hidden');
+    return createCaseOptionsFixture;
+  }) });
+  const view = renderReactTree(<CreateCaseForm transport={api} onCreated={() => {}} />, { adapter });
+  try {
+    await waitForForm(view.container);
+    await fillForm(view.container);
+    await refetchSelectedOptions();
+    await waitForUi(() => expect(view.container.textContent).toContain('Обновить список'));
+    await act(async () => {
+      (view.container.querySelector('button[type="button"]') as HTMLButtonElement).click();
+    });
+    await waitForUi(() => expect((view.container.querySelector('[data-testid="premise-select"]') as HTMLSelectElement).options.length).toBe(2));
+    await act(async () => {
+      setValue(view.container.querySelector('[data-testid="premise-select"]') as HTMLSelectElement, IDS.premisesId);
+    });
+    await waitForUi(() => expect((view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement).options.length).toBe(2));
+    expect((view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement).value).toBe('');
+    expect((view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      setValue(view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement, IDS.categoryId);
+    });
+    expect((view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).disabled).toBe(false);
+  } finally { view.unmount(); }
+});
+
+test('removed category stays cleared when a later options response restores it', async () => {
+  let selectedRequests = 0;
+  const api = transport({ createCaseOptions: vi.fn(async (id?: string) => {
+    if (!id) return { premises: [premiseFixture], selected_premises_id: null, categories: [] };
+    selectedRequests += 1;
+    return selectedRequests === 2 ? { ...createCaseOptionsFixture, categories: [] } : createCaseOptionsFixture;
+  }) });
+  const view = renderReactTree(<CreateCaseForm transport={api} onCreated={() => {}} />, { adapter });
+  try {
+    await waitForForm(view.container);
+    await fillForm(view.container);
+    await refetchSelectedOptions();
+    await waitForUi(() => expect((view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement).value).toBe(''));
+    await refetchSelectedOptions();
+    const category = view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement;
+    await waitForUi(() => expect([...category.options].map((option) => option.value)).toEqual(['', IDS.categoryId]));
+    expect(category.value).toBe('');
+    expect((view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { setValue(category, IDS.categoryId); });
+    expect((view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).disabled).toBe(false);
+  } finally { view.unmount(); }
+});
+
+test('successful options refresh removes a disappeared premises and its category', async () => {
+  let selectedRequests = 0;
+  const api = transport({ createCaseOptions: vi.fn(async (id?: string) => {
+    if (!id) return { premises: [premiseFixture], selected_premises_id: null, categories: [] };
+    selectedRequests += 1;
+    return selectedRequests === 2 ? { premises: [], selected_premises_id: id, categories: [] }
+      : createCaseOptionsFixture;
+  }) });
+  const view = renderReactTree(<CreateCaseForm transport={api} onCreated={() => {}} />, { adapter });
+  try {
+    await waitForForm(view.container);
+    await fillForm(view.container);
+    await refetchSelectedOptions();
+    await waitForUi(() => expect((view.container.querySelector('[data-testid="premise-select"]') as HTMLSelectElement).value).toBe(''));
+    expect((view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement).value).toBe('');
+    expect((view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).disabled).toBe(true);
+  } finally { view.unmount(); }
+});
+
 test('offers only public server-provided premises and selected categories', async () => {
   const view = renderReactTree(<CreateCaseForm transport={transport()} onCreated={() => {}} />, { adapter });
   try {

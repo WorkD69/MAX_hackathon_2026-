@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { CreateCasePayloadOutput, CreateCaseSuccessOutput } from '@max-smart-city/contracts';
 import { MutationIntent } from '../../../app/intent/mutation-intent.js';
@@ -34,17 +34,61 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
   const [files, setFiles] = useState<readonly File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
+  const [invalidatedContext, setInvalidatedContext] = useState<string | null>(null);
   const intent = useRef(new MutationIntent());
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const currentOptions = !options.isFetching && options.data?.selected_premises_id === premisesId
+  const optionsInvalidated = invalidatedContext === contextKey;
+  const currentOptions = !optionsInvalidated && options.isSuccess && !options.isFetching
+    && options.data.selected_premises_id === premisesId
     ? options.data : undefined;
   const categories = currentOptions?.categories ?? [];
-  const premises = currentOptions?.premises ?? initialOptions.data?.premises ?? [];
+  const premises = optionsInvalidated || options.isError || initialOptions.isError ? []
+    : currentOptions?.premises ?? initialOptions.data?.premises ?? [];
   const selectedCategory = categories.find((category) => category.category_id === categoryId);
   const requirement = selectedCategory ? REQUIREMENT_LABELS[selectedCategory.result_requirement] : null;
   const canSubmit = Boolean(selectedCategory && premises.some((premise) => premise.premises_id === premisesId)
-    && description.trim() && !options.isFetching);
+    && description.trim() && options.isSuccess && !options.isFetching
+    && initialOptions.isSuccess && !initialOptions.isFetching && !optionsInvalidated);
+
+  useEffect(() => {
+    if (!premisesId || !options.isError || options.isFetching) return;
+    setInvalidatedContext(contextKey);
+    setCategoryId('');
+    setPremisesId('');
+  }, [contextKey, options.isError, options.isFetching, premisesId]);
+
+  useEffect(() => {
+    if (!initialOptions.isError || initialOptions.isFetching) return;
+    setCategoryId('');
+    setPremisesId('');
+  }, [initialOptions.isError, initialOptions.isFetching]);
+
+  useEffect(() => {
+    if (!premisesId || !currentOptions) return;
+    if (!currentOptions.premises.some((premise) => premise.premises_id === premisesId)) {
+      setInvalidatedContext(contextKey);
+      setPremisesId('');
+      setCategoryId('');
+    } else if (categoryId && !currentOptions.categories.some((category) => category.category_id === categoryId)) {
+      setCategoryId('');
+    }
+  }, [categoryId, contextKey, currentOptions, premisesId]);
+
+  useEffect(() => {
+    if (!premisesId || !initialOptions.isSuccess || initialOptions.isFetching
+      || initialOptions.dataUpdatedAt <= options.dataUpdatedAt) return;
+    if (!initialOptions.data.premises.some((premise) => premise.premises_id === premisesId)) {
+      setPremisesId('');
+      setCategoryId('');
+    }
+  }, [initialOptions.data, initialOptions.dataUpdatedAt, initialOptions.isFetching,
+    initialOptions.isSuccess, options.dataUpdatedAt, premisesId]);
+
+  async function refreshOptions() {
+    const refreshed = await initialOptions.refetch();
+    if (refreshed.isSuccess) setInvalidatedContext((current) => current === contextKey ? null : current);
+  }
 
   const create = useMutation<CreateCaseSuccessOutput, unknown, CreateCasePayloadOutput>({
     mutationFn: async (payload) => {
@@ -98,7 +142,9 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
   return <section className="resident-create-case" aria-label="Создание обращения">
     <h1>Создание обращения</h1>
     {stale && <p role="alert" className="resident-create-case__stale">{STALE_MESSAGE}</p>}
-    {premises.length === 0 && <p role="alert">Сейчас нет доступных адресов для обращения.</p>}
+    {optionsInvalidated && <p role="alert">Не удалось обновить категории и адреса.</p>}
+    {optionsInvalidated && <button type="button" onClick={() => { void refreshOptions(); }}>Обновить список</button>}
+    {!optionsInvalidated && premises.length === 0 && <p role="alert">Сейчас нет доступных адресов для обращения.</p>}
     {options.isPending && premisesId && <p role="status">Загрузка категорий…</p>}
     {options.isError && <p role="alert">Не удалось загрузить категории. Выберите адрес ещё раз.</p>}
     {categories.length === 0 && premisesId && options.isSuccess && <p role="alert">Сейчас нет доступных категорий для обращения.</p>}
