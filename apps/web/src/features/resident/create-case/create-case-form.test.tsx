@@ -5,6 +5,7 @@ import { queryClient } from '../../../app/query-client.js';
 import type { PlatformAdapter } from '../../../platform/platform-adapter.js';
 import { CreateCaseForm } from './create-case-form.js';
 import type { ResidentTransport } from '../resident-transport.js';
+import { ResidentHttpError } from '../resident-transport.js';
 import { waitForUi } from '../test-helpers.js';
 import {
   createCaseSuccessFixture, inactiveCategoryFixture, inactivePremiseFixture, optionsWithInactiveFixture,
@@ -91,6 +92,49 @@ test('successful create calls onCreated with the authoritative case id', async (
     await fillForm(view.container);
     await act(async () => { (view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).click(); });
     await waitForUi(() => expect(onCreated).toHaveBeenCalledWith(createCaseSuccessFixture.case_id));
+    expect(api.createCase).toHaveBeenCalledTimes(1);
+  } finally { view.unmount(); }
+});
+
+test('create page has a top-level heading', async () => {
+  const view = renderReactTree(<CreateCaseForm transport={transport()} onCreated={() => {}} />, { adapter });
+  try {
+    await waitForForm(view.container);
+    expect(view.container.querySelector('h1')?.textContent).toBe('Создание обращения');
+  } finally { view.unmount(); }
+});
+
+test('primary-case conflict invokes the provider refresh seam without retrying create', async () => {
+  const onCreated = vi.fn();
+  const onPrimaryCaseExists = vi.fn().mockResolvedValue(undefined);
+  const api = transport({
+    createCase: vi.fn().mockRejectedValue(new ResidentHttpError(409, 'exists', 'DEMO_PRIMARY_CASE_EXISTS')),
+  });
+  const view = renderReactTree(<CreateCaseForm transport={api} onCreated={onCreated}
+    onPrimaryCaseExists={onPrimaryCaseExists} />, { adapter });
+  try {
+    await waitForForm(view.container);
+    await fillForm(view.container);
+    await act(async () => { (view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).click(); });
+    await waitForUi(() => expect(onPrimaryCaseExists).toHaveBeenCalledTimes(1));
+    expect(onCreated).not.toHaveBeenCalled();
+    expect(api.createCase).toHaveBeenCalledTimes(1);
+    expect(api.createCaseOptions).toHaveBeenCalledTimes(1);
+  } finally { view.unmount(); }
+});
+
+test('other 409 does not open a case or read the primary session', async () => {
+  const onCreated = vi.fn();
+  const api = transport({
+    createCase: vi.fn().mockRejectedValue(new ResidentHttpError(409, 'reuse', 'IDEMPOTENCY_KEY_REUSE')),
+  });
+  const view = renderReactTree(<CreateCaseForm transport={api} onCreated={onCreated} />, { adapter });
+  try {
+    await waitForForm(view.container);
+    await fillForm(view.container);
+    await act(async () => { (view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).click(); });
+    await waitForUi(() => expect(view.container.textContent).toContain('Данные обновлены'));
+    expect(onCreated).not.toHaveBeenCalled();
     expect(api.createCase).toHaveBeenCalledTimes(1);
   } finally { view.unmount(); }
 });

@@ -4,9 +4,9 @@ import { renderReactTree } from '../../app/test-render.js';
 import { queryClient } from '../../app/query-client.js';
 import type { PlatformAdapter } from '../../platform/platform-adapter.js';
 import type { CaseReadTransport } from '../cases/read/read-transport.js';
-import { waitForUi } from './test-helpers.js';
-import { IDS, residentSnapshot } from './fixtures.js';
-import type { ResidentTransport } from './resident-transport.js';
+import { setNativeValue, waitForUi } from './test-helpers.js';
+import { IDS, confirmationSuccessFixture, remarkSuccessFixture, residentSnapshot, withAllowedActions } from './fixtures.js';
+import { ResidentHttpError, type ResidentTransport } from './resident-transport.js';
 import { ResidentCaseView } from './resident-case-view.js';
 
 const adapter: PlatformAdapter = {
@@ -118,4 +118,97 @@ test('the resident view never reaches for a global fetch or session context', as
     view.unmount();
     globalThis.fetch = original;
   }
+});
+
+const feedbackActions = [
+  { code: 'RESIDENT_CONFIRM', target: { result_id: IDS.resultId, iteration_id: IDS.iterationId }, input: {} },
+  { code: 'RESIDENT_REMARK', target: { result_id: IDS.resultId, iteration_id: IDS.iterationId }, input: {} },
+] as const;
+
+test.each(['confirm', 'remark'] as const)('%s success refetches and renders only authoritative feedback', async (choice) => {
+  const initial = withAllowedActions(residentSnapshot(), [...feedbackActions]);
+  const updated = residentSnapshot({
+    residentFeedback: true, feedbackType: choice === 'confirm' ? 'CONFIRMATION' : 'REMARK',
+    state: choice === 'confirm' ? 'AWAITING_RESULT_CHECK' : 'REMARKS_REVIEW',
+  });
+  let finishRefetch!: () => void;
+  const refetch = new Promise<void>((resolve) => { finishRefetch = resolve; });
+  const read = readTransport({ snapshot: vi.fn().mockResolvedValueOnce(initial).mockImplementation(async () => {
+    await refetch;
+    return updated;
+  }) });
+  const resident = residentTransport({
+    confirmResult: vi.fn().mockResolvedValue(confirmationSuccessFixture),
+    remarkResult: vi.fn().mockResolvedValue(remarkSuccessFixture),
+  });
+  const view = render(read, resident);
+  try {
+    await waitForContent(view.container);
+    if (choice === 'remark') {
+      await act(async () => { setNativeValue(view.container.querySelector('[data-testid="remark-input"]') as HTMLTextAreaElement, 'Протечка осталась'); });
+    }
+    await act(async () => { (view.container.querySelector(`[data-testid="${choice}-submit"]`) as HTMLButtonElement).click(); });
+    await waitForUi(() => expect(read.snapshot).toHaveBeenCalledTimes(2));
+    expect(view.container.querySelector(`[data-testid="${choice}-success"]`)).toBeNull();
+    expect((view.container.querySelector('[data-testid="confirm-submit"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((view.container.querySelector('[data-testid="remark-submit"]') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { finishRefetch(); });
+    await waitForUi(() => expect(view.container.querySelector(`[data-testid="${choice}-success"]`)).not.toBeNull());
+    expect(view.container.querySelector('[data-testid="confirm-submit"]')).toBeNull();
+    expect(view.container.querySelector('[data-testid="remark-submit"]')).toBeNull();
+    expect(read.snapshot).toHaveBeenLastCalledWith(IDS.caseId, 'RESIDENT');
+    expect(resident.confirmResult).toHaveBeenCalledTimes(choice === 'confirm' ? 1 : 0);
+    expect(resident.remarkResult).toHaveBeenCalledTimes(choice === 'remark' ? 1 : 0);
+  } finally {
+    await act(async () => { finishRefetch(); });
+    view.unmount();
+  }
+});
+
+test.each(['confirm', 'remark'] as const)('%s 409 refetches new targets without automatically submitting them', async (choice) => {
+  const initial = withAllowedActions(residentSnapshot(), [...feedbackActions]);
+  const next = structuredClone(initial);
+  const nextResultId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+  next.case.current_result!.result_id = nextResultId;
+  next.case.allowed_actions = feedbackActions.map((action) => ({ ...action, target: { ...action.target, result_id: nextResultId } }));
+  const read = readTransport({ snapshot: vi.fn().mockResolvedValueOnce(initial).mockResolvedValue(next) });
+  const resident = residentTransport({
+    confirmResult: vi.fn().mockRejectedValue(new ResidentHttpError(409, 'stale')),
+    remarkResult: vi.fn().mockRejectedValue(new ResidentHttpError(409, 'stale')),
+  });
+  const view = render(read, resident);
+  try {
+    await waitForContent(view.container);
+    if (choice === 'remark') {
+      await act(async () => { setNativeValue(view.container.querySelector('[data-testid="remark-input"]') as HTMLTextAreaElement, 'Протечка осталась'); });
+    }
+    await act(async () => { (view.container.querySelector(`[data-testid="${choice}-submit"]`) as HTMLButtonElement).click(); });
+    await waitForUi(() => {
+      expect(read.snapshot).toHaveBeenCalledTimes(2);
+      expect((view.container.querySelector('[data-testid="confirm-submit"]') as HTMLButtonElement).disabled).toBe(false);
+    });
+    const command = choice === 'confirm' ? resident.confirmResult : resident.remarkResult;
+    expect(command).toHaveBeenCalledTimes(1);
+    expect(command).toHaveBeenCalledWith(IDS.caseId, {
+      request: { result_id: IDS.resultId, iteration_id: IDS.iterationId, ...(choice === 'remark' ? { remark_text: 'Протечка осталась' } : {}) },
+      ...(choice === 'remark' ? { files: [] } : {}),
+      idempotencyKey: expect.any(String),
+    });
+    expect(view.container.querySelector(`[data-testid="${choice}-success"]`)).toBeNull();
+  } finally { view.unmount(); }
+});
+
+test('clarification text and a historical comment ID never fabricate a current target', async () => {
+  const snapshot = withAllowedActions(residentSnapshot({ state: 'REMARKS_REVIEW' }), [
+    { code: 'ADD_COMMENT', target: {}, input: {} },
+  ]);
+  const resident = residentTransport();
+  const view = render(readTransport({ snapshot: vi.fn().mockResolvedValue(snapshot) }), resident);
+  try {
+    await waitForContent(view.container);
+    expect(view.container.textContent).toContain('Уточните адрес');
+    expect(view.container.querySelector('[data-testid="clarification-required"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-testid="comment-input"]')).toBeNull();
+    expect(resident.addComment).not.toHaveBeenCalled();
+  } finally { view.unmount(); }
 });

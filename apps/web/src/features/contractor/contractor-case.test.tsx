@@ -190,7 +190,8 @@ test('semantic SubmitResult error never announces success', async () => {
     await act(async () => { (view.container.querySelector('[data-testid=submit-result]') as HTMLButtonElement).click(); });
     await flush();
     expect(cmd.submit).toHaveBeenCalledTimes(1);
-    expect(view.container.textContent).toContain('Материал не подходит');
+    expect(view.container.textContent).toContain('Не удалось выполнить действие');
+    expect(view.container.textContent).not.toContain('Материал не подходит');
     expect(view.container.textContent).not.toContain('Результат отправлен на проверку');
   } finally { view.unmount(); }
 });

@@ -4,6 +4,11 @@ export interface NativeDownloadBridge {
   downloadFile(downloadUrl: string, fileName: string): void;
 }
 
+export interface BlobUrlApi {
+  createObjectURL(blob: Blob): string;
+  revokeObjectURL(url: string): void;
+}
+
 interface MaxWebApp {
   downloadFile?(downloadUrl: string, fileName: string): void;
 }
@@ -21,16 +26,30 @@ export function deliverDownload(
   capability: DownloadCapabilityResponseOutput,
   bridge: NativeDownloadBridge | null,
   scope: Document = document,
-): void {
+  fetchBytes: typeof fetch = fetch,
+  blobUrls: BlobUrlApi = URL,
+): Promise<void> {
   if (bridge) {
     bridge.downloadFile(capability.download_url, capability.file_name);
-    return;
+    return Promise.resolve();
   }
-  const anchor = scope.createElement('a');
-  anchor.href = capability.download_url;
-  anchor.download = capability.file_name;
-  anchor.rel = 'noopener';
-  scope.body.append(anchor);
-  anchor.click();
-  anchor.remove();
+  return (async () => {
+    const response = await fetchBytes(capability.download_url, {
+      credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer',
+    });
+    if (!response.ok) throw new Error('Capability download failed');
+    const blobUrl = blobUrls.createObjectURL(await response.blob());
+    const anchor = scope.createElement('a');
+    try {
+      anchor.href = blobUrl;
+      anchor.download = capability.file_name;
+      scope.body.append(anchor);
+      anchor.click();
+    } finally {
+      anchor.remove();
+      // Let the browser start consuming the blob before releasing its object URL.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      blobUrls.revokeObjectURL(blobUrl);
+    }
+  })();
 }

@@ -9,8 +9,18 @@ const selectionId = '44444444-4444-4444-8444-444444444444';
 const action = <T extends AllowedActionOutput['code']>(code: T, target: Extract<AllowedActionOutput, { code: T }>['target']) =>
   ({ code, target, input: {} }) as Extract<AllowedActionOutput, { code: T }>;
 
+function success(path: string): Response {
+  const created = path.endsWith('/select-contractor') ? { selection_id: selectionId }
+    : path.endsWith('/send-assignment') ? { assignment_id: selectionId }
+      : path.endsWith('/request-clarification') || path.endsWith('/comments') ? { comment_id: selectionId }
+        : path.endsWith('/return-to-rework') ? { iteration_id: iterationId, iteration_no: 2 } : {};
+  return Response.json({ command_id: contractorId, case_id: caseId, state: 'EXECUTION', revision: 2,
+    event_ids: path.endsWith('/return-to-rework') ? [iterationId, selectionId] : [], created,
+    ...(path.endsWith('/record-no-resident-feedback') ? { no_feedback_event_id: selectionId } : {}) });
+}
+
 test('sends exact selection and assignment targets with an idempotency key', async () => {
-  const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+  const fetch = vi.fn().mockImplementation(async (path: string) => success(path));
   const execute = createUkActionExecutor();
   const context = { caseId, authorizedFetch: fetch };
   await execute(action('SELECT_CONTRACTOR', { iteration_id: iterationId }),
@@ -26,7 +36,7 @@ test('sends exact selection and assignment targets with an idempotency key', asy
 });
 
 test('sends optional comment attachment via canonical multipart payload', async () => {
-  const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+  const fetch = vi.fn().mockImplementation(async (path: string) => success(path));
   const file = new File(['photo'], 'repair.jpg', { type: 'image/jpeg' });
   const payload = { body: 'Проверено', clarification_request_id: null, files: [file] };
   await createUkActionExecutor()(action('ADD_COMMENT', {}), payload,
@@ -68,7 +78,7 @@ test('maps every UK decision to the canonical command endpoint without changing 
     [action('COMPLETE_WITH_EXPLANATION', { result_id: resultId, feedback_id: feedbackId }),
       { result_id: resultId, feedback_id: feedbackId, explanation: 'Решение УК' }, 'complete-with-explanation'],
   ] as const;
-  const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+  const fetch = vi.fn().mockImplementation(async (path: string) => success(path));
   const execute = createUkActionExecutor();
   for (const [allowed, payload, endpoint] of cases) {
     await execute(allowed, payload, { caseId, authorizedFetch: fetch });
@@ -96,4 +106,22 @@ test('rejects a stale form target locally without silently retargeting the comma
   }), { selection_id: contractorId, iteration_id: iterationId }, { caseId, authorizedFetch: fetch }))
     .rejects.toMatchObject({ status: 409 });
   expect(fetch).not.toHaveBeenCalled();
+});
+
+test('invalid 2xx body cannot claim UK command success', async () => {
+  const fetch = vi.fn().mockResolvedValue(Response.json({ arbitrary: true }));
+  await expect(createUkActionExecutor()(action('ACCEPT_CASE', {}), {}, { caseId, authorizedFetch: fetch }))
+    .rejects.toThrow();
+});
+
+test('uncertain UK command keeps key for identical manual retry', async () => {
+  const fetch = vi.fn().mockRejectedValueOnce(new Error('connection reset'))
+    .mockImplementation(async (path: string) => success(path));
+  const execute = createUkActionExecutor();
+  const context = { caseId, authorizedFetch: fetch };
+  await expect(execute(action('ACCEPT_CASE', {}), {}, context)).rejects.toThrow();
+  await execute(action('ACCEPT_CASE', {}), {}, context);
+  const first = new Headers(fetch.mock.calls[0]![1].headers).get('Idempotency-Key');
+  const retry = new Headers(fetch.mock.calls[1]![1].headers).get('Idempotency-Key');
+  expect(retry).toBe(first);
 });

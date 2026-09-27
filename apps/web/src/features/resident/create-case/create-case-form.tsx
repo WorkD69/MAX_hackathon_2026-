@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { CreateCasePayloadOutput, CreateCaseSuccessOutput } from '@max-smart-city/contracts';
-import { CreateCaseIdempotency, fingerprintCreateCase, type FingerprintedFile } from '../idempotency.js';
-import { isStaleResponse, type CreateCaseOptions, type ResidentTransport } from '../resident-transport.js';
+import { MutationIntent } from '../../../app/intent/mutation-intent.js';
+import { isStaleResponse, ResidentHttpError, type CreateCaseOptions, type ResidentTransport } from '../resident-transport.js';
 import './create-case-form.css';
 
 const STALE_MESSAGE = 'Случай изменился с момента открытия. Данные обновлены.';
@@ -12,13 +12,11 @@ const REQUIREMENT_LABELS = { NONE: 'Материалы не требуются',
 export interface CreateCaseFormProps {
   readonly transport: ResidentTransport;
   readonly onCreated: (caseId: string) => void;
+  readonly onPrimaryCaseExists?: () => Promise<void>;
+  readonly contextKey?: string;
 }
 
-async function toFingerprintedFile(file: File): Promise<FingerprintedFile> {
-  return { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) };
-}
-
-export function CreateCaseForm({ transport, onCreated }: CreateCaseFormProps) {
+export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, contextKey = '' }: CreateCaseFormProps) {
   const options = useQuery({
     queryKey: ['resident', 'create-case-options'],
     queryFn: () => transport.createCaseOptions(),
@@ -30,7 +28,8 @@ export function CreateCaseForm({ transport, onCreated }: CreateCaseFormProps) {
   const [files, setFiles] = useState<readonly File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
-  const idempotency = useRef(new CreateCaseIdempotency());
+  const intent = useRef(new MutationIntent());
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const activeCategories = useMemo(
     () => (options.data?.categories ?? []).filter((category) => category.active),
@@ -46,9 +45,10 @@ export function CreateCaseForm({ transport, onCreated }: CreateCaseFormProps) {
 
   const create = useMutation<CreateCaseSuccessOutput, unknown, CreateCasePayloadOutput>({
     mutationFn: async (payload) => {
-      const fingerprint = await fingerprintCreateCase(payload, await Promise.all(files.map(toFingerprintedFile)));
+      const resolved = await intent.current.resolve({ operation: 'CreateCase', method: 'POST',
+        path: '/api/v1/cases', context: contextKey, payload, files });
       return transport.createCase({
-        payload, files, idempotencyKey: idempotency.current.resolve(fingerprint),
+        payload, files, idempotencyKey: resolved.key,
       });
     },
   });
@@ -62,13 +62,21 @@ export function CreateCaseForm({ transport, onCreated }: CreateCaseFormProps) {
       const created = await create.mutateAsync({
         premises_id: premisesId, category_id: categoryId, description: description.trim(),
       });
+      intent.current.close();
       setCategoryId('');
       setPremisesId('');
       setDescription('');
       setFiles([]);
+      if (fileInput.current) fileInput.current.value = '';
       onCreated(created.case_id);
     } catch (cause) {
-      if (isStaleResponse(cause)) {
+      if (cause instanceof ResidentHttpError && cause.status === 409 && cause.code === 'DEMO_PRIMARY_CASE_EXISTS') {
+        intent.current.close();
+        if (onPrimaryCaseExists) await onPrimaryCaseExists();
+        setStale(true);
+        setError(STALE_MESSAGE);
+      } else if (isStaleResponse(cause)) {
+        intent.current.close();
         setStale(true);
         setError(STALE_MESSAGE);
         await options.refetch();
@@ -78,13 +86,14 @@ export function CreateCaseForm({ transport, onCreated }: CreateCaseFormProps) {
     }
   }
 
-  if (options.isPending) return <section aria-label="Создание обращения"><p role="status">Загрузка категорий и адресов…</p></section>;
+  if (options.isPending) return <section aria-label="Создание обращения"><h1>Создание обращения</h1><p role="status">Загрузка категорий и адресов…</p></section>;
   if (options.isError) return <section aria-label="Создание обращения">
+    <h1>Создание обращения</h1>
     <p role="alert">Не удалось загрузить категории и адреса. Обновите список.</p>
   </section>;
 
   return <section className="resident-create-case" aria-label="Создание обращения">
-    <h2>Создание обращения</h2>
+    <h1>Создание обращения</h1>
     {stale && <p role="alert" className="resident-create-case__stale">{STALE_MESSAGE}</p>}
     {activeCategories.length === 0 && <p role="alert">Сейчас нет доступных категорий для обращения.</p>}
     <form onSubmit={(event) => { void submit(event); }}>
@@ -118,7 +127,7 @@ export function CreateCaseForm({ transport, onCreated }: CreateCaseFormProps) {
       </div>
       <div className="resident-create-case__field">
         <label htmlFor="resident-files">Фотографии и файлы</label>
-        <input id="resident-files" data-testid="files-input" type="file" multiple
+        <input id="resident-files" data-testid="files-input" type="file" multiple ref={fileInput} disabled={create.isPending}
           onChange={(event) => setFiles([...(event.target.files ?? [])])} />
         {files.length > 0 && <p data-testid="files-selected">Выбрано файлов: {files.length}</p>}
         <small>Загрузка файлов не завершает обращение — обращение создаётся после отправки формы.</small>

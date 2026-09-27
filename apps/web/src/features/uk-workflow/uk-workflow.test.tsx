@@ -14,6 +14,14 @@ const id = (digit: number) => {
 };
 const caseId = id(1), iterationId = id(2), resultId = id(3), feedbackId = id(4);
 const selectionId = id(5), contractorId = id(6), eventId = id(7);
+function commandSuccess(path: string): Response {
+  const created = path.endsWith('/return-to-rework') ? { iteration_id: iterationId, iteration_no: 3 }
+    : path.endsWith('/select-contractor') ? { selection_id: selectionId }
+      : path.endsWith('/send-assignment') ? { assignment_id: id(8) }
+        : path.endsWith('/comments') ? { comment_id: id(8) } : {};
+  return Response.json({ command_id: id(8), case_id: caseId, state: 'EXECUTION', revision: 2,
+    event_ids: path.endsWith('/return-to-rework') ? [id(8), id(9)] : [], created });
+}
 const adapter: PlatformAdapter = { name: 'test', isMiniAppContext: true, getRawInitData: () => null,
   subscribeForeground: () => () => {} };
 const action = <T extends AllowedActionOutput['code']>(code: T, target: Extract<AllowedActionOutput, { code: T }>['target']) =>
@@ -194,7 +202,7 @@ test('rework A to B keeps backend N+1, removes A actions and leaves B pending af
   const api: CaseReadTransport = { list: vi.fn(), snapshot: vi.fn()
     .mockResolvedValueOnce(remark).mockResolvedValueOnce(rework)
     .mockResolvedValueOnce(selected).mockResolvedValue(sent) };
-  const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+  const fetch = vi.fn().mockImplementation(async (path: string) => commandSuccess(path));
   const view = renderReactTree(<UkWorkflowCaseView caseId={caseId} role="UK_EMPLOYEE"
     contextKey="rework" transport={api} authorizedFetch={fetch} />, { adapter });
   try {
@@ -306,7 +314,7 @@ test('comment attachment remains in one activity feed after success refetch', as
     attachments: [{ attachment_id: id(9), file_name: 'photo.jpg', mime_type: 'image/jpeg', byte_size: 5 }] }];
   const api: CaseReadTransport = { list: vi.fn(), snapshot: vi.fn()
     .mockResolvedValueOnce(initial).mockResolvedValue(fresh) };
-  const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+  const fetch = vi.fn().mockImplementation(async (path: string) => commandSuccess(path));
   const view = renderReactTree(<UkWorkflowCaseView caseId={caseId} role="UK_EMPLOYEE"
     contextKey="comment" transport={api} authorizedFetch={fetch} />, { adapter });
   try {

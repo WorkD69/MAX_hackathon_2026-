@@ -70,10 +70,10 @@ function ResidentCaseContent({ snapshot, residentTransport, contextKey, clarific
       <p><strong>Следующий шаг:</strong> {snapshot.case.responsibility.text}</p>
       <p><strong>Описание:</strong> {snapshot.case.description}</p>
     </section>
-    <ResidentResultView transport={residentTransport} snapshot={snapshot}
+    <ResidentResultView transport={residentTransport} snapshot={snapshot} contextKey={contextKey} onStale={refresh}
       {...(downloadBridge === undefined ? {} : { downloadBridge })} />
-    <ResidentFeedback transport={residentTransport} snapshot={snapshot} onMutated={refresh} />
-    <ResidentCommentFeed transport={residentTransport} snapshot={snapshot} onMutated={refresh}
+    <ResidentFeedback transport={residentTransport} snapshot={snapshot} onMutated={refresh} contextKey={contextKey} />
+    <ResidentCommentFeed transport={residentTransport} snapshot={snapshot} onMutated={refresh} contextKey={contextKey}
       {...(clarificationTargets === undefined ? {} : { clarificationTargets })} />
     <span hidden data-context-key={contextKey} />
   </>;
