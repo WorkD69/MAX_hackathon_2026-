@@ -57,4 +57,10 @@ describe('versioned signed Bearer session', () => {
     const tag = createHmac('sha256', config().APP_SESSION_SECRET).update(signedPart, 'ascii').digest('base64url');
     expect(() => verifySession(`${signedPart}.${tag}`, config(), now)).toThrow('UNAUTHENTICATED');
   });
+
+  it('preserves the exact selected binding in a demo actor token', () => {
+    const demo = { ...context, demo_mode: true, demo_run_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' };
+    const issued = issueSession(demo, config(), now);
+    expect(verifySession(issued.token, config(), now).role_binding_id).toBe(context.role_binding_id);
+  });
 });

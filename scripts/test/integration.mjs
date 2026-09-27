@@ -11,6 +11,7 @@ export async function discoverIntegrationSuites(root) {
     'tests/integration/**/*.test.{ts,tsx,js,mjs}',
     'packages/*/src/**/*.integration.test.{ts,js,mjs}',
     'apps/*/src/**/*.integration.test.{ts,js,mjs}',
+    'apps/*/test-integration/**/*.test.{ts,js,mjs}',
   ], { cwd: root })) files.push(file.replaceAll('\\', '/'));
   const groups = new Map();
   for (const file of files.sort()) {
@@ -35,10 +36,12 @@ export async function runIntegration(root = process.cwd()) {
   const cli = path.resolve(path.dirname(manifestPath), manifest.bin.vitest);
   let failed = false;
   for (const group of groups) {
-    if (group.cwd === 'packages/db') {
+    if (group.cwd === 'packages/db' || group.cwd === 'apps/api') {
       try {
         const { verifyOwnedPostgresConnection } = await import('../../tests/support/postgres.mjs');
-        for (const prefix of ['TG005', 'TG006', 'TG007', 'TG008', 'TG012']) {
+        const prefixes = group.cwd === 'packages/db'
+          ? ['TG005', 'TG006', 'TG007', 'TG008', 'TG012'] : ['TG013', 'TG013_SEAM'];
+        for (const prefix of prefixes) {
           const receiptPath = process.env[`${prefix}_TEST_DATABASE_RECEIPT`];
           if (!receiptPath) throw new Error('MISSING_OWNED_RECEIPT');
           const receipt = JSON.parse(await readFile(receiptPath, 'utf8'));

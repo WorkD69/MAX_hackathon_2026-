@@ -10,8 +10,8 @@ export type CommandAuthorizationContext =
   | { readonly kind: 'CREATE_CASE'; readonly premisesId: string }
   | { readonly kind: 'CONFIGURATION'; readonly organizationId: string };
 
-/** Every read uses the transaction that holds the kernel's Case/config locks. */
-export function createTransactionAuthorizationRepository(transaction: DatabaseTransaction): AuthorizationRepository {
+/** Reads use the supplied DB context; mutations pass the kernel's transaction. */
+export function createTransactionAuthorizationRepository(transaction: Pick<DatabaseTransaction, 'selectFrom'>): AuthorizationRepository {
   return {
     async identity(maxIdentityId) {
       return await transaction.selectFrom('max_identity').select('app_user_id')
@@ -54,13 +54,36 @@ export function createTransactionAuthorizationRepository(transaction: DatabaseTr
       return (await transaction.selectFrom('resident_premises_access').select('active')
         .where('app_user_id', '=', appUserId).where('premises_id', '=', premisesId).executeTakeFirst())?.active === true;
     },
+    async residentAnyAccess(appUserId) {
+      return Boolean(await transaction.selectFrom('resident_premises_access as access')
+        .innerJoin('premises as p', 'p.premises_id', 'access.premises_id')
+        .innerJoin('house as h', 'h.house_id', 'p.house_id')
+        .innerJoin('organization as o', 'o.organization_id', 'h.organization_id')
+        .select('access.app_user_id').where('access.app_user_id', '=', appUserId)
+        .where('access.active', '=', true).where('p.active', '=', true)
+        .where('h.active', '=', true).where('o.active', '=', true).executeTakeFirst());
+    },
     async ukHouseAccess(appUserId, houseId) {
       return (await transaction.selectFrom('uk_house_access').select('active')
         .where('app_user_id', '=', appUserId).where('house_id', '=', houseId).executeTakeFirst())?.active === true;
     },
+    async ukAnyHouseAccess(appUserId, organizationId) {
+      return Boolean(await transaction.selectFrom('uk_house_access as access')
+        .innerJoin('house as h', 'h.house_id', 'access.house_id')
+        .innerJoin('organization as o', 'o.organization_id', 'h.organization_id')
+        .select('access.app_user_id').where('access.app_user_id', '=', appUserId)
+        .where('h.organization_id', '=', organizationId).where('access.active', '=', true)
+        .where('h.active', '=', true).where('o.active', '=', true).executeTakeFirst());
+    },
     async organizationContractor(organizationId, contractorId) {
       return (await transaction.selectFrom('organization_contractor').select('active')
         .where('organization_id', '=', organizationId).where('contractor_id', '=', contractorId).executeTakeFirst())?.active === true;
+    },
+    async contractorAnyOrganization(contractorId) {
+      return Boolean(await transaction.selectFrom('organization_contractor as binding')
+        .innerJoin('organization as o', 'o.organization_id', 'binding.organization_id')
+        .select('binding.contractor_id').where('binding.contractor_id', '=', contractorId)
+        .where('binding.active', '=', true).where('o.active', '=', true).executeTakeFirst());
     },
     async caseById(caseId): Promise<CaseContext | null> {
       const row = await transaction.selectFrom('case_table').selectAll().where('case_id', '=', caseId).executeTakeFirst();

@@ -5,17 +5,22 @@ import {
 import type { RuntimeConfig } from '../../config/types.js';
 import type { RuntimeFastifyInstance } from '../../app/static.js';
 import type { MaxIdentityRepository } from '../max-identity/repository.js';
+import type { AuthorizationRepository } from '../authorization/policy.js';
 import { InitDataError } from './init-data.js';
 import { AuthContextError, AuthService } from './service.js';
+import type { ServerDemoActorResolver } from './service.js';
 import { SessionError } from './session-token.js';
 
 export interface AuthModuleOptions {
   readonly repository: MaxIdentityRepository;
+  readonly authorizationRepository?: AuthorizationRepository;
+  readonly demoActorResolver?: ServerDemoActorResolver;
   readonly nowSeconds?: () => number;
 }
 
 export function registerAuthRoutes(app: RuntimeFastifyInstance, config: RuntimeConfig, options: AuthModuleOptions): void {
-  const service = new AuthService(config, options.repository, options.nowSeconds);
+  const service = new AuthService(config, options.repository, options.nowSeconds,
+    options.authorizationRepository, options.demoActorResolver);
   const requestId = (header: unknown): string => {
     const parsed = RequestIdHeaderSchema.safeParse(header);
     return parsed.success ? parsed.data : randomUUID();
