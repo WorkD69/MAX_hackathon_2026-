@@ -42,6 +42,14 @@ async function submit(container: HTMLElement) {
   await act(async () => { (container.querySelector('[data-testid="comment-submit"]') as HTMLButtonElement).click(); });
 }
 
+async function selectFile(container: HTMLElement, file: File) {
+  await act(async () => {
+    const input = container.querySelector('[data-testid="comment-files"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
 afterEach(() => { queryClient.clear(); });
 
 test('coordination and clarification comments render as one ordered feed', () => {
@@ -112,6 +120,7 @@ test('remarks review with targets sends the chosen clarification_request_id', as
     await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
     expect(api.addComment).toHaveBeenCalledWith(IDS.caseId, {
       payload: { body: 'Ответ на уточнение', clarification_request_id: IDS.commentId },
+      files: [],
       idempotencyKey: expect.any(String),
     });
   } finally { view.unmount(); }
@@ -128,7 +137,25 @@ test('ordinary comment omits clarification_request_id', async () => {
     await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
     expect(api.addComment).toHaveBeenCalledWith(IDS.caseId, {
       payload: { body: 'Дополнение', clarification_request_id: null },
+      files: [],
       idempotencyKey: expect.any(String),
+    });
+  } finally { view.unmount(); }
+});
+
+test('selected comment attachments are sent with the canonical comment payload', async () => {
+  const api = transport();
+  const snapshot = withAllowedActions(residentSnapshot(), [addCommentAction]);
+  const view = renderReactTree(<ResidentCommentFeed transport={api} snapshot={snapshot} onMutated={() => {}} />, { adapter });
+  try {
+    const file = new File(['photo'], 'comment.jpg', { type: 'image/jpeg' });
+    await type(view.container, 'Дополнение');
+    await selectFile(view.container, file);
+    await submit(view.container);
+    await waitForUi(() => expect(api.addComment).toHaveBeenCalledTimes(1));
+    expect(api.addComment).toHaveBeenCalledWith(IDS.caseId, {
+      payload: { body: 'Дополнение', clarification_request_id: null },
+      files: [file], idempotencyKey: expect.any(String),
     });
   } finally { view.unmount(); }
 });

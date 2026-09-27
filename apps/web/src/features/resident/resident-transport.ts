@@ -1,19 +1,20 @@
 import {
   AddCommentPayloadSchema, AddCommentSuccessSchema, CategoriesReadResponseSchema,
   CreateCasePayloadSchema, CreateCaseSuccessSchema, DownloadCapabilityResponseSchema,
+  ErrorResponseSchema, SessionReadResponseSchema,
   ResidentConfirmationRequestSchema, ResidentConfirmationSuccessSchema,
   ResidentRemarkPayloadSchema, ResidentRemarkSuccessSchema,
   type AddCommentPayloadOutput, type AddCommentSuccessOutput, type CreateCasePayloadOutput,
   type CreateCaseSuccessOutput, type DownloadCapabilityResponseOutput,
   type ResidentConfirmationRequestOutput, type ResidentConfirmationSuccessOutput,
   type ResidentRemarkPayloadOutput, type ResidentRemarkSuccessOutput,
-  type ResultRequirementOutput,
+  type ResultRequirementOutput, type SessionReadResponseOutput,
 } from '@max-smart-city/contracts';
 
 export type AuthorizedFetch = (path: string, init?: RequestInit) => Promise<Response>;
 
 export class ResidentHttpError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly code: string | null = null) {
     super(message);
     this.name = 'ResidentHttpError';
   }
@@ -58,10 +59,12 @@ export interface ResidentConfirmRequest extends ResidentCommand {
 
 export interface ResidentRemarkRequest extends ResidentCommand {
   readonly request: ResidentRemarkPayloadOutput;
+  readonly files: readonly File[];
 }
 
 export interface AddCommentRequest extends ResidentCommand {
   readonly payload: AddCommentPayloadOutput;
+  readonly files: readonly File[];
 }
 
 export type ReadResidentPremises = () => Promise<readonly PremiseOption[]>;
@@ -72,20 +75,21 @@ export interface ResidentTransport {
   addComment(caseId: string, request: AddCommentRequest): Promise<AddCommentSuccessOutput>;
   confirmResult(caseId: string, request: ResidentConfirmRequest): Promise<ResidentConfirmationSuccessOutput>;
   remarkResult(caseId: string, request: ResidentRemarkRequest): Promise<ResidentRemarkSuccessOutput>;
-  downloadCapability(attachmentId: string): Promise<DownloadCapabilityResponseOutput>;
+  downloadCapability(attachmentId: string, idempotencyKey: string): Promise<DownloadCapabilityResponseOutput>;
+  readAuthoritativeSession(): Promise<SessionReadResponseOutput>;
 }
 
 const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
 
-function failure(response: Response, action: string): ResidentHttpError {
-  if (response.status === 409) {
-    return new ResidentHttpError(409, `${action}: stale authoritative state`);
-  }
-  return new ResidentHttpError(response.status, `${action} failed (${response.status})`);
+async function failure(response: Response, action: string): Promise<ResidentHttpError> {
+  const body = await response.json().catch(() => null);
+  const parsed = ErrorResponseSchema.safeParse(body);
+  return new ResidentHttpError(response.status, `${action} failed (${response.status})`,
+    parsed.success ? parsed.data.error.code : null);
 }
 
 async function readJson(response: Response, action: string): Promise<unknown> {
-  if (!response.ok) throw failure(response, action);
+  if (!response.ok) throw await failure(response, action);
   return response.json();
 }
 
@@ -101,6 +105,24 @@ async function postJson<T>(
     method: 'POST',
     headers: { 'Content-Type': JSON_CONTENT_TYPE, 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(body),
+  });
+  return parse(await readJson(response, action));
+}
+
+async function postMultipart<T>(
+  authorizedFetch: AuthorizedFetch,
+  path: string,
+  payload: unknown,
+  files: readonly File[],
+  idempotencyKey: string,
+  parse: (value: unknown) => T,
+  action: string,
+): Promise<T> {
+  const body = new FormData();
+  body.append('payload', JSON.stringify(payload));
+  for (const file of files) body.append('files[]', file, file.name);
+  const response = await authorizedFetch(path, {
+    method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body,
   });
   return parse(await readJson(response, action));
 }
@@ -147,9 +169,9 @@ export function createHttpResidentTransport(
       return CreateCaseSuccessSchema.parse(await readJson(response, 'CreateCase'));
     },
 
-    addComment(caseId, { payload, idempotencyKey }) {
-      return postJson(authorizedFetch, casePath(caseId, '/comments'),
-        AddCommentPayloadSchema.parse(payload), idempotencyKey,
+    addComment(caseId, { payload, files = [], idempotencyKey }) {
+      return postMultipart(authorizedFetch, casePath(caseId, '/comments'),
+        AddCommentPayloadSchema.parse(payload), files, idempotencyKey,
         (value) => AddCommentSuccessSchema.parse(value), 'AddComment');
     },
 
@@ -159,16 +181,23 @@ export function createHttpResidentTransport(
         (value) => ResidentConfirmationSuccessSchema.parse(value), 'ResidentConfirmation');
     },
 
-    remarkResult(caseId, { request, idempotencyKey }) {
-      return postJson(authorizedFetch, casePath(caseId, '/commands/resident-remark'),
-        ResidentRemarkPayloadSchema.parse(request), idempotencyKey,
+    remarkResult(caseId, { request, files = [], idempotencyKey }) {
+      return postMultipart(authorizedFetch, casePath(caseId, '/commands/resident-remark'),
+        ResidentRemarkPayloadSchema.parse(request), files, idempotencyKey,
         (value) => ResidentRemarkSuccessSchema.parse(value), 'ResidentRemark');
     },
 
-    async downloadCapability(attachmentId) {
+    async downloadCapability(attachmentId, idempotencyKey) {
       const path = `/api/v1/attachments/${encodeURIComponent(attachmentId)}/download-capability`;
-      const response = await authorizedFetch(path, { method: 'POST', cache: 'no-store' });
+      const response = await authorizedFetch(path, {
+        method: 'POST', cache: 'no-store', headers: { 'Idempotency-Key': idempotencyKey },
+      });
       return DownloadCapabilityResponseSchema.parse(await readJson(response, 'DownloadCapability'));
+    },
+
+    async readAuthoritativeSession() {
+      const response = await authorizedFetch('/api/v1/session', { method: 'GET', cache: 'no-store' });
+      return SessionReadResponseSchema.parse(await readJson(response, 'Session'));
     },
   };
 }

@@ -191,6 +191,7 @@ test.each(['confirm', 'remark'] as const)('%s 409 refetches new targets without 
     expect(command).toHaveBeenCalledTimes(1);
     expect(command).toHaveBeenCalledWith(IDS.caseId, {
       request: { result_id: IDS.resultId, iteration_id: IDS.iterationId, ...(choice === 'remark' ? { remark_text: 'Протечка осталась' } : {}) },
+      ...(choice === 'remark' ? { files: [] } : {}),
       idempotencyKey: expect.any(String),
     });
     expect(view.container.querySelector(`[data-testid="${choice}-success"]`)).toBeNull();

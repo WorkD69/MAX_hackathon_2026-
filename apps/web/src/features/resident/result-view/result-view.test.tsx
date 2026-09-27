@@ -54,8 +54,75 @@ test('download requests a capability for the specific attachment only', async ()
       (view.container.querySelector(`[data-testid="download-${IDS.attachmentId}"]`) as HTMLButtonElement).click();
     });
     await waitForUi(() => expect(downloadFile).toHaveBeenCalledTimes(1));
-    expect(api.downloadCapability).toHaveBeenCalledWith(IDS.attachmentId);
+    expect(api.downloadCapability).toHaveBeenCalledWith(IDS.attachmentId, expect.any(String));
     expect(downloadFile).toHaveBeenCalledWith(downloadCapabilityFixture.download_url, downloadCapabilityFixture.file_name);
+  } finally { view.unmount(); }
+});
+
+test('uncertain mint retry reuses its key and a later download gets a new intent key', async () => {
+  const mint = vi.fn().mockRejectedValueOnce(new Error('network')).mockResolvedValue(downloadCapabilityFixture);
+  const view = renderReactTree(<ResidentResultView transport={transport({ downloadCapability: mint })}
+    snapshot={residentSnapshot()} downloadBridge={{ downloadFile: vi.fn() }} />, { adapter });
+  try {
+    const button = view.container.querySelector(`[data-testid="download-${IDS.attachmentId}"]`) as HTMLButtonElement;
+    await act(async () => { button.click(); });
+    await waitForUi(() => expect(mint).toHaveBeenCalledTimes(1));
+    await act(async () => { button.click(); });
+    await waitForUi(() => expect(mint).toHaveBeenCalledTimes(2));
+    expect(mint.mock.calls[1]![1]).toBe(mint.mock.calls[0]![1]);
+    await act(async () => { button.click(); });
+    await waitForUi(() => expect(mint).toHaveBeenCalledTimes(3));
+    expect(mint.mock.calls[2]![1]).not.toBe(mint.mock.calls[1]![1]);
+  } finally { view.unmount(); }
+});
+
+test('separate attachment downloads use separate intent keys', async () => {
+  const base = residentSnapshot();
+  const otherId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const result = { ...base.case.current_result!, attachments: [
+    ...base.case.current_result!.attachments,
+    { attachment_id: otherId, file_name: 'other.jpg', mime_type: 'image/jpeg', byte_size: 6 },
+  ] };
+  const mint = vi.fn().mockResolvedValue(downloadCapabilityFixture);
+  const view = renderReactTree(<ResidentResultView transport={transport({ downloadCapability: mint })}
+    snapshot={{ ...base, case: { ...base.case, current_result: result } }}
+    downloadBridge={{ downloadFile: vi.fn() }} />, { adapter });
+  try {
+    for (const id of [IDS.attachmentId, otherId]) {
+      await act(async () => { (view.container.querySelector(`[data-testid="download-${id}"]`) as HTMLButtonElement).click(); });
+    }
+    expect(mint.mock.calls[0]![1]).not.toBe(mint.mock.calls[1]![1]);
+  } finally { view.unmount(); }
+});
+
+test('initial attachments already present in the projection get a download action', async () => {
+  const base = residentSnapshot({ withResult: false });
+  const attachment = { attachment_id: IDS.attachmentId, file_name: 'initial.jpg', mime_type: 'image/jpeg', byte_size: 5 };
+  const snapshot = { ...base, case: { ...base.case, initial_attachments: [attachment] } };
+  const api = transport();
+  const view = renderReactTree(<ResidentResultView transport={api} snapshot={snapshot}
+    downloadBridge={{ downloadFile: vi.fn() }} />, { adapter });
+  try {
+    expect(view.container.textContent).toContain('initial.jpg');
+    await act(async () => {
+      (view.container.querySelector(`[data-testid="download-${IDS.attachmentId}"]`) as HTMLButtonElement).click();
+    });
+    await waitForUi(() => expect(api.downloadCapability).toHaveBeenCalledWith(IDS.attachmentId, expect.any(String)));
+  } finally { view.unmount(); }
+});
+
+test('download button names its file and long names use a wrapping class', () => {
+  const base = residentSnapshot();
+  const longName = 'very-long-file-name-with-no-breaks-repeated-repeated-repeated-repeated.jpg';
+  const result = { ...base.case.current_result!, attachments: [
+    { ...base.case.current_result!.attachments[0]!, file_name: longName },
+  ] };
+  const view = render({ ...base, case: { ...base.case, current_result: result } });
+  try {
+    const button = view.container.querySelector(`[data-testid="download-${IDS.attachmentId}"]`) as HTMLButtonElement;
+    expect(button.getAttribute('aria-label')).toBe(`Скачать ${longName}`);
+    expect(view.container.querySelector('.resident-result__file-name')?.textContent).toBe(longName);
+    expect((view.container.querySelector('.resident-result__file-name') as HTMLElement).style.overflowWrap).toBe('anywhere');
   } finally { view.unmount(); }
 });
 
@@ -101,6 +168,7 @@ test('result without attachments reports it instead of an empty list', () => {
   const view = render(snapshot);
   try {
     expect(view.container.textContent).toContain('Материалы не приложены');
-    expect(view.container.querySelector('[data-attachment-id]')).toBeNull();
+    expect(view.container.querySelector('[aria-label="Материалы результата"] [data-attachment-id]')).toBeNull();
+    expect(view.container.querySelector('[aria-label="Вложения истории"] [data-attachment-id]')).not.toBeNull();
   } finally { view.unmount(); }
 });

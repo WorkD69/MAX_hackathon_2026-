@@ -47,7 +47,8 @@
 }
 
 .resident-comments__field select,
-.resident-comments__field textarea {
+.resident-comments__field textarea,
+.resident-comments__field input[type='file'] {
   width: 100%;
   min-height: 44px;
   padding: 0.5rem 0.625rem;
@@ -66,6 +67,7 @@
 
 .resident-comments__field select:focus-visible,
 .resident-comments__field textarea:focus-visible,
+.resident-comments__field input:focus-visible,
 .resident-comments button:focus-visible {
   outline: 3px solid #1d4ed8;
   outline-offset: 2px;

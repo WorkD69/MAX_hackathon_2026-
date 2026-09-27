@@ -50,6 +50,7 @@ export function commentFeedEntries(snapshot: ResidentCaseSnapshotOutput): readon
 
 export function ResidentCommentFeed({ transport, snapshot, clarificationTargets = [], onMutated }: ResidentCommentFeedProps) {
   const [body, setBody] = useState('');
+  const [files, setFiles] = useState<readonly File[]>([]);
   const [targetId, setTargetId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
@@ -67,6 +68,7 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
         body: body.trim(),
         clarification_request_id: requiresTarget ? targetId || null : null,
       },
+      files,
       idempotencyKey: newIdempotencyKey(),
     }),
   });
@@ -83,6 +85,7 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
     try {
       await addComment.mutateAsync();
       setBody('');
+      setFiles([]);
       setTargetId('');
       await onMutated();
     } catch (cause) {
@@ -124,6 +127,12 @@ export function ResidentCommentFeed({ transport, snapshot, clarificationTargets 
         <label htmlFor="resident-comment">Сообщение</label>
         <textarea id="resident-comment" data-testid="comment-input" rows={3} value={body}
           onChange={(event) => setBody(event.target.value)} />
+      </div>
+      <div className="resident-comments__field">
+        <label htmlFor="resident-comment-files">Файлы к сообщению</label>
+        <input id="resident-comment-files" data-testid="comment-files" type="file" multiple
+          disabled={addComment.isPending} onChange={(event) => setFiles([...(event.target.files ?? [])])} />
+        {files.length > 0 && <small>Выбрано файлов: {files.length}</small>}
       </div>
       {error && <p role="alert">{error}</p>}
       <button type="submit" data-testid="comment-submit" disabled={addComment.isPending || body.trim() === ''}>

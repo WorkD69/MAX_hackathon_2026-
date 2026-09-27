@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { CreateCasePayloadOutput, CreateCaseSuccessOutput } from '@max-smart-city/contracts';
 import { CreateCaseIdempotency, fingerprintCreateCase, type FingerprintedFile } from '../idempotency.js';
-import { isStaleResponse, type CreateCaseOptions, type ResidentTransport } from '../resident-transport.js';
+import { isStaleResponse, ResidentHttpError, type CreateCaseOptions, type ResidentTransport } from '../resident-transport.js';
 import './create-case-form.css';
 
 const STALE_MESSAGE = 'Случай изменился с момента открытия. Данные обновлены.';
@@ -68,7 +68,19 @@ export function CreateCaseForm({ transport, onCreated }: CreateCaseFormProps) {
       setFiles([]);
       onCreated(created.case_id);
     } catch (cause) {
-      if (isStaleResponse(cause)) {
+      if (cause instanceof ResidentHttpError && cause.status === 409 && cause.code === 'DEMO_PRIMARY_CASE_EXISTS') {
+        try {
+          const session = await transport.readAuthoritativeSession();
+          if (session.primary_case_id) {
+            onCreated(session.primary_case_id);
+            return;
+          }
+        } catch {
+          // Keep the form pending manual action when the authoritative session cannot be read.
+        }
+        setStale(true);
+        setError(STALE_MESSAGE);
+      } else if (isStaleResponse(cause)) {
         setStale(true);
         setError(STALE_MESSAGE);
         await options.refetch();
@@ -78,13 +90,14 @@ export function CreateCaseForm({ transport, onCreated }: CreateCaseFormProps) {
     }
   }
 
-  if (options.isPending) return <section aria-label="Создание обращения"><p role="status">Загрузка категорий и адресов…</p></section>;
+  if (options.isPending) return <section aria-label="Создание обращения"><h1>Создание обращения</h1><p role="status">Загрузка категорий и адресов…</p></section>;
   if (options.isError) return <section aria-label="Создание обращения">
+    <h1>Создание обращения</h1>
     <p role="alert">Не удалось загрузить категории и адреса. Обновите список.</p>
   </section>;
 
   return <section className="resident-create-case" aria-label="Создание обращения">
-    <h2>Создание обращения</h2>
+    <h1>Создание обращения</h1>
     {stale && <p role="alert" className="resident-create-case__stale">{STALE_MESSAGE}</p>}
     {activeCategories.length === 0 && <p role="alert">Сейчас нет доступных категорий для обращения.</p>}
     <form onSubmit={(event) => { void submit(event); }}>

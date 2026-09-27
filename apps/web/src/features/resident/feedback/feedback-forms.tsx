@@ -36,6 +36,7 @@ function isCurrentTarget(snapshot: ResidentCaseSnapshotOutput, action: FeedbackA
 
 export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFeedbackProps) {
   const [remarkText, setRemarkText] = useState('');
+  const [remarkFiles, setRemarkFiles] = useState<readonly File[]>([]);
   const [stale, setStale] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
@@ -63,6 +64,7 @@ export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFee
         iteration_id: remarkAction!.target.iteration_id,
         remark_text: remarkText.trim(),
       },
+      files: remarkFiles,
       idempotencyKey: newIdempotencyKey(),
     }),
   });
@@ -101,6 +103,7 @@ export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFee
       await remark.mutateAsync();
       await onMutated();
       setRemarkText('');
+      setRemarkFiles([]);
     } catch (cause) {
       if (isStaleResponse(cause)) {
         setStale(true);
@@ -135,6 +138,10 @@ export function ResidentFeedback({ transport, snapshot, onMutated }: ResidentFee
       <label htmlFor="resident-remark">Замечание</label>
       <textarea id="resident-remark" data-testid="remark-input" rows={4} value={remarkText}
         disabled={pending !== null} onChange={(event) => setRemarkText(event.target.value)} />
+      <label htmlFor="resident-remark-files">Файлы к замечанию</label>
+      <input id="resident-remark-files" data-testid="remark-files" type="file" multiple
+        disabled={pending !== null} onChange={(event) => setRemarkFiles([...(event.target.files ?? [])])} />
+      {remarkFiles.length > 0 && <small>Выбрано файлов: {remarkFiles.length}</small>}
       <button type="submit" data-testid="remark-submit" disabled={pending !== null || remarkText.trim() === ''}>
         {pending === 'remark' ? 'Отправка…' : 'Оставить замечание'}
       </button>

@@ -90,9 +90,28 @@ test('remark sends result, iteration and trimmed text', async () => {
     await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
     expect(api.remarkResult).toHaveBeenCalledWith(IDS.caseId, {
       request: { result_id: IDS.resultId, iteration_id: IDS.iterationId, remark_text: 'Протечка осталась' },
+      files: [],
       idempotencyKey: expect.any(String),
     });
     expect(view.container.querySelector('[data-testid="remark-success"]')).toBeNull();
+  } finally { view.unmount(); }
+});
+
+test('remark includes selected supporting files without changing its target', async () => {
+  const { view, api, onMutated } = render(withAllowedActions(residentSnapshot(), [remarkAction]));
+  try {
+    const file = new File(['proof'], 'proof.jpg', { type: 'image/jpeg' });
+    await act(async () => {
+      const input = view.container.querySelector('[data-testid="remark-files"]') as HTMLInputElement;
+      Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await remark(view, 'Протечка осталась');
+    await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
+    expect(api.remarkResult).toHaveBeenCalledWith(IDS.caseId, {
+      request: { ...currentTarget, remark_text: 'Протечка осталась' },
+      files: [file], idempotencyKey: expect.any(String),
+    });
   } finally { view.unmount(); }
 });
 
@@ -176,7 +195,7 @@ test('remark 409 refetches once without retry or retarget', async () => {
     await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
     expect(api.remarkResult).toHaveBeenCalledTimes(1);
     expect(api.remarkResult).toHaveBeenCalledWith(IDS.caseId, {
-      request: { ...currentTarget, remark_text: 'Протечка осталась' }, idempotencyKey: expect.any(String),
+      request: { ...currentTarget, remark_text: 'Протечка осталась' }, files: [], idempotencyKey: expect.any(String),
     });
     expect(view.container.querySelector('[data-testid="remark-success"]')).toBeNull();
   } finally { view.unmount(); }
