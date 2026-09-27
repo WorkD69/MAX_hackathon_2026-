@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist-production",
+    "sourceMap": false
+  },
+  "files": ["src/app/main.ts"],
+  "include": [],
+  "exclude": ["dist", "dist-production", "node_modules"]
+}

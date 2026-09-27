@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:production": "node -e \"require('node:fs').rmSync('dist-production',{recursive:true,force:true})\" && tsc -p tsconfig.production.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "start": "node dist/app/main.js"

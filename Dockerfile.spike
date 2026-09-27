@@ -18,7 +18,9 @@ COPY tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
 RUN npm run build \
+    && npm run build:production --workspace @max-smart-city/api \
     && test -s apps/api/dist/app/main.js \
+    && test -s apps/api/dist-production/app/main.js \
     && test -s apps/web/dist/index.html \
     && test -s packages/db/dist/migrations/0001_foundation.js \
     && test -s packages/db/dist/migrations/0002_case_workflow.js \
@@ -26,11 +28,15 @@ RUN npm run build \
     && npm prune --omit=dev
 
 FROM toolchain AS runtime
+ARG BUILD_SHA
+RUN printf '%s' "$BUILD_SHA" | grep -Eq '^[0-9a-f]{40}$'
 ENV NODE_ENV=production
+ENV BUILD_SHA=${BUILD_SHA}
+LABEL org.opencontainers.image.revision=${BUILD_SHA}
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/package.json
-COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /app/apps/api/dist-production ./apps/api/dist
 COPY --from=build --chown=node:node /app/apps/web/dist ./apps/web/dist
 COPY --from=build --chown=node:node /app/packages/contracts/package.json ./packages/contracts/package.json
 COPY --from=build --chown=node:node /app/packages/contracts/dist ./packages/contracts/dist
@@ -45,4 +51,5 @@ COPY --chown=node:node spike/entrypoint.mjs ./spike/entrypoint.mjs
 COPY --chown=node:node spike/migrate.mjs ./spike/migrate.mjs
 USER node
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 CMD ["node", "spike/entrypoint.mjs"]

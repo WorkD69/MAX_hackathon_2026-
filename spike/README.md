@@ -1,5 +1,40 @@
 # Docker packaging spike (PREP ONLY)
 
+## PRE-TG030 production output fix
+
+Ветка `codex/docker-production-output-fix` включает исходный spike-коммит
+`12ec1a66d34ee30ae234ff531d6ad1a96cf9effa` и актуальный `main`.
+Обычный `apps/api/dist` по-прежнему компилирует тесты для разработки.
+`npm run build:production --workspace @max-smart-city/api` компилирует только
+`src/app/main.ts` и достижимые production-модули в `apps/api/dist-production`.
+Runtime stage копирует этот каталог в `/app/apps/api/dist`; test-only файлы,
+fixture credentials и fake adapter в нём запрещены структурным тестом.
+
+После `npm ci` и `npm run build` выполнить:
+
+```powershell
+npm run build:production --workspace @max-smart-city/api
+node --test tests/support/production-package.test.mjs
+```
+
+`.dockerignore` исключает тестовые файлы и локальный `dist-production` из
+Docker build context. Тест проверяет production output, необходимые web/DB/seed
+артефакты, границу Docker COPY и известные синтетические credential markers.
+Он не заменяет inspection собранного Linux-образа.
+
+`BUILD_SHA` передаётся при сборке образа как точный 40-символьный SHA commit:
+
+```powershell
+$env:BUILD_SHA = git rev-parse HEAD
+docker compose -f compose.spike.yaml build app
+```
+
+Dockerfile проверяет формат, записывает SHA в image label и default runtime
+environment. Compose больше не подставляет фиктивный SHA и требует явного
+значения. Для TG-030/TG-032 следует передавать SHA окончательного immutable
+commit образа. `HEALTHCHECK` обращается только к `/health/live`; он не является
+доказательством `/health/ready` или финальной композиции TG-029.
+
 База: `origin/main` = `6b4a3a3aad2c01c4357c432ad00db89e708cd462`.
 Ветка: `codex/docker-packaging-spike`. Это эксперимент для TG-030, а не реализация TG-030 и не доказательство работающей продуктовой вертикали.
 

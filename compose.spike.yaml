@@ -19,6 +19,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.spike
+      args:
+        BUILD_SHA: ${BUILD_SHA:?Set BUILD_SHA to the immutable Git commit SHA}
     environment:
       APP_ENV: test
       HOST: 0.0.0.0
@@ -29,7 +31,6 @@ services:
       MAX_ADAPTER_MODE: fake
       PUBLIC_APP_URL: http://127.0.0.1:33030
       PUBLIC_API_BASE_URL: http://127.0.0.1:33030/api/v1
-      BUILD_SHA: 6b4a3a3aad2c01c4357c432ad00db89e708cd462
     ports:
       - "127.0.0.1:33030:3000"
     depends_on:
