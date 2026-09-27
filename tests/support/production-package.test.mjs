@@ -2,10 +2,26 @@ import assert from 'node:assert/strict';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const apiOutput = path.join(root, 'apps/api/dist-production');
+const apiSource = path.join(root, 'apps/api/src');
+const requiredApiModules = [
+  'index',
+  'app/main', 'app/app', 'app/lifecycle', 'app/static',
+  'config/load-config', 'config/schema', 'config/types',
+  'modules/auth/init-data', 'modules/auth/plugin', 'modules/auth/service', 'modules/auth/session-token',
+  'modules/demo/index', 'modules/demo/plugin', 'modules/demo/repository', 'modules/demo/service',
+  'modules/authorization/boundary', 'modules/authorization/policy',
+  'modules/commands/kernel/index', 'modules/commands/kernel/authorization',
+  'modules/max-adapter/index', 'modules/max-adapter/factory', 'modules/max-adapter/real',
+  'integrations/max/index', 'integrations/max/webhook', 'integrations/max/subscription-reconciler',
+  'modules/notifications/index', 'modules/notifications/store', 'modules/notifications/worker',
+  'modules/notifications/redrive-command', 'modules/notifications/redrive-cli',
+  'maintenance/recovery', 'maintenance/cli',
+  'modules/health/plugin', 'modules/health/readiness',
+];
 const runtimeArtifacts = [
   'apps/api/dist-production',
   'apps/web/dist',
@@ -17,7 +33,7 @@ const runtimeArtifacts = [
   'spike/entrypoint.mjs',
   'spike/migrate.mjs',
 ];
-const forbiddenPath = /(?:^|[\\/])(?:tests?|test-integration|fixtures?|__fixtures__|e2e|harness)(?:[\\/]|$)|(?:^|[\\/])fake\.(?:js|ts)(?:\.map)?$|\.(?:test|spec|integration|e2e)\.(?:[cm]?[jt]sx?)(?:\.map)?$/i;
+const forbiddenPath = /(?:^|[\\/])(?:tests?|__tests__|test-integration|fixtures?|__fixtures__|test-helpers|e2e|harness)(?:[\\/]|$)|(?:^|[\\/])fake\.(?:js|ts)(?:\.map)?$|\.(?:test|spec|fixture|typecheck|integration|e2e)\.(?:[cm]?[jt]sx?)(?:\.map)?$/i;
 const forbiddenMarker = /SECRET_SENTINEL_91|TEST_CASE_FIXTURE|FAKE_MAX_ADAPTER_TEST_ONLY|tg013-secret|spike_only_disposable|postgresql:\/\/user:pass@db|11111111-1111-4111-8111-111111111111/i;
 
 async function filesUnder(target) {
@@ -29,9 +45,11 @@ async function filesUnder(target) {
 }
 
 test('production output contains required application artifacts and no test material', async () => {
+  for (const module of requiredApiModules) {
+    const artifact = path.join(apiOutput, `${module}.js`);
+    assert.ok((await stat(artifact)).size > 0, `${module}.js missing or empty`);
+  }
   for (const required of [
-    'apps/api/dist-production/app/main.js',
-    'apps/api/dist-production/app/app.js',
     'apps/web/dist/index.html',
     'packages/db/dist/migrations/0001_foundation.js',
     'packages/db/dist/migrations/0002_case_workflow.js',
@@ -50,6 +68,44 @@ test('production output contains required application artifacts and no test mate
     }
   }
   assert.ok((await readdir(apiOutput)).length > 0);
+});
+
+test('every production API source is emitted and every local output import resolves', async () => {
+  const testOnlySource = /(?:^|\/)(?:tests?|__tests__|test-integration|fixtures?|__fixtures__|e2e|test-helpers|harness)(?:\/|$)|(?:^|\/)fake\.ts$|\.(?:test|spec|fixture|typecheck)\.ts$/i;
+  for (const source of await filesUnder(apiSource)) {
+    const relative = path.relative(apiSource, source).replaceAll('\\', '/');
+    if (!relative.endsWith('.ts') || testOnlySource.test(relative)) continue;
+    const emitted = path.join(apiOutput, relative.replace(/\.ts$/, '.js'));
+    assert.ok((await stat(emitted)).size > 0, `production source not emitted: ${relative}`);
+  }
+
+  for (const artifact of await filesUnder(apiOutput)) {
+    if (!artifact.endsWith('.js')) continue;
+    const code = await readFile(artifact, 'utf8');
+    const imports = code.matchAll(/\b(?:from\s*|import\s*|import\s*\(\s*|require\s*\(\s*)['"](\.[^'"]+)['"]/g);
+    for (const match of imports) {
+      const target = path.resolve(path.dirname(artifact), match[1]);
+      assert.ok((await stat(target)).isFile(), `unresolved import in ${path.relative(apiOutput, artifact)}: ${match[1]}`);
+    }
+  }
+});
+
+test('representative production modules import with runtime dependencies', async () => {
+  for (const [module, exported] of [
+    ['config/load-config', 'loadConfig'],
+    ['modules/auth/plugin', 'registerAuthRoutes'],
+    ['modules/demo/service', 'DemoService'],
+    ['modules/authorization/policy', 'AuthorizationPolicy'],
+    ['modules/commands/kernel/index', 'createCommandFingerprint'],
+    ['modules/max-adapter/real', 'RealMaxAdapter'],
+    ['integrations/max/webhook', 'createMaxWebhookPlugin'],
+    ['modules/notifications/worker', 'DurableNotificationWorker'],
+    ['maintenance/recovery', 'recoverSyntheticDemo'],
+    ['modules/health/plugin', 'registerHealthRoutes'],
+  ]) {
+    const loaded = await import(pathToFileURL(path.join(apiOutput, `${module}.js`)).href);
+    assert.ok(exported in loaded, `${module}.js does not export ${exported}`);
+  }
 });
 
 test('Docker runtime stage copies only production API output and keeps the runtime contract', async () => {
