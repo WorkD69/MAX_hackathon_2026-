@@ -29,6 +29,29 @@ export const CaseListResponseSchema = z.strictObject({
   items: z.array(CaseListItemSchema), next_cursor: z.string().nullable(),
 });
 
+export const ResidentCreateCaseOptionsQuerySchema = z.strictObject({
+  premises_id: UuidSchema.optional(),
+});
+export const ResidentPremiseOptionSchema = z.strictObject({
+  premises_id: UuidSchema, house_address: z.string(), premises_label: z.string(),
+});
+export const ResidentCategoryOptionSchema = z.strictObject({
+  category_id: UuidSchema, name: z.string(), description: z.string().nullable(),
+  requires_premises_access: z.boolean(), result_requirement: ResultRequirementSchema,
+});
+export const ResidentCreateCaseOptionsResponseSchema = z.strictObject({
+  premises: z.array(ResidentPremiseOptionSchema),
+  selected_premises_id: UuidSchema.nullable(),
+  categories: z.array(ResidentCategoryOptionSchema),
+});
+
+export const ContractorCandidateSchema = z.strictObject({
+  contractor_id: UuidSchema, display_name: z.string(),
+});
+export const ContractorCandidatesResponseSchema = z.strictObject({
+  iteration_id: UuidSchema, items: z.array(ContractorCandidateSchema),
+});
+
 export const ContractorReferenceSchema = z.strictObject({
   contractor_id: UuidSchema, name: z.string(),
 });
@@ -42,6 +65,9 @@ export const FeedbackProjectionSchema = z.strictObject({
 });
 export const CommentProjectionSchema = z.strictObject({
   comment_id: UuidSchema, body: z.string(), created_at: UtcTimestampSchema,
+});
+export const ActionableClarificationRequestSchema = z.strictObject({
+  clarification_request_id: UuidSchema, body: z.string(), created_at: UtcTimestampSchema,
 });
 export const ActivityItemSchema = z.strictObject({
   activity_id: UuidSchema, event_id: UuidSchema, event_seq: PositiveIntegerSchema,
@@ -133,6 +159,7 @@ export const CaseSnapshotProjectionSchema = z.strictObject({
 }).superRefine(orderedActivity);
 const ResidentProjectionSchema = z.strictObject({
   ...SnapshotFields, assignment: AssignmentBaseSchema.nullable(),
+  actionable_clarification_requests: z.array(ActionableClarificationRequestSchema),
 }).superRefine(orderedActivity);
 const ContractorProjectionSchema = z.strictObject({
   ...SnapshotFields, assignment: AssignmentBaseSchema.nullable(),

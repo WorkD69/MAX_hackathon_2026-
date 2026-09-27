@@ -24,8 +24,12 @@ export {
 export { SemanticErrorCodeSchema, ErrorResponseSchema } from './errors.js';
 export {
   CaseListQuerySchema, CaseListItemSchema, CaseListResponseSchema,
+  ResidentCreateCaseOptionsQuerySchema, ResidentPremiseOptionSchema,
+  ResidentCategoryOptionSchema, ResidentCreateCaseOptionsResponseSchema,
+  ContractorCandidateSchema, ContractorCandidatesResponseSchema,
   ContractorReferenceSchema, ResultProjectionSchema, FeedbackProjectionSchema,
-  CommentProjectionSchema, ActivityItemSchema, AllowedActionSchema,
+  CommentProjectionSchema, ActionableClarificationRequestSchema,
+  ActivityItemSchema, AllowedActionSchema,
   CaseSnapshotProjectionSchema, CaseSnapshotSchema, ResidentCaseSnapshotSchema,
   UkCaseSnapshotSchema, ContractorCaseSnapshotSchema,
 } from './reads.js';
@@ -58,6 +62,10 @@ export {
   HouseReadSchema, HousesReadResponseSchema, CategoryReadSchema,
   CategoriesReadResponseSchema, ContractorReadSchema, ContractorsReadResponseSchema,
   UserReadSchema, UsersReadResponseSchema,
+  OrganizationPatchSuccessSchema, HouseCreateSuccessSchema, HousePatchSuccessSchema,
+  CategoryCreateSuccessSchema, CategoryPatchSuccessSchema,
+  ContractorCreateSuccessSchema, ContractorBindingPutSuccessSchema,
+  UserRoleBindingPutSuccessSchema, ContractorEmployeePutSuccessSchema,
 } from './configuration.js';
 export { ActorSwitchRequestSchema, DemoRunStartRequestSchema, DemoRunStartResponseSchema } from './demo.js';
 export {
@@ -123,6 +131,18 @@ export type CaseListItemInput = z.input<typeof R.CaseListItemSchema>;
 export type CaseListItemOutput = z.output<typeof R.CaseListItemSchema>;
 export type CaseListResponseInput = z.input<typeof R.CaseListResponseSchema>;
 export type CaseListResponseOutput = z.output<typeof R.CaseListResponseSchema>;
+export type ResidentCreateCaseOptionsQueryInput = z.input<typeof R.ResidentCreateCaseOptionsQuerySchema>;
+export type ResidentCreateCaseOptionsQueryOutput = z.output<typeof R.ResidentCreateCaseOptionsQuerySchema>;
+export type ResidentPremiseOptionInput = z.input<typeof R.ResidentPremiseOptionSchema>;
+export type ResidentPremiseOptionOutput = z.output<typeof R.ResidentPremiseOptionSchema>;
+export type ResidentCategoryOptionInput = z.input<typeof R.ResidentCategoryOptionSchema>;
+export type ResidentCategoryOptionOutput = z.output<typeof R.ResidentCategoryOptionSchema>;
+export type ResidentCreateCaseOptionsResponseInput = z.input<typeof R.ResidentCreateCaseOptionsResponseSchema>;
+export type ResidentCreateCaseOptionsResponseOutput = z.output<typeof R.ResidentCreateCaseOptionsResponseSchema>;
+export type ContractorCandidateInput = z.input<typeof R.ContractorCandidateSchema>;
+export type ContractorCandidateOutput = z.output<typeof R.ContractorCandidateSchema>;
+export type ContractorCandidatesResponseInput = z.input<typeof R.ContractorCandidatesResponseSchema>;
+export type ContractorCandidatesResponseOutput = z.output<typeof R.ContractorCandidatesResponseSchema>;
 export type ContractorReferenceInput = z.input<typeof R.ContractorReferenceSchema>;
 export type ContractorReferenceOutput = z.output<typeof R.ContractorReferenceSchema>;
 export type ResultProjectionInput = z.input<typeof R.ResultProjectionSchema>;
@@ -131,6 +151,8 @@ export type FeedbackProjectionInput = z.input<typeof R.FeedbackProjectionSchema>
 export type FeedbackProjectionOutput = z.output<typeof R.FeedbackProjectionSchema>;
 export type CommentProjectionInput = z.input<typeof R.CommentProjectionSchema>;
 export type CommentProjectionOutput = z.output<typeof R.CommentProjectionSchema>;
+export type ActionableClarificationRequestInput = z.input<typeof R.ActionableClarificationRequestSchema>;
+export type ActionableClarificationRequestOutput = z.output<typeof R.ActionableClarificationRequestSchema>;
 export type ActivityItemInput = z.input<typeof R.ActivityItemSchema>;
 export type ActivityItemOutput = z.output<typeof R.ActivityItemSchema>;
 export type AllowedActionInput = z.input<typeof R.AllowedActionSchema>;
@@ -263,6 +285,24 @@ export type UserReadInput = z.input<typeof F.UserReadSchema>;
 export type UserReadOutput = z.output<typeof F.UserReadSchema>;
 export type UsersReadResponseInput = z.input<typeof F.UsersReadResponseSchema>;
 export type UsersReadResponseOutput = z.output<typeof F.UsersReadResponseSchema>;
+export type OrganizationPatchSuccessInput = z.input<typeof F.OrganizationPatchSuccessSchema>;
+export type OrganizationPatchSuccessOutput = z.output<typeof F.OrganizationPatchSuccessSchema>;
+export type HouseCreateSuccessInput = z.input<typeof F.HouseCreateSuccessSchema>;
+export type HouseCreateSuccessOutput = z.output<typeof F.HouseCreateSuccessSchema>;
+export type HousePatchSuccessInput = z.input<typeof F.HousePatchSuccessSchema>;
+export type HousePatchSuccessOutput = z.output<typeof F.HousePatchSuccessSchema>;
+export type CategoryCreateSuccessInput = z.input<typeof F.CategoryCreateSuccessSchema>;
+export type CategoryCreateSuccessOutput = z.output<typeof F.CategoryCreateSuccessSchema>;
+export type CategoryPatchSuccessInput = z.input<typeof F.CategoryPatchSuccessSchema>;
+export type CategoryPatchSuccessOutput = z.output<typeof F.CategoryPatchSuccessSchema>;
+export type ContractorCreateSuccessInput = z.input<typeof F.ContractorCreateSuccessSchema>;
+export type ContractorCreateSuccessOutput = z.output<typeof F.ContractorCreateSuccessSchema>;
+export type ContractorBindingPutSuccessInput = z.input<typeof F.ContractorBindingPutSuccessSchema>;
+export type ContractorBindingPutSuccessOutput = z.output<typeof F.ContractorBindingPutSuccessSchema>;
+export type UserRoleBindingPutSuccessInput = z.input<typeof F.UserRoleBindingPutSuccessSchema>;
+export type UserRoleBindingPutSuccessOutput = z.output<typeof F.UserRoleBindingPutSuccessSchema>;
+export type ContractorEmployeePutSuccessInput = z.input<typeof F.ContractorEmployeePutSuccessSchema>;
+export type ContractorEmployeePutSuccessOutput = z.output<typeof F.ContractorEmployeePutSuccessSchema>;
 export type ActorSwitchRequestInput = z.input<typeof D.ActorSwitchRequestSchema>;
 export type ActorSwitchRequestOutput = z.output<typeof D.ActorSwitchRequestSchema>;
 export type DemoRunStartRequestInput = z.input<typeof D.DemoRunStartRequestSchema>;

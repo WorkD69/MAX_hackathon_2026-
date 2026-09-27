@@ -513,6 +513,8 @@ Selected-only contractor и historical old contractor не получают эт
 
 `revision` and `updated_at` are diagnostic/freshness metadata. Client cannot make stale data authoritative.
 
+Resident snapshot дополнительно содержит обязательное `actionable_clarification_requests: [{clarification_request_id: UUID, body: string, created_at: UTC timestamp}]`; пустой список — `[]`. Элементы являются strict Resident-safe projection текущих unanswered `Comment(CLARIFICATION_REQUEST)` по §23, без внутренних actor IDs. UK/Contractor snapshot этого поля не содержит. Это не отдельная activity feed: запрос и ответ остаются фактами единой ленты §9.
+
 ---
 
 ---
@@ -655,11 +657,34 @@ GET /api/v1/cases/create-options?premises_id={uuid}
 
 Response schema: top-level strict object с обязательными `premises: PremiseOption[]`, `selected_premises_id: UUID | null`, `categories: CategoryOption[]`. `PremiseOption` — strict object `{premises_id: UUID, house_address: string, premises_label: string}`; `CategoryOption` — strict object `{category_id: UUID, name: string, description: string | null, requires_premises_access: boolean, result_requirement: "NONE" | "PHOTO" | "FILE"}`. Дополнительные/internal fields не сериализуются. Массивы детерминированно сортируются для стабильного UI. `requires_premises_access` и `result_requirement` — только Resident-visible display/pre-submit guidance. При выбранном `premises_id` поле `selected_premises_id` равно ему, а категории относятся только к его Organization. При отсутствии доступных помещений возвращаются пустые массивы. При отсутствии `premises_id` `selected_premises_id=null`, `categories=[]`. Ответ не является reservation, snapshot или полномочием на создание Case.
 
+Публичные TG-002 схемы: `ResidentCreateCaseOptionsQuerySchema`, `ResidentPremiseOptionSchema`, `ResidentCategoryOptionSchema`, `ResidentCreateCaseOptionsResponseSchema` в `packages/contracts/src/reads.ts`; все объекты strict. Query schema допускает только optional `premises_id` UUID.
+
 ### Errors / freshness
 
 - `401` — отсутствующая/недействительная/истёкшая session; `403` — действующий actor без роли Resident; `400` — malformed UUID, unknown query field или неверная структура запроса.
 - `404` — выбранное помещение отсутствует, находится в чужой Organization, неактивно или уже недоступно этому Resident; без раскрытия причины или foreign data. Для read endpoint отдельной `422` нет.
 - После config/access изменения UI обновляет options. Независимо от ранее полученного `200`, `POST /api/v1/cases` повторно проверяет current ResidentPremisesAccess, active Organization/House/Premises/Category и необходимые default dependencies в своей transaction по §10; stale/inactive selection отклоняется по canonical command errors без частичного Case.
+
+---
+
+## 9B. Operational Contractor Candidates Read
+
+```text
+GET /api/v1/cases/{caseId}/contractor-candidates
+```
+
+Владелец — TG-017. Endpoint доступен только effective `UK_EMPLOYEE` / `UK_ADMIN` с текущим доступом к Case по organization/house/run policy. Без session — `401`, другая роль на видимом Case — `403`, скрытый/чужой Case — `404`. Этот read не использует `UK_ADMIN` endpoint `/api/v1/config/contractors` и не выдаёт admin configuration.
+
+Success `200` — strict `ContractorCandidatesResponseSchema`:
+
+```json
+{
+  "iteration_id": "11111111-1111-4111-8111-111111111111",
+  "items": [{"contractor_id": "22222222-2222-4222-8222-222222222222", "display_name": "Подрядчик Б"}]
+}
+```
+
+`iteration_id` — текущая итерация Case. `items` содержит только active Contractor с active `OrganizationContractor` той же Organization в состоянии, допускающем `SelectContractor`: `ACCEPTED_BY_UK` или `REWORK` при выборе другого подрядчика. В `REWORK` A→B текущий исполнитель A исключён. В иных состояниях список пуст; детали чужих/неактивных подрядчиков не раскрываются. Порядок списка детерминирован для UI. Список — advisory read; TG-014 `SelectContractor` под lock повторно проверяет state, iteration, current access и доступность выбранного contractor. При relevant `409` клиент перечитывает Case и candidates, очищает устаревший выбор и требует новое явное действие.
 
 ---
 
@@ -1523,6 +1548,8 @@ Exact `result_id + feedback_id`. Iteration is **not client-selected**; backend d
 
 Create Comment kind `CLARIFICATION_REQUEST` with exact `context_result_id/context_feedback_id/current iteration`, optional attachments, append **EVT-012**, command, revision.
 
+В одном current Result/REMARK Feedback/iteration context допустимо несколько запросов. Каждый имеет собственный `Comment.comment_id`, который становится публичным `clarification_request_id`; новый запрос не закрывает другие unanswered запросы. История Comment и Event остаётся неизменяемой.
+
 Не создаётся дополнительный EVT-007 для того же clarification command; EVT-012 является нормативным business event этой операции.
 
 ### State effect
@@ -1917,10 +1944,11 @@ For Resident in `REMARKS_REVIEW`:
 5. target `context_feedback_id` is current REMARK Feedback;
 6. target iteration == `Case.current_iteration_id`;
 7. target Comment is visible to Resident.
+8. target ещё actionable: для него нет уже сохранённого первого `CLARIFICATION_REPLY`, и его Result/REMARK Feedback/iteration context остаётся текущим.
 
 If any fails → `409 CLARIFICATION_CONTEXT_REQUIRED` or hidden `404` as appropriate.
 
-Successful Resident reply is stored as `CLARIFICATION_REPLY` with direct `in_reply_to_comment_id` and inherited Result/Feedback context, plus EVT-007. Arbitrary Resident comment in `REMARKS_REVIEW` is forbidden.
+Successful first Resident reply is stored as `CLARIFICATION_REPLY` with direct `in_reply_to_comment_id = clarification_request_id` and inherited Result/Feedback context, plus EVT-007. После первого ответа только этот request исчезает из `actionable_clarification_requests`; другие unanswered requests остаются. Запрос также перестаёт быть actionable при смене current context, `ReturnToRework`, завершении Case или утрате Resident authority. Эти изменения не удаляют исторические Comment/Event. Сервер заново проверяет target под текущим Case context в transaction; stale видимый target получает `409 CLARIFICATION_CONTEXT_REQUIRED`, скрытый Case/resource — `404`. Arbitrary Resident comment в `REMARKS_REVIEW` запрещён.
 
 ### Other preconditions
 
@@ -1950,6 +1978,22 @@ Every config write:
 - writes mandatory `ConfigurationChange` in same transaction;
 - never rewrites existing Case snapshots/history;
 - never sends invitations, password recovery, offboarding or creates a fifth product role.
+
+Успешный write возвращает own-scope read projection committed состояния, без `command_id` envelope, audit payload или публичного `config_revision`. Для каждого endpoint TG-002 экспортирует отдельный именованный alias существующей strict read schema:
+
+| Mutation | Status | Success schema |
+| --- | --- | --- |
+| `PATCH /api/v1/config/organization` | `200` | `OrganizationPatchSuccessSchema` = `OrganizationReadResponseSchema` |
+| `POST /api/v1/config/houses` | `201` | `HouseCreateSuccessSchema` = `HouseReadSchema` |
+| `PATCH /api/v1/config/houses/{houseId}` | `200` | `HousePatchSuccessSchema` = `HouseReadSchema` |
+| `POST /api/v1/config/categories` | `201` | `CategoryCreateSuccessSchema` = `CategoryReadSchema` |
+| `PATCH /api/v1/config/categories/{categoryId}` | `200` | `CategoryPatchSuccessSchema` = `CategoryReadSchema` |
+| `POST /api/v1/config/contractors` | `201` | `ContractorCreateSuccessSchema` = `ContractorReadSchema` (Contractor + own OrganizationContractor) |
+| `PUT /api/v1/config/contractors/{contractorId}/binding` | `200` | `ContractorBindingPutSuccessSchema` = `ContractorReadSchema` |
+| `PUT /api/v1/config/users/{appUserId}/role-binding` | `200` | `UserRoleBindingPutSuccessSchema` = `UserReadSchema` (own scope) |
+| `PUT /api/v1/config/contractors/{contractorId}/employees/{appUserId}` | `200` | `ContractorEmployeePutSuccessSchema` = `UserReadSchema` (own scope) |
+
+Same-key authorized idempotent replay возвращает точно сохранённые исходные status и body. Persisted Category `config_revision` остаётся внутренней metadata и не появляется в response; read projection формируется после всех эффектов write в той же transaction.
 
 ### 24.2. Reads
 

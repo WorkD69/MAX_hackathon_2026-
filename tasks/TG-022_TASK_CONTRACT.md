@@ -31,11 +31,11 @@ HISTORICAL_IMPLEMENTATION_BLOCKED_UNTIL_TG021_FINAL = YES
 
 ## 4. Dependencies / unlocks
 
-`Depends On = TG-014, TG-021`. `Unlocks = TG-028, TG-029`. `Parallel With = TG-015`. Финальная совместимость существующего TG-022 contribution требует TG-014 Resident-safe options/read endpoint и согласованной shared response schema. Сам факт ранней TG-022 реализации сохраняется; он не закрывает этот dependency. Центральная регистрация TG-014 backend и TG-022 route contribution остаётся TG-029.
+`Depends On = TG-014, TG-021`. `Unlocks = TG-028, TG-029`. `Parallel With = TG-015`. Финальная совместимость существующего TG-022 contribution требует TG-014 Resident-safe options/read endpoint и публичной TG-002 shared response schema, зафиксированной этой delta. Сам факт ранней TG-022 реализации сохраняется; он не закрывает этот dependency. Центральная регистрация TG-014 backend и TG-022 route contribution остаётся TG-029.
 
 ## 5. Allowed write scope
 
-В этом canonical gap-closure pass меняются только согласованные contract/docs/graph files, без production code. Последующая compatibility implementation: `apps/web/src/features/resident/**`, прежде всего `resident-transport.ts`, `create-case/create-case-form.tsx`, fixtures и targeted tests; остальные существующие TG-022 screens сохраняются и адаптируются только по необходимости. Потреблять публичные TG-002 contracts, TG-020 session context, TG-021 read components и TG-014 options endpoint. Shared `packages/contracts/src/reads.ts` schema согласуется с владельцем TG-002 через Integration Agent до изменения; не править backend/central router/root manifests/lockfile или Product semantics в TG-022.
+В этой coordinated canonical delta меняются только согласованные contracts/docs и TG-002 public schemas, без production code или Task Graph. Последующая compatibility implementation: `apps/web/src/features/resident/**`, прежде всего `resident-transport.ts`, `create-case/create-case-form.tsx`, fixtures и targeted tests; остальные существующие TG-022 screens сохраняются и адаптируются только по необходимости. Потреблять публичные TG-002 contracts, TG-020 session context, TG-021 read components и TG-014 options endpoint; не править backend/central router/root manifests/lockfile или Product semantics в TG-022.
 
 ## 6. Forbidden scope
 
@@ -45,6 +45,7 @@ HISTORICAL_IMPLEMENTATION_BLOCKED_UNTIL_TG021_FINAL = YES
 
 ### CreateCase
 - Житель получает current accessible premises через `GET /api/v1/cases/create-options`; после выбора помещения запрашивает тот же endpoint с `premises_id`, получает только категории, допустимые для этого помещения и выведенной сервером Organization. Response shape — Interface §9A; `result_requirement` и Resident-visible category fields показываются до submit, где нужны UX. UI не выбирает tenant и не читает admin configuration.
+- Transport использует TG-002 `ResidentCreateCaseOptionsQuerySchema`/`ResidentCreateCaseOptionsResponseSchema`: без `premises_id` получает `selected_premises_id=null`, `categories=[]`; выбранное недоступное помещение даёт hidden `404`, ошибка query — `400`, отсутствие session — `401`, wrong role — `403`. Категории и выбранное помещение сбрасываются после смены premises/отзыва доступа; response не несёт contractor/admin internals. `CreateCase` заново валидирует выбор, поэтому UI обрабатывает stale command без fake Case.
 - После смены помещения category selection сбрасывается; после refresh/invalidation options перечитываются. `404` для утратившего доступ помещения убирает старый выбор. Options read не даёт authority на создание: `POST /api/v1/cases` повторно проверяет доступ и конфигурацию, а UI показывает canonical error без fake Case.
 - CreateCase отправляет `POST /api/v1/cases` с `Idempotency-Key` (principal `APP_USER`); multipart: JSON payload `{premises_id, category_id, description}` + optional initial attachments.
 - Failed CreateCase НЕ создаёт fake local Case; UI показывает semantic error и позволяет повторить.
@@ -61,6 +62,7 @@ HISTORICAL_IMPLEMENTATION_BLOCKED_UNTIL_TG021_FINAL = YES
 - Единая лента комментариев внутри случая (Product Spec §11, §5.2, §10.1).
 - Resident пишет комментарий в `EXECUTION`/`REWORK` (координация доступа/выполнения) и в `REMARKS_REVIEW` только как reply на существующий `CLARIFICATION_REQUEST`.
 - Clarification reply: Resident отвечает на запрос уточнения УК с `clarification_request_id`, target Comment `CLARIFICATION_REQUEST`, same Case, `context_result_id == Case.current_result_id`, `context_feedback_id` current REMARK Feedback, target iteration == `Case.current_iteration_id`.
+- В `REMARKS_REVIEW` показывать все `case.actionable_clarification_requests[]` из Resident projection и давать выбрать exact `clarification_request_id`; несколько запросов могут быть открыты одновременно. После первого ответа конкретный запрос исчезает из actionable списка, остальные остаются. Отправлять `AddComment` только с выбранным exact ID; `409 CLARIFICATION_CONTEXT_REQUIRED` ведёт к refetch Case и очистке stale target, hidden Case/resource — `404`. Новый запрос, ReturnToRework, completion и смена authority обрабатываются только по новой серверной проекции.
 - Не создать private Resident↔Contractor канал.
 
 ### Confirmation vs Remark (взаимоисключающие branches)
@@ -92,7 +94,7 @@ HISTORICAL_IMPLEMENTATION_BLOCKED_UNTIL_TG021_FINAL = YES
 
 ## 8. Dependency requests
 
-Новых packages не требуется. Для финальной совместимости обязателен TG-014 `GET /api/v1/cases/create-options` и согласованная TG-002 shared response schema из `reads.ts` по Interface §9A. Владелец shared schema и Integration Agent координируют экспорт до TG-022 compatibility implementation; TG-022 не создаёт ad hoc admin config projection. React, TanStack Query, React Router, TG-020 session context и TG-021 read components достаточны; shared manifests/lockfile не менять.
+Новых packages не требуется. Для финальной совместимости обязателен TG-014 `GET /api/v1/cases/create-options` и уже зафиксированная TG-002 `ResidentCreateCaseOptionsResponseSchema` из `reads.ts` по Interface §9A. TG-022 не создаёт ad hoc admin config projection. React, TanStack Query, React Router, TG-020 session context и TG-021 read components достаточны; shared manifests/lockfile не менять.
 
 ## 9. Acceptance criteria
 
@@ -124,7 +126,7 @@ HISTORICAL_IMPLEMENTATION_BLOCKED_UNTIL_TG021_FINAL = YES
 
 ## 11. Git / integration handoff
 
-Исторический TG-022 authoring/implementation contribution уже присутствует в repository; его SHA/branch поля §1 сохранены как provenance. Текущий canonical gap closure коммитится с графом и интерфейсом только в `codex/canonical-gap-closure-tg014-tg018-tg022`; production compatibility implementation выполняется позже на назначенной Integration Agent базе после TG-014 options. Не merge/push `main` из этого authoring pass. Передать exact closure SHA и потребность в compatibility fix на independent review.
+Исторический TG-022 authoring/implementation contribution уже присутствует в repository; его SHA/branch поля §1 сохранены как provenance. Эта coordinated public API delta коммитится в `codex/canonical-public-api-surface-delta` от `28401166a340407297cfb942fd9a8bf978e6c2a2`; production compatibility implementation выполняется позже на назначенной Integration Agent базе после TG-014 options. Не merge/push `main` из этого authoring pass. Передать exact delta SHA и результат одного independent review.
 
 ## 12. Blocker protocol
 
