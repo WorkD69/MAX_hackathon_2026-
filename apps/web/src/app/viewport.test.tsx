@@ -17,7 +17,7 @@ for (const width of [375, 1024]) {
       expect(window.innerWidth).toBe(width);
       expect(view.container.id).toBe('root');
       expect(document.querySelector('#root .app-shell')).not.toBeNull();
-      expect(view.container.querySelector('[data-testid="home-placeholder"]')).not.toBeNull();
+      expect(view.container.textContent).toContain('Начните демо');
     } finally {
       view.unmount();
       router.dispose();

@@ -1,7 +1,7 @@
 import type { DownloadCapabilityResponseOutput } from '@max-smart-city/contracts';
 
 export interface NativeDownloadBridge {
-  downloadFile(downloadUrl: string, fileName: string): void;
+  downloadFile(downloadUrl: string, fileName: string): void | Promise<void>;
 }
 
 export interface BlobUrlApi {
@@ -10,13 +10,14 @@ export interface BlobUrlApi {
 }
 
 interface MaxWebApp {
-  downloadFile?(downloadUrl: string, fileName: string): void;
+  platform?: string;
+  downloadFile?(downloadUrl: string, fileName: string): void | Promise<void>;
 }
 
 /** Native MAX hands the opaque capability URL to the client bridge; it is never rendered. */
 export function nativeDownloadBridge(scope: unknown = globalThis): NativeDownloadBridge | null {
   const webApp = (scope as { WebApp?: MaxWebApp } | undefined)?.WebApp;
-  if (webApp && typeof webApp.downloadFile === 'function') {
+  if (webApp && ['ios', 'android', 'desktop'].includes(webApp.platform ?? '') && typeof webApp.downloadFile === 'function') {
     return { downloadFile: (downloadUrl, fileName) => { webApp.downloadFile!(downloadUrl, fileName); } };
   }
   return null;
@@ -30,8 +31,7 @@ export function deliverDownload(
   blobUrls: BlobUrlApi = URL,
 ): Promise<void> {
   if (bridge) {
-    bridge.downloadFile(capability.download_url, capability.file_name);
-    return Promise.resolve();
+    return Promise.resolve(bridge.downloadFile(capability.download_url, capability.file_name));
   }
   return (async () => {
     const response = await fetchBytes(capability.download_url, {

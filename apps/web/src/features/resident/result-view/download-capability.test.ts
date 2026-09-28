@@ -4,7 +4,7 @@ import { deliverDownload, nativeDownloadBridge } from './download-capability.js'
 
 test('capability url is handed to the native bridge when MAX provides one', () => {
   const downloadFile = vi.fn();
-  const bridge = nativeDownloadBridge({ WebApp: { downloadFile } });
+  const bridge = nativeDownloadBridge({ WebApp: { platform: 'ios', downloadFile } });
   expect(bridge).not.toBeNull();
   deliverDownload(downloadCapabilityFixture, bridge);
   expect(downloadFile).toHaveBeenCalledWith(downloadCapabilityFixture.download_url, downloadCapabilityFixture.file_name);
@@ -13,6 +13,8 @@ test('capability url is handed to the native bridge when MAX provides one', () =
 test('no bridge is reported outside a native context', () => {
   expect(nativeDownloadBridge({})).toBeNull();
   expect(nativeDownloadBridge(undefined)).toBeNull();
+  expect(nativeDownloadBridge({ WebApp: { platform: 'web', downloadFile: vi.fn() } })).toBeNull();
+  expect(nativeDownloadBridge({ WebApp: { downloadFile: vi.fn() } })).toBeNull();
 });
 
 test('a non-callable bridge is never treated as native', () => {

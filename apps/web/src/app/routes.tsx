@@ -1,14 +1,11 @@
 import type { RouteObject } from 'react-router-dom';
 import { ErrorState } from '../components/ui/error-state.js';
 import { AppShell } from '../shell/app-shell.js';
+import { ProductHome } from './product-routes.js';
 
 export interface AppRouteModule {
   readonly id: string;
   readonly routes: RouteObject[];
-}
-
-function HomeRoute() {
-  return <section data-testid="home-placeholder" aria-label="Главная" />;
 }
 
 export function buildAppRoutes(modules: readonly AppRouteModule[] = []): RouteObject[] {
@@ -17,7 +14,7 @@ export function buildAppRoutes(modules: readonly AppRouteModule[] = []): RouteOb
       path: '/',
       element: <AppShell />,
       children: [
-        { index: true, element: <HomeRoute /> },
+        { index: true, element: <ProductHome /> },
         ...modules.flatMap((module) => module.routes),
       ],
     },

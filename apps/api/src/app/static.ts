@@ -15,7 +15,7 @@ export interface StaticAssets {
 export function allowedPath(pathName: string): boolean {
   const segments = pathName.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase().split('/').filter(Boolean);
   const first = segments[0];
-  return first !== 'health' && first !== 'integrations' && !(first === 'api' && segments[1] === 'v1');
+  return first !== 'health' && first !== 'integrations' && first !== 'downloads' && !(first === 'api' && segments[1] === 'v1');
 }
 
 export async function registerStaticAssets(app: RuntimeFastifyInstance, descriptor: StaticAssets): Promise<void> {
@@ -28,5 +28,12 @@ export async function registerStaticAssets(app: RuntimeFastifyInstance, descript
     index: descriptor.index,
     wildcard: true,
     allowedPath,
+  });
+  app.setNotFoundHandler((request, reply) => {
+    const pathname = request.url.split('?')[0]!;
+    if (request.method === 'GET' && allowedPath(pathname) && !path.extname(pathname)) {
+      return reply.sendFile(descriptor.index);
+    }
+    return reply.code(404).send({ statusCode: 404, error: 'Not Found', message: 'Route not found' });
   });
 }

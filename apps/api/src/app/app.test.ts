@@ -36,13 +36,11 @@ describe('runtime app diagnostics', () => {
     expect(childSpy).toHaveBeenCalled();
     expect(app.log.bindings()).toMatchObject(pair.loggerInstance.bindings());
     expect(app.server.listening).toBe(false);
-    const routes = app.printRoutes();
     expect(app.hasRoute({ method: 'GET', url: '/health/live' })).toBe(true);
     expect(app.hasRoute({ method: 'GET', url: '/health/ready' })).toBe(true);
     expect(app.hasRoute({ method: 'GET', url: '/api/v1/system/info' })).toBe(true);
-    expect(routes.match(/\(GET, HEAD\)/g)).toHaveLength(3);
-    expect(routes).not.toContain('cases');
-    expect(routes).not.toContain('integrations');
+    expect(app.hasRoute({ method: 'POST', url: '/api/v1/auth/max' })).toBe(true);
+    expect(app.hasRoute({ method: 'GET', url: '/api/v1/cases' })).toBe(true);
     await app.close();
   });
 
@@ -85,6 +83,7 @@ describe('static namespace isolation', () => {
     for (const pathname of ['/api/v1/hidden.txt', '\\API\\V1\\nested\\a.txt', '/health/unknown.html', '/integrations/private.txt']) {
       expect(allowedPath(pathname)).toBe(false);
     }
+    expect(allowedPath('/downloads/private')).toBe(false);
     for (const pathname of ['/healthz/ok.txt', '/api/v10/ok.txt', '/integration/ok.txt', '/assets/ok.txt']) {
       expect(allowedPath(pathname)).toBe(true);
     }
@@ -109,6 +108,7 @@ describe('static namespace isolation', () => {
         writeFileSync(file, body);
       }
       const pair = loggerPair();
+      writeFileSync(path.join(root, 'index.html'), '<html>REAL_SPA</html>');
       app = await buildApp({ config: config(), logger: pair.loggerInstance, events: pair.events,
         readiness: { snapshot: () => snapshot(0) }, staticAssets: { root, prefix: '/', index: 'index.html' } });
       for (const [name, body] of files.slice(0, 3)) {
@@ -124,6 +124,8 @@ describe('static namespace isolation', () => {
         expect(response.statusCode).toBe(200);
         expect(response.body).toBe(body);
       }
+      expect((await app.inject('/cases/11111111-1111-4111-8111-111111111111')).body).toContain('REAL_SPA');
+      expect((await app.inject('/api/v1/missing')).statusCode).toBe(404);
     } finally {
       await app?.close();
       rmSync(root, { recursive: true, force: true });

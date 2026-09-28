@@ -17,3 +17,11 @@ test('TG-004 foreground subscription calls listener and unsubscribes', () => {
   window.dispatchEvent(new Event('focus'));
   expect(listener).toHaveBeenCalledTimes(1);
 });
+
+test('MAX bridge exposes raw signed initData without client identity or role inference', () => {
+  Object.assign(window,{WebApp:{initData:'user=signed&hash=raw'}});
+  try {
+    const adapter=createPlatformAdapter();expect(adapter.isMiniAppContext).toBe(true);
+    expect(adapter.getRawInitData()).toBe('user=signed&hash=raw');
+  }finally{delete (window as unknown as {WebApp?:unknown}).WebApp;}
+});

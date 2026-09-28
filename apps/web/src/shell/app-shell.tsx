@@ -3,6 +3,7 @@ import { SessionProvider, useSession } from '../features/session/session-provide
 import { SessionGate } from '../features/session/session-gate.js';
 import { ContractorCommandProvider } from '../features/contractor/contractor-command-provider.js';
 import './session-demo.css';
+import { ProductNavigation } from '../app/product-routes.js';
 
 function SessionOutlet() {
   const { status, busy, revision } = useSession();
@@ -19,6 +20,7 @@ export function AppShell() {
         <header className="app-shell__header">MAX Smart City</header>
         <main className="app-shell__main">
           <SessionGate />
+          <ProductNavigation />
           <ContractorCommandProvider><SessionOutlet /></ContractorCommandProvider>
         </main>
       </div>

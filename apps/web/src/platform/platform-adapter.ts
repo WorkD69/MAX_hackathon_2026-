@@ -6,10 +6,15 @@ export interface PlatformAdapter {
 }
 
 export function createPlatformAdapter(): PlatformAdapter {
+  const rawInitData = () => {
+    const bridge = (window as Window & { WebApp?: { initData?: unknown } }).WebApp;
+    if (typeof bridge?.initData === 'string' && bridge.initData.length > 0) return bridge.initData;
+    return new URLSearchParams(window.location.hash.slice(1)).get('WebAppData') || null;
+  };
   return {
-    name: 'browser',
-    isMiniAppContext: false,
-    getRawInitData: () => null,
+    get name() { return rawInitData() ? 'max' : 'browser'; },
+    get isMiniAppContext() { return rawInitData() !== null; },
+    getRawInitData: rawInitData,
     subscribeForeground(listener) {
       const onVisibilityChange = () => {
         if (document.visibilityState === 'visible') listener();

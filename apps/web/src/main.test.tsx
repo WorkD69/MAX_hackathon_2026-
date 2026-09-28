@@ -7,7 +7,7 @@ test('TG-004 React bootstrap renders one home shell', () => {
   const router = createMemoryRouter(buildAppRoutes());
   const view = renderReactTree(<RouterProvider router={router} />);
   try {
-    expect(view.container.querySelector('[data-testid="home-placeholder"]')).not.toBeNull();
+    expect(view.container.textContent).toContain('Начните демо');
     expect(view.container.querySelectorAll('.app-shell')).toHaveLength(1);
   } finally {
     view.unmount();

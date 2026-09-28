@@ -4,6 +4,7 @@ import type { ProcessBoundaryAdapter } from './lifecycle.js';
 import { loadConfig } from '../config/load-config.js';
 import { createRuntimeLogger } from '../logging/logger.js';
 import { defaultReadinessProbe } from '../modules/health/readiness.js';
+import { fileURLToPath } from 'node:url';
 
 const adapter: ProcessBoundaryAdapter = {
   writeStderr: line => { process.stderr.write(line); },
@@ -17,7 +18,8 @@ const adapter: ProcessBoundaryAdapter = {
 const lifecycle = new RuntimeLifecycle({
   loadConfig,
   createLogger: config => createRuntimeLogger(config),
-  buildApp,
+  buildApp: ({ readiness: _readiness, ...options }) => buildApp({ ...options,
+    staticAssets: { root: fileURLToPath(new URL('../../../web/dist/', import.meta.url)), prefix: '/', index: 'index.html' } }),
   listen: (app, config) => app.listen({ host: config.HOST, port: config.PORT }),
 }, adapter, defaultReadinessProbe);
 

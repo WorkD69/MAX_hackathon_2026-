@@ -121,3 +121,5 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.product-navigation { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; padding: 12px 0; border-bottom: 1px solid #d9dde3; }
+.product-navigation a { padding: 8px 4px; }
