@@ -33,7 +33,15 @@ export const executionDefinitions:readonly CaseCommandDefinition[]=[
   {kind:'ADD_COMMENT',path:'/api/v1/cases/:caseId/comments',schema:AddCommentPayloadSchema,success:AddCommentSuccessSchema,
     domain:(p,files)=>({kind:'ADD_COMMENT',body:p.body as string,clarificationRequestId:p.clarification_request_id as string|null,
       attachmentIds:files.map((_,i)=>`new-attachment-${i}`)}),
-    beforeValidate:ctx=>validateFiles(ctx.files),
+    beforeValidate:ctx=>{
+      validateFiles(ctx.files);
+      if(ctx.claims.role==='RESIDENT'&&ctx.payload.clarification_request_id) {
+        const request=ctx.snapshot.clarifications.find(c=>c.id===ctx.payload.clarification_request_id);
+        if(ctx.snapshot.state!=='REMARKS_REVIEW'||!request||request.resultId!==ctx.snapshot.result?.id||
+          request.feedbackId!==ctx.snapshot.feedback?.id||request.iterationId!==ctx.snapshot.iteration.id)
+          throw new IntakeError('CLARIFICATION_CONTEXT_REQUIRED',409);
+      }
+    },
     write:async ctx=>{
       const fact=ctx.domain.facts.find(f=>f.kind==='COMMENT');
       if (!fact||fact.kind!=='COMMENT') throw new IntakeError('INTERNAL_ERROR',500);
