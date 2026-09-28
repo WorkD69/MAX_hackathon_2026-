@@ -46,14 +46,14 @@ async function lockCreateConfig(tx: DatabaseTransaction, payload: CreateCasePayl
   const category = await tx.selectFrom('category').selectAll()
     .where('category_id', '=', payload.category_id).forShare().executeTakeFirst();
   if (!category || category.organization_id !== organization.organization_id) return hidden();
-  if (!category.active) throw new IntakeError('CATEGORY_INACTIVE', 422);
+  let defaultAvailable = true;
   if (category.default_contractor_id) {
     const contractor = await tx.selectFrom('contractor').selectAll()
       .where('contractor_id', '=', category.default_contractor_id).forShare().executeTakeFirst();
     const mapping = await tx.selectFrom('organization_contractor').selectAll()
       .where('organization_id', '=', organization.organization_id)
       .where('contractor_id', '=', category.default_contractor_id).forShare().executeTakeFirst();
-    if (!contractor?.active || !mapping?.active) throw new IntakeError('CONTRACTOR_NOT_AVAILABLE', 422);
+    defaultAvailable = contractor?.active === true && mapping?.active === true;
   }
   const actor = await tx.selectFrom('app_user').selectAll().where('app_user_id', '=', actorId)
     .forShare().executeTakeFirst();
@@ -65,6 +65,10 @@ async function lockCreateConfig(tx: DatabaseTransaction, payload: CreateCasePayl
   if (!actor?.active || !binding?.active || binding.app_user_id !== actorId ||
     binding.role !== 'RESIDENT' || binding.organization_id !== null || binding.contractor_id !== null ||
     !access?.active) return hidden();
+  // Config locks can wait for a writer that also revokes access. Disclose errors only
+  // after current authority has been re-read and locked, without reversing lock order.
+  if (!category.active) throw new IntakeError('CATEGORY_INACTIVE', 422);
+  if (!defaultAvailable) throw new IntakeError('CONTRACTOR_NOT_AVAILABLE', 422);
   if (!demo) {
     const identity = await tx.selectFrom('max_identity').selectAll()
       .where('app_user_id', '=', actorId).forShare().executeTakeFirst();
