@@ -4,6 +4,7 @@ import type { AddCommentSuccessOutput, ResidentCaseSnapshotOutput } from '@max-s
 import { MutationIntent, mutationError } from '../../../app/intent/mutation-intent.js';
 import { isStaleResponse, type ResidentTransport } from '../resident-transport.js';
 import './comment-feed.css';
+import { displayName, formatMoscowTime, stageLabel } from '../../cases/read/presentation.js';
 
 const STALE_MESSAGE = 'Случай изменился с момента открытия. Данные обновлены.';
 const SEMANTIC_ERROR = 'Не удалось отправить сообщение. Обновите случай и повторите.';
@@ -13,6 +14,7 @@ export interface ResidentCommentFeedProps {
   readonly snapshot: ResidentCaseSnapshotOutput;
   readonly onMutated: () => void | Promise<void>;
   readonly contextKey?: string;
+  readonly composerOnly?: boolean;
 }
 
 interface FeedEntry {
@@ -39,7 +41,7 @@ export function commentFeedEntries(snapshot: ResidentCaseSnapshotOutput): readon
     }));
 }
 
-export function ResidentCommentFeed({ transport, snapshot, onMutated, contextKey = '' }: ResidentCommentFeedProps) {
+export function ResidentCommentFeed({ transport, snapshot, onMutated, contextKey = '', composerOnly = false }: ResidentCommentFeedProps) {
   const [body, setBody] = useState('');
   const [files, setFiles] = useState<readonly File[]>([]);
   const [targetId, setTargetId] = useState('');
@@ -105,13 +107,13 @@ export function ResidentCommentFeed({ transport, snapshot, onMutated, contextKey
   return <section className="resident-comments" aria-label="Комментарии по обращению">
     <h2>Комментарии</h2>
     {stale && <p role="alert" className="resident-comments__stale">{STALE_MESSAGE}</p>}
-    {entries.length === 0 ? <p>Комментариев пока нет.</p> : <ol className="resident-comments__feed">
+    {!composerOnly && (entries.length === 0 ? <p>Комментариев пока нет.</p> : <ol className="resident-comments__feed">
       {entries.map((entry) => <li key={entry.comment_id} data-comment-id={entry.comment_id} className="resident-comments__item">
-        <time dateTime={entry.created_at}>{entry.created_at}</time>
+        <time dateTime={entry.created_at}>{formatMoscowTime(entry.created_at)}</time>
         <p>{entry.body}</p>
-        <small>{entry.actorName} · итерация {entry.iterationNo}</small>
+        <small>{displayName(entry.actorName)} · {stageLabel(entry.iterationNo)}</small>
       </li>)}
-    </ol>}
+    </ol>)}
     {targetRequired && <p role="alert" data-testid="clarification-required">
       Сейчас можно ответить только на запрос уточнения.
     </p>}

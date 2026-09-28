@@ -5,6 +5,8 @@ import { CaseDetailsView, type ActionPayload, type ActionRenderers } from '../ca
 import type { CaseReadTransport } from '../cases/read/read-transport.js';
 import { createUkActionExecutor, readContractorCandidates, UkCommandError } from './uk-transport.js';
 import './uk-workflow.css';
+import { displayName } from '../cases/read/presentation.js';
+import type { MaterialTransport } from '../cases/read/materials.js';
 
 type Submit = (payload: ActionPayload) => Promise<void>;
 
@@ -15,7 +17,7 @@ function semanticErrorText(error: UkCommandError): string {
     case 'TERMINAL_CASE': return 'Случай уже завершён.';
     case 'FORBIDDEN': return 'Недостаточно прав для этого действия.';
     case 'VALIDATION_FAILED': return 'Проверьте введённые данные.';
-    default: return error.code ? `Действие отклонено (${error.code}).` : 'Действие отклонено сервером.';
+    default: return 'Действие недоступно. Обновите обращение и проверьте данные.';
   }
 }
 
@@ -30,17 +32,17 @@ export function UkWorkflowFacts({ snapshot }: { snapshot: CaseSnapshotOutput }) 
   const value = snapshot.case;
   return <section className="uk-workflow__facts" aria-label="Назначение подрядчика">
     <h2>Назначение подрядчика</h2>
-    {value.selection && <p><strong>Выбран:</strong> {value.selection.contractor.name}
-      {!value.assignment && '. Выбор ещё не означает отправку.'}</p>}
+    {value.selection && !value.assignment && <p><strong>Выбран:</strong> {displayName(value.selection.contractor.name)}. Задание ещё не направлено.</p>}
     {value.assignment?.decision === 'PENDING' &&
-      <p><strong>Отправлено:</strong> {value.assignment.contractor.name}. Ожидается принятие.</p>}
-    {value.assignment?.decision === 'ACCEPTED' &&
-      <p><strong>Принято подрядчиком:</strong> {value.assignment.contractor.name}</p>}
+      <p><strong>Направлено:</strong> {displayName(value.assignment.contractor.name)}. Ожидается принятие.</p>}
+    {value.assignment?.decision === 'ACCEPTED' && value.state !== 'REWORK' &&
+      <p><strong>Принято подрядчиком:</strong> {displayName(value.assignment.contractor.name)}</p>}
     {value.assignment?.decision === 'REJECTED' && <>
-      <p><strong>Отклонено подрядчиком:</strong> {value.assignment.contractor.name}</p>
+      <p><strong>Отклонено подрядчиком:</strong> {displayName(value.assignment.contractor.name)}</p>
       {value.assignment.reject_reason && <p><strong>Причина отклонения:</strong> {value.assignment.reject_reason}</p>}
     </>}
-    {value.current_executor && <p><strong>Текущий исполнитель:</strong> {value.current_executor.name}</p>}
+    {value.current_executor && <p><strong>{value.state === 'REWORK' ? 'Работу продолжает:' : 'Текущий исполнитель:'}</strong> {displayName(value.current_executor.name)}</p>}
+    {value.state === 'REWORK' && value.current_executor && <p>Подрядчик продолжает работу без повторного принятия. УК может сменить исполнителя при необходимости.</p>}
   </section>;
 }
 
@@ -50,17 +52,24 @@ export function UkActionControl({ action, submit: execute, snapshot, caseId, con
   authorizedFetch?: (path: string, init?: RequestInit) => Promise<Response>;
 }) {
   const [contractorId, setContractorId] = useState('');
+  const optionalReplacement = snapshot?.case.state === 'REWORK' && Boolean(snapshot.case.current_executor);
+  const [replacementOpen, setReplacementOpen] = useState(false);
+  const showCandidates = !optionalReplacement || replacementOpen;
   const candidates = useQuery({
     queryKey: ['contractor-candidates', contextKey, caseId, action.code === 'SELECT_CONTRACTOR' ? action.target.iteration_id : ''],
     queryFn: () => readContractorCandidates(caseId!, authorizedFetch!),
-    enabled: action.code === 'SELECT_CONTRACTOR' && Boolean(caseId && authorizedFetch),
+    enabled: action.code === 'SELECT_CONTRACTOR' && showCandidates && Boolean(caseId && authorizedFetch),
     retry: false, staleTime: 0, refetchOnMount: 'always',
   });
   const candidateIteration = action.code === 'SELECT_CONTRACTOR' ? action.target.iteration_id : null;
   const candidatesCurrent = !candidates.isFetching && candidates.data?.iteration_id === candidateIteration
     && snapshot?.case.current_iteration.iteration_id === candidateIteration;
+  const currentSelection = snapshot?.case.allowed_actions.some(item => item.code === 'SEND_ASSIGNMENT')
+    ? snapshot.case.selection?.contractor.contractor_id : null;
+  const availableCandidates = (candidatesCurrent ? candidates.data?.items ?? [] : [])
+    .filter(item => item.contractor_id !== currentSelection && item.contractor_id !== snapshot?.case.current_executor?.contractor_id);
   const selectedCandidate = candidatesCurrent
-    ? candidates.data?.items.find((candidate) => candidate.contractor_id === contractorId) : undefined;
+    ? availableCandidates.find((candidate) => candidate.contractor_id === contractorId) : undefined;
   useEffect(() => {
     if (contractorId && candidates.data && !selectedCandidate) setContractorId('');
   }, [contractorId, candidates.data, selectedCandidate]);
@@ -85,7 +94,7 @@ export function UkActionControl({ action, submit: execute, snapshot, caseId, con
     switch (action.code) {
       case 'ACCEPT_CASE': void submit({}); return;
       case 'SELECT_CONTRACTOR':
-        if (selectedCandidate && candidatesCurrent) {
+        if (showCandidates && selectedCandidate && candidatesCurrent) {
           void submit({ contractor_id: selectedCandidate.contractor_id, iteration_id: action.target.iteration_id });
         }
         return;
@@ -138,19 +147,25 @@ export function UkActionControl({ action, submit: execute, snapshot, caseId, con
     return <p>Для завершения требуется подтверждение жителя или вручную зафиксированный факт отсутствия ответа.</p>;
   }
 
+  if (action.code === 'SELECT_CONTRACTOR' && !showCandidates) return <button type="button" className="button-secondary"
+    onClick={() => setReplacementOpen(true)}>Сменить подрядчика</button>;
+
   return <form className="uk-workflow__form" onSubmit={onSubmit} aria-busy={pending}>
     <fieldset disabled={pending} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+    {action.code === 'SELECT_CONTRACTOR' && optionalReplacement && <p>Выбор нового подрядчика сразу прекратит доступ прежнего исполнителя. Затем направьте задание новому подрядчику.</p>}
     {action.code === 'SELECT_CONTRACTOR' && <label>Подрядчик
       <select name="contractor_id" required value={selectedCandidate?.contractor_id ?? ''}
         disabled={!candidatesCurrent || candidates.isPending || candidates.isError}
         onChange={(event) => setContractorId(event.target.value)}>
         <option value="">Выберите подрядчика</option>
-        {(candidatesCurrent ? candidates.data?.items ?? [] : []).map((candidate) =>
-          <option key={candidate.contractor_id} value={candidate.contractor_id}>{candidate.display_name}</option>)}
+        {availableCandidates.map((candidate) =>
+          <option key={candidate.contractor_id} value={candidate.contractor_id}>{displayName(candidate.display_name)}</option>)}
       </select>
     </label>}
     {action.code === 'SELECT_CONTRACTOR' && candidates.isError &&
       <p role="alert">Не удалось загрузить подрядчиков. Обновите случай.</p>}
+    {action.code === 'SELECT_CONTRACTOR' && candidatesCurrent && availableCandidates.length === 0 &&
+      <p>Других доступных подрядчиков нет.{currentSelection ? ' Направьте задание уже выбранному подрядчику.' : ''}</p>}
     {action.code === 'ADD_COMMENT' && <>
       <label>Комментарий<textarea name="body" value={body} onChange={(event) => setBody(event.target.value)} /></label>
       <label>Вложение (необязательно)<input name="files" type="file" multiple
@@ -175,15 +190,19 @@ export function UkActionControl({ action, submit: execute, snapshot, caseId, con
       <label className="uk-workflow__check"><input name="completion_confirmed" type="checkbox" checked={confirmed}
         onChange={(event) => setConfirmed(event.target.checked)} />Подтверждаю основание завершения вручную</label>
     </>}
+    {action.code === 'COMPLETE_CASE' && snapshot?.case.resident_feedback?.type === 'CONFIRMATION' && <div className="next-action">
+      <strong>Житель подтвердил результат.</strong>
+      <p>Для фиксации завершения подтвердите закрытие обращения от имени УК.</p>
+    </div>}
     {action.code === 'COMPLETE_WITH_EXPLANATION' && <label>Объяснение решения
       <textarea name="explanation" required value={explanation} onChange={(event) => setExplanation(event.target.value)} />
     </label>}
     <button type="submit" disabled={action.code === 'SELECT_CONTRACTOR' && !selectedCandidate}>{{
       ACCEPT_CASE: 'Принять случай', SELECT_CONTRACTOR: 'Выбрать подрядчика',
-      SEND_ASSIGNMENT: 'Отправить назначение', ADD_COMMENT: 'Добавить комментарий',
+      SEND_ASSIGNMENT: snapshot?.case.selection ? `Направить: ${displayName(snapshot.case.selection.contractor.name)}` : 'Направить задание', ADD_COMMENT: 'Добавить комментарий',
       REQUEST_CLARIFICATION: 'Запросить уточнение', RETURN_TO_REWORK: 'Вернуть на доработку',
       RECORD_NO_RESIDENT_FEEDBACK: 'Зафиксировать отсутствие ответа',
-      COMPLETE_CASE: 'Завершить случай', COMPLETE_WITH_EXPLANATION: 'Завершить с объяснением',
+      COMPLETE_CASE: 'Завершить обращение', COMPLETE_WITH_EXPLANATION: 'Завершить с объяснением',
       ACCEPT_ASSIGNMENT: '', REJECT_ASSIGNMENT: '', ADD_RESULT_MATERIAL: '', SUBMIT_RESULT: '',
       RESIDENT_CONFIRM: '', RESIDENT_REMARK: '',
     }[action.code]}</button>
@@ -211,10 +230,11 @@ function renderers(snapshot: CaseSnapshotOutput | undefined, caseId: string, con
   };
 }
 
-export function UkWorkflowCaseView({ caseId, role, contextKey, transport, authorizedFetch }: {
+export function UkWorkflowCaseView({ caseId, role, contextKey, transport, authorizedFetch, materialTransport }: {
   caseId: string; role: Extract<RoleOutput, 'UK_EMPLOYEE' | 'UK_ADMIN'>; contextKey: string;
   transport: CaseReadTransport;
   authorizedFetch: (path: string, init?: RequestInit) => Promise<Response>;
+  materialTransport?: MaterialTransport | undefined;
 }) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ['case-read', 'snapshot', contextKey, caseId, role],
@@ -225,10 +245,11 @@ export function UkWorkflowCaseView({ caseId, role, contextKey, transport, author
   const [selectionEpoch, setSelectionEpoch] = useState(0);
   const execute = useRef(createUkActionExecutor());
   return <div className="uk-workflow">
-    {query.data && <UkWorkflowFacts snapshot={query.data} />}
     {success && <p role="status">Команда принята. Обновляем данные случая.</p>}
     {semanticError && <p role="alert">{semanticError}</p>}
     <CaseDetailsView caseId={caseId} role={role} contextKey={contextKey} transport={transport}
+      materialTransport={materialTransport}
+      summaryExtra={query.data && <UkWorkflowFacts snapshot={query.data} />}
       actionRenderers={renderers(query.data, caseId, contextKey, authorizedFetch, selectionEpoch)} executeAction={async (action, payload) => {
         setSuccess(false);
         setSemanticError(null);

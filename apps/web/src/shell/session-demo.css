@@ -76,6 +76,7 @@
   font-weight: 700;
   letter-spacing: 0.05em;
 }
+.demo-controls__disclosure { color: #45616c; font-size: .8rem; max-width: 70ch; }
 
 .demo-controls__context {
   overflow-wrap: anywhere;
@@ -118,8 +119,17 @@
   }
 
   .demo-controls__role-list {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-.product-navigation { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; padding: 12px 0; border-bottom: 1px solid #d9dde3; }
-.product-navigation a { padding: 8px 4px; }
+.product-navigation { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; padding: 12px 0; border-bottom: 1px solid #d9dde3; }
+.product-navigation a { padding: 8px 12px; color: #173743; border-radius: 6px; background: #eef5f6; text-decoration: none; font-weight: 600; }
+.app-shell--session button[type='submit'], .app-shell--session button[data-testid='accept-assignment'],
+.app-shell--session button[data-testid='submit-result'], .app-shell--session button[data-testid='confirm-submit'] {
+  background: #173743; color: #fff; border-color: #173743;
+}
+.app-shell--session .resident-result__attachment button, .app-shell--session .resident-case__header button {
+  color: #173743; border-color: #365766; border-radius: 8px;
+}
+.app-shell--session .config-card button { background: #173743; border-color: #173743; }
+.app-shell--session button:focus-visible { outline-color: #007d96; }

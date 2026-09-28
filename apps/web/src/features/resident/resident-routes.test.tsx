@@ -14,9 +14,9 @@ import { createResidentRouteModule } from './resident-routes.js';
 vi.mock('../session/session-provider.js', async () => {
   const React = await import('react');
   return { useSession: () => {
-    const [session, setSession] = React.useState<{ primary_case_id: string | null }>({ primary_case_id: null });
+    const [session, setSession] = React.useState<{ demo_mode: boolean; primary_case_id: string | null }>({ demo_mode: true, primary_case_id: null });
     return { session, refreshSession: async () => {
-      setSession({ primary_case_id: '11111111-1111-4111-8111-111111111111' });
+      setSession({ demo_mode: true, primary_case_id: '11111111-1111-4111-8111-111111111111' });
     } };
   } };
 });

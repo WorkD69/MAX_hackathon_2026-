@@ -6,6 +6,9 @@ import type { CaseReadTransport } from '../cases/read/read-transport.js';
 import { ContractorCommandError, type ContractorCommandTransport } from './command-transport.js';
 import { safeMutationErrorText } from '../../app/intent/safe-error.js';
 import { contractorSurface, type ContractorSurface } from './surface.js';
+import { CaseActivity } from '../cases/read/activity.js';
+import { AttachmentList, type MaterialTransport } from '../cases/read/materials.js';
+import { caseReference, displayName, responsibilityLabel, stageLabel, statusLabel } from '../cases/read/presentation.js';
 import './contractor-case.css';
 
 type Case = ContractorCaseSnapshotOutput['case'];
@@ -21,20 +24,22 @@ function isHttpStatus(error: unknown, status: number): boolean {
   return typeof error === 'object' && error !== null && 'status' in error && error.status === status;
 }
 
-function Details({ value }: { value: Case }) {
+function Details({ value, materialTransport, contextKey }: { value: Case; materialTransport?: MaterialTransport | undefined; contextKey: string }) {
   return <section className="contractor-case__details" aria-label="Контекст назначения">
-    <h2>Случай {value.display_number}</h2>
+    <h2>Обращение {caseReference(value.display_number)}</h2>
+    <p><span className="status-badge" data-testid="contractor-case-status">{statusLabel(value.state)}</span></p>
+    <p className="next-action"><strong>Следующий шаг:</strong> {responsibilityLabel(value.responsibility)}</p>
+    {value.current_executor && <p><strong>{value.state === 'REWORK' ? 'Работу продолжает:' : 'Текущий исполнитель:'}</strong> {displayName(value.current_executor.name)}</p>}
     <dl>
       <div><dt>Адрес</dt><dd>{value.location.house}, {value.location.premises}</dd></div>
-      <div><dt>Категория</dt><dd>{value.category.name}</dd></div>
+      <div><dt>Категория</dt><dd>{displayName(value.category.name)}</dd></div>
       <div><dt>Описание</dt><dd>{value.description}</dd></div>
-      <div><dt>Итерация</dt><dd>{value.current_iteration.number}</dd></div>
+      <div><dt>Этап работ</dt><dd>{stageLabel(value.current_iteration.number)}</dd></div>
       <div><dt>Требование к результату</dt><dd>{requirement(value.category.result_requirement)}</dd></div>
     </dl>
     {value.initial_attachments.length > 0 && <div>
       <h3>Исходные материалы</h3>
-      <ul>{value.initial_attachments.map((item) =>
-        <li key={item.attachment_id}>{item.file_name}</li>)}</ul>
+      <AttachmentList attachments={value.initial_attachments} transport={materialTransport} contextKey={contextKey} />
     </div>}
   </section>;
 }
@@ -45,20 +50,6 @@ function requirement(value: Case['category']['result_requirement']): string {
     case 'FILE': return 'Нужен файл результата';
     case 'NONE': return 'Дополнительные материалы не обязательны';
   }
-}
-
-function Activity({ value, pending }: { value: Case; pending: boolean }) {
-  return <section aria-label="История и комментарии" className="contractor-case__activity">
-    <h3>История и комментарии</h3>
-    {value.activity.length === 0 ? <p>Событий пока нет.</p>
-      : <ol>{value.activity.map((item) => <li key={item.event_id} data-event-id={item.event_id}>
-        <span>{item.text}</span>
-        {!pending && item.domain.comment && <p>{item.domain.comment.body}</p>}
-        {!pending && item.domain.result && <p>Результат: {item.domain.result.description}</p>}
-        {!pending && item.domain.feedback?.remark_text && <p>Замечание: {item.domain.feedback.remark_text}</p>}
-        <small>Итерация {item.iteration_no} · {item.actor.display_name}</small>
-      </li>)}</ol>}
-  </section>;
 }
 
 export function ContractorCaseList({ contextKey, read, onOpen }: {
@@ -76,8 +67,8 @@ export function ContractorCaseList({ contextKey, read, onOpen }: {
         : query.data.items.length === 0 ? <p>Назначений пока нет.</p>
           : <ul>{query.data.items.map((item) => <li key={item.case_id} data-case-id={item.case_id}>
             <button type="button" onClick={() => onOpen(item.case_id)}>
-              <strong>{item.display_number}</strong><span>{item.category} · {item.location_label}</span>
-              <span>Итерация {item.current_iteration_no}</span><span>{item.responsibility}</span>
+              <strong>Обращение {caseReference(item.display_number)}</strong><span>{displayName(item.category)} · {item.location_label}</span>
+              <span>{stageLabel(item.current_iteration_no)}</span><span>{displayName(item.responsibility)}</span>
             </button>
           </li>)}</ul>}
   </section>;
@@ -118,7 +109,13 @@ function WorkPanel({ surface, commands, caseId, run, busy }: {
   const [comment, setComment] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [materials, setMaterials] = useState<UploadedMaterial[]>([]);
+  const fromActivity = (): UploadedMaterial[] => [...new Map(surface.value.activity
+    .filter(item => item.semantic_code === 'EVT_009' && item.iteration_no === surface.iteration.number)
+    .flatMap(item => item.attachments).map(file => [file.attachment_id,
+      { id: file.attachment_id, name: file.file_name, mime: file.mime_type, selected: true }])).values()];
+  const [materials, setMaterials] = useState<UploadedMaterial[]>(fromActivity);
+  const [submitted, setSubmitted] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [validation, setValidation] = useState('');
   const assignmentId = surface.value.assignment!.assignment_id;
   const iterationId = surface.iteration.iteration_id;
@@ -126,10 +123,17 @@ function WorkPanel({ surface, commands, caseId, run, busy }: {
   const selected = materials.filter((material) => material.selected);
   const hasRequiredMaterial = requirementValue === 'NONE' || selected.some((item) =>
     requirementValue === 'FILE' || item.mime.startsWith('image/'));
+  useEffect(() => {
+    setMaterials(current => {
+      const missing = fromActivity().filter(file => !current.some(item => item.id === file.id));
+      return missing.length ? [...current, ...missing] : current;
+    });
+  }, [surface.value.activity, surface.iteration.number]);
+  const draftOpen = Boolean(surface.submit) && !submitted;
+  if (!surface.comment && !draftOpen) return null;
 
   return <section aria-label="Работа подрядчика" className="contractor-case__panel">
-    <h2>Работа по итерации {surface.iteration.number}</h2>
-    {surface.value.current_result && <p>Ранее отправленный результат: {surface.value.current_result.description}</p>}
+    <h2>{stageLabel(surface.iteration.number)}</h2>
     {surface.comment && <div className="contractor-case__field">
       <label htmlFor="contractor-comment">Рабочий комментарий</label>
       <textarea id="contractor-comment" name="comment" value={comment}
@@ -139,10 +143,13 @@ function WorkPanel({ surface, commands, caseId, run, busy }: {
           await commands.comment(caseId, comment.trim()); setComment('');
         }); }}>Добавить комментарий</button>
     </div>}
-    {surface.material && <div className="contractor-case__field">
+    {surface.material && draftOpen && <div className="contractor-case__field">
       <label htmlFor="contractor-result-file">Материал результата</label>
-      <input id="contractor-result-file" name="resultFile" type="file"
+      <input id="contractor-result-file" name="resultFile" type="file" ref={fileInput} disabled={busy}
         onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+      {file && <div className="material-row" aria-label="Файл перед загрузкой"><span>{file.name}</span>
+        <button type="button" data-testid="remove-local-material" disabled={busy} aria-label={`Убрать ${file.name} перед загрузкой`}
+          onClick={() => { setFile(null); if (fileInput.current) fileInput.current.value = ''; }}>Убрать ×</button></div>}
       <button type="button" data-testid="upload-material" disabled={busy || !file}
         onClick={() => { if (!file) return; void run('upload', async () => {
           const result = await commands.upload(caseId, assignmentId, iterationId, file);
@@ -150,17 +157,20 @@ function WorkPanel({ surface, commands, caseId, run, busy }: {
             id: result.created.attachment_id, name: file.name, mime: file.type, selected: true,
           }]);
           setFile(null);
+          if (fileInput.current) fileInput.current.value = '';
         }); }}>Загрузить материал</button>
     </div>}
-    {materials.length > 0 && <div aria-label="Загруженные материалы">
+    {draftOpen && materials.length > 0 && <div aria-label="Загруженные материалы">
       <h3>Загруженные материалы</h3>
-      {materials.map((material) => <label key={material.id} className="contractor-case__material">
-        <input type="checkbox" checked={material.selected} onChange={(event) => setMaterials((current) =>
-          current.map((item) => item.id === material.id ? { ...item, selected: event.target.checked } : item))} />
-        {material.name}
-      </label>)}
+      <p>Загрузка сохранена в истории. Здесь можно изменить только состав ещё не отправленного результата.</p>
+      {materials.map(material => <div key={material.id} className="material-row" data-draft-material>
+        <span>{material.name}<small>Загруженный материал · {material.selected ? 'Включён в результат' : 'Не включён в результат'}</small></span>
+        <button type="button" data-testid="toggle-draft-material" disabled={busy} aria-pressed={material.selected}
+          onClick={() => setMaterials(current => current.map(item => item.id === material.id ? { ...item, selected: !item.selected } : item))}>
+          {material.selected ? 'Не включать в результат' : 'Включить в результат'}</button>
+      </div>)}
     </div>}
-    {surface.submit && <div className="contractor-case__field">
+    {draftOpen && <div className="contractor-case__field">
       <label htmlFor="contractor-result-description">Описание результата</label>
       <textarea id="contractor-result-description" name="resultDescription" value={description}
         onChange={(event) => { setDescription(event.target.value); setValidation(''); }} />
@@ -173,14 +183,15 @@ function WorkPanel({ surface, commands, caseId, run, busy }: {
           void run('submit', async () => { await commands.submit(caseId, {
             assignment_id: assignmentId, iteration_id: iterationId,
             description: description.trim(), material_attachment_ids: selected.map((item) => item.id),
-          }); });
+          }); setSubmitted(true); });
         }}>Отправить результат</button>
     </div>}
   </section>;
 }
 
-export function ContractorCaseView({ caseId, contextKey, read, commands }: {
+export function ContractorCaseView({ caseId, contextKey, read, commands, materialTransport }: {
   caseId: string; contextKey: string; read: CaseReadTransport; commands: ContractorCommandTransport;
+  materialTransport?: MaterialTransport | undefined;
 }) {
   const platform = usePlatform();
   const queryClient = useQueryClient();
@@ -235,13 +246,13 @@ export function ContractorCaseView({ caseId, contextKey, read, commands }: {
       : query.isError || !surface || surface.kind === 'hidden'
         ? <p role="alert">Случай недоступен.</p>
         : <>
-          <Details value={surface.value} />
-          <Activity value={surface.value} pending={surface.kind === 'pending'} />
+          <Details value={surface.value} materialTransport={materialTransport} contextKey={contextKey} />
           {surface.kind === 'pending'
             ? <PendingAssignment key={surface.value.assignment!.assignment_id} surface={surface}
               commands={commands} caseId={caseId} run={run} busy={busy} />
             : <WorkPanel key={`${surface.value.assignment!.assignment_id}:${surface.iteration.iteration_id}`}
               surface={surface} commands={commands} caseId={caseId} run={run} busy={busy} />}
+          <CaseActivity activity={surface.value.activity} transport={materialTransport} contextKey={contextKey} />
         </>}
   </article>;
 }

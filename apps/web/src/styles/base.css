@@ -11,13 +11,50 @@ body,
 
 body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #173743;
+  background: #f3f6f7;
+  line-height: 1.5;
+  font-size: 15px;
 }
 
 .app-shell {
   max-width: 640px;
   margin: 0 auto;
   padding: 0 16px;
+  background: #fff;
 }
+
+h1 { font-size: clamp(1.4rem, 4vw, 2rem); line-height: 1.2; letter-spacing: -0.025em; text-wrap: balance; }
+h2 { font-size: 1.15rem; line-height: 1.35; }
+h3 { font-size: 1rem; line-height: 1.4; }
+p { text-wrap: pretty; }
+button, input, select, textarea { font: inherit; }
+input:not([type='checkbox']):not([type='file']), select, textarea {
+  max-width: 100%; min-height: 44px; padding: 10px 12px;
+  color: #173743; background: #fff; border: 1px solid #a9bac2; border-radius: 8px;
+}
+textarea { width: 100%; resize: vertical; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
+  outline: 3px solid #007d96; outline-offset: 2px;
+}
+button:hover:not(:disabled) { background: #eaf3f4; }
+button[type='submit'], button[data-testid='accept-assignment'], button[data-testid='submit-result'], button[data-testid='confirm-submit'] {
+  background: #173743; color: #fff; border-color: #173743;
+}
+button[type='submit']:hover:not(:disabled), button[data-testid='accept-assignment']:hover:not(:disabled),
+button[data-testid='submit-result']:hover:not(:disabled), button[data-testid='confirm-submit']:hover:not(:disabled) {
+  background: #285968;
+}
+.status-badge, .role-badge { display: inline-block; padding: 5px 10px; background: #eaf3f4; color: #173743; border-radius: 6px; font-size: .85rem; font-weight: 600; }
+.next-action { border-left: 3px solid #387384; background: #eef5f6; padding: 12px 14px; border-radius: 0 8px 8px 0; }
+.material-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px; background: #f6f9fa; border: 1px solid #d5dce0; border-radius: 8px; overflow-wrap: anywhere; }
+.material-row > span { min-width: 0; flex: 1 1 12rem; }
+.material-row small { display: block; color: #45616c; }
+.material-row > button { flex-shrink: 0; }
+.material-row > p { flex-basis: 100%; }
+.app-shell__header > span { color: #45616c; font-weight: 500; font-size: .85rem; margin-left: 8px; }
+[role='alert'] { color: #813d14; }
+@media (max-width: 600px) { .app-shell { padding-inline: 14px; } }
 
 .app-shell__header {
   padding: 16px 0;

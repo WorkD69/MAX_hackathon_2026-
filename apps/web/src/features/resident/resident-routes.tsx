@@ -20,10 +20,10 @@ export function createResidentRouteModule(dependencies: ResidentRouteDependencie
     const navigate = useNavigate();
     const { session, refreshSession } = useSession();
     useEffect(() => {
-      if (session?.primary_case_id) {
+      if (session?.demo_mode && session.primary_case_id) {
         void navigate(`/resident/cases/${encodeURIComponent(session.primary_case_id)}`, { replace: true });
       }
-    }, [session?.primary_case_id, navigate]);
+    }, [session?.demo_mode, session?.primary_case_id, navigate]);
     const onCreated = useCallback((caseId: string) => {
       navigate(`/resident/cases/${encodeURIComponent(caseId)}`);
     }, [navigate]);

@@ -35,7 +35,7 @@ test('demo view list contains exactly four canonical roles', () => {
 test('authoritative demo context reveals test-only controls and four role buttons', async () => {
   const view = await mount(true);
   try {
-    expect(view.container.textContent).toContain('ДЕМО · ТОЛЬКО ДЛЯ ТЕСТА');
+    expect(view.container.textContent).toContain('Демонстрационные данные');
     expect(view.container.querySelectorAll('[data-role-view]')).toHaveLength(4);
     expect(view.container.querySelector('[data-testid="demo-start"]')).not.toBeNull();
   } finally { view.unmount(); }

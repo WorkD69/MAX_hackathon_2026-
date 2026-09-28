@@ -97,9 +97,24 @@
 }
 
 .case-attachments {
-  padding-left: 20px;
+  display: grid;
+  list-style: none;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
   overflow-wrap: anywhere;
 }
+
+.case-activity li li { border: 0; padding: 10px 12px; }
+.activity-card__header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; margin-bottom: 12px; }
+.activity-card__header strong { font-size: .85rem; font-weight: 600; }
+.activity-card h3 { margin: 0 0 8px; }
+.activity-card p { margin: 8px 0; white-space: pre-wrap; }
+.activity-card__stage { display: inline-block; margin-top: 4px; font-size: .8rem; color: #45616c; }
+.activity-card[data-actor-role='CONTRACTOR_EMPLOYEE'] { border-left: 3px solid #387384; padding-left: 12px; }
+.activity-card[data-actor-role='RESIDENT'] { border-left: 3px solid #97b6a2; padding-left: 12px; }
+.case-details__summary .uk-workflow__facts { padding: 0; border: 0; background: transparent; }
+.case-details__summary .uk-workflow__facts h2 { display: none; }
 
 .case-read__stale {
   border-left: 4px solid #a65b00;

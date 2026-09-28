@@ -169,6 +169,6 @@ test('result without attachments reports it instead of an empty list', () => {
   try {
     expect(view.container.textContent).toContain('Материалы не приложены');
     expect(view.container.querySelector('[aria-label="Материалы результата"] [data-attachment-id]')).toBeNull();
-    expect(view.container.querySelector('[aria-label="Вложения истории"] [data-attachment-id]')).not.toBeNull();
+    expect(view.container.querySelector('[aria-label="Вложения истории"] [data-attachment-id]')).toBeNull();
   } finally { view.unmount(); }
 });

@@ -7,6 +7,7 @@ import {
   configurationApi, ConfigurationHttpError, type Category, type Contractor, type House, type Organization, type User,
 } from './configuration-api.js';
 import './configuration.css';
+import { displayName, roleLabel } from '../cases/read/presentation.js';
 
 type Api = ReturnType<typeof configurationApi>;
 type Action<T> = UseMutationResult<void, Error, T>;
@@ -64,7 +65,7 @@ function OrganizationForm({ organization, api }: { readonly organization: Organi
   const action = useSave(api.organizationUpdate);
   return <section className="config-card" aria-labelledby="config-organization">
     <h2 id="config-organization">Организация</h2>
-    <p className="config-note">Текущее название на сервере: {organization.name}</p>
+    <p className="config-note">{displayName(organization.name)}</p>
     <form data-testid="organization-form" onSubmit={(event) => submit(event, (form) => action.mutate({ name: value(form, 'name') }))}>
       <label>Название <input name="name" defaultValue={organization.name} required /></label>
       <Submit pending={action.isPending} label="Сохранить организацию" />
@@ -103,7 +104,7 @@ function Houses({ houses, api }: { readonly houses: House[]; readonly api: Api }
 
 function ContractorOptions({ contractors }: { readonly contractors: Contractor[] }) {
   return <>{contractors.filter((item) => item.contractor.active && item.organization_contractor.active).map((item) =>
-    <option key={item.contractor.contractor_id} value={item.contractor.contractor_id}>{item.contractor.display_name}</option>)}</>;
+    <option key={item.contractor.contractor_id} value={item.contractor.contractor_id}>{displayName(item.contractor.display_name)}</option>)}</>;
 }
 
 function CategoryForm({ category, contractors, api }: { readonly category?: Category; readonly contractors: Contractor[]; readonly api: Api }) {
@@ -143,7 +144,7 @@ function Categories({ categories, contractors, api }: { readonly categories: Cat
     <p className="config-note">Изменения действуют для новых случаев и будущих действий по правилам процесса. Деактивированную категорию нельзя выбрать для нового случая; существующие случаи продолжают жизненный цикл. Существующие случаи и история не переписываются.</p>
     <CategoryForm api={api} contractors={contractors} />
     <ul className="config-list">{categories.map((category) => <li key={category.category_id}>
-      <h3>{category.name}</h3><CategoryForm key={`${category.category_id}:${JSON.stringify(category)}`} category={category} contractors={contractors} api={api} />
+      <h3>{displayName(category.name)}</h3><CategoryForm key={`${category.category_id}:${JSON.stringify(category)}`} category={category} contractors={contractors} api={api} />
     </li>)}</ul>
   </section>;
 }
@@ -151,7 +152,7 @@ function Categories({ categories, contractors, api }: { readonly categories: Cat
 function ContractorCard({ item, users, api }: { readonly item: Contractor; readonly users: User[]; readonly api: Api }) {
   const binding = useSave((active: boolean) => api.contractorBinding(item.contractor.contractor_id, active));
   const employee = useSave((input: { userId: string; active: boolean }) => api.contractorEmployee(item.contractor.contractor_id, input.userId, input.active));
-  return <li><h3>{item.contractor.display_name}</h3>
+  return <li><h3>{displayName(item.contractor.display_name)}</h3>
     <p>Связь с УК: {item.organization_contractor.active ? 'активна' : 'неактивна'}</p>
     <button type="button" disabled={binding.isPending}
       aria-label={`${item.organization_contractor.active ? 'Деактивировать' : 'Активировать'} связь ${item.contractor.display_name}`}
@@ -162,7 +163,7 @@ function ContractorCard({ item, users, api }: { readonly item: Contractor; reado
     <form className="config-form" onSubmit={(event) => submit(event, (form) => employee.mutate({ userId: value(form, 'user_id'), active: checked(form, 'active') }))}>
       <label>Заранее созданный сотрудник <select name="user_id" required>
         <option value="">Выберите пользователя</option>
-        {users.filter((user) => user.app_user.active).map((user) => <option key={user.app_user.app_user_id} value={user.app_user.app_user_id}>{user.app_user.display_name}</option>)}
+        {users.filter((user) => user.app_user.active).map((user) => <option key={user.app_user.app_user_id} value={user.app_user.app_user_id}>{displayName(user.app_user.display_name)}</option>)}
       </select></label>
       <label className="config-check"><input type="checkbox" name="active" defaultChecked /> Допущен к заданиям</label>
       <Submit pending={employee.isPending} label="Сохранить сотрудника"
@@ -195,7 +196,7 @@ function UserForm({ user, houses, contractors, api }: { readonly user: User; rea
       active: checked(form, 'active') });
   })}>
     <label>Роль <select name="role" defaultValue={binding?.role ?? 'RESIDENT'}>
-      {ROLES.map((role) => <option data-role-option key={role} value={role}>{role}</option>)}
+      {ROLES.map((role) => <option data-role-option key={role} value={role}>{roleLabel(role)}</option>)}
     </select></label>
     <label>Подрядчик для роли сотрудника <select name="contractor_id" defaultValue={binding?.contractor_id ?? ''}>
       <option value="">Не выбран</option><ContractorOptions contractors={contractors} />
@@ -217,7 +218,7 @@ function Users({ users, houses, contractors, api }: { readonly users: User[]; re
     <h2 id="config-users">Пользователи и роли</h2>
     <p className="config-note">Доступны только заранее созданные пользователи и связи в своей организации.</p>
     <ul className="config-list">{users.map((user) => <li key={user.app_user.app_user_id}>
-      <h3>{user.app_user.display_name}</h3><UserForm key={`${user.app_user.app_user_id}:${JSON.stringify(user)}`} user={user} houses={houses} contractors={contractors} api={api} />
+      <h3>{displayName(user.app_user.display_name)}</h3><UserForm key={`${user.app_user.app_user_id}:${JSON.stringify(user)}`} user={user} houses={houses} contractors={contractors} api={api} />
     </li>)}</ul>
   </section>;
 }
@@ -254,7 +255,7 @@ export function ConfigurationPage() {
   if (session?.effective_actor.role !== 'UK_ADMIN') return <ErrorState message="Недоступно: настройки организации открывает только администратор УК." />;
   return <div className="config-page">
     <h1>Настройка организации</h1>
-    <p className="config-note">Сервер проверяет права и принадлежность данных при каждом запросе. Изменения конфигурации не переписывают историю случаев.</p>
+    <p className="config-note">Настраивает дома, категории и подрядчиков. Изменения применяются к новым обращениям и не переписывают историю существующих.</p>
     <AdminContent api={api} />
   </div>;
 }

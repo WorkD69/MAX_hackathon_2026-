@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
-  ActivityItemOutput, AllowedActionOutput, CaseSnapshotOutput, RoleOutput,
+  AllowedActionOutput, CaseSnapshotOutput, RoleOutput,
   AcceptCaseRequestInput, SelectContractorRequestInput, SendAssignmentRequestInput,
   AcceptAssignmentRequestInput, RejectAssignmentRequestInput, AddResultMaterialPayloadInput,
   SubmitResultRequestInput, ResidentConfirmationRequestInput, ResidentRemarkPayloadInput,
@@ -10,7 +10,10 @@ import type {
   AddCommentPayloadInput,
 } from '@max-smart-city/contracts';
 import { usePlatform } from '../../../platform/platform-context.js';
-import { statusLabel, responsibilityLabel } from './presentation.js';
+import { statusLabel, responsibilityLabel, formatMoscowTime, stageLabel, caseReference, displayName } from './presentation.js';
+import { CaseActivity } from './activity.js';
+import { AttachmentList, type MaterialTransport } from './materials.js';
+export { CaseActivity } from './activity.js';
 import type { CaseReadTransport } from './read-transport.js';
 import './case-read.css';
 
@@ -84,41 +87,11 @@ export function CaseListView({ transport, contextKey, onOpen }: CaseListViewProp
           : <ul className="case-list__items">{query.data.items.map((item) =>
             <li key={item.case_id} data-case-id={item.case_id} className="case-list__item">
               <button type="button" className="case-list__open" onClick={() => onOpen(item.case_id)}>
-                <strong>{item.display_number}</strong><span data-testid="case-status">{statusLabel(item.state)}</span>
-                <span>{item.category} · {item.location_label}</span><span>{item.responsibility}</span>
-                <time dateTime={item.updated_at}>Обновлено: {item.updated_at}</time>
+                <strong>Обращение {caseReference(item.display_number)}</strong><span className="status-badge" data-testid="case-status">{statusLabel(item.state)}</span>
+                <span>{displayName(item.category)} · {item.location_label}</span><span>{displayName(item.responsibility)}</span>
+                <time dateTime={item.updated_at}>Обновлено: {formatMoscowTime(item.updated_at)}</time>
               </button>
             </li>)}</ul>}
-  </section>;
-}
-
-function orderedFacts(activity: readonly ActivityItemOutput[]): ActivityItemOutput[] {
-  const seen = new Set<string>();
-  return [...activity].sort((a, b) => a.event_seq - b.event_seq).filter((item) => {
-    if (seen.has(item.event_id)) return false;
-    seen.add(item.event_id);
-    return true;
-  });
-}
-
-type Attachment = CaseSnapshotOutput['case']['initial_attachments'][number];
-function AttachmentList({ attachments }: { attachments: readonly Attachment[] }) {
-  return <ul className="case-attachments">{attachments.map((file) =>
-    <li key={file.attachment_id}>{file.file_name} · {file.mime_type} · {file.byte_size} байт</li>)}</ul>;
-}
-
-export function CaseActivity({ activity }: { activity: readonly ActivityItemOutput[] }) {
-  const facts = orderedFacts(activity);
-  return <section aria-label="История случая" className="case-activity"><h2>История</h2>
-    {facts.length === 0 ? <p>Событий пока нет.</p> : <ol>{facts.map((item) =>
-      <li key={item.event_id} data-event-id={item.event_id}>
-        <time dateTime={item.occurred_at}>{item.occurred_at}</time><p>{item.text}</p>
-        <small>Итерация {item.iteration_no} · {item.actor.display_name}</small>
-        {item.domain.comment && <p>{item.domain.comment.body}</p>}
-        {item.domain.result && <p>Результат: {item.domain.result.description}</p>}
-        {item.domain.feedback && <p>Обратная связь: {item.domain.feedback.remark_text ?? item.domain.feedback.type}</p>}
-        {item.attachments.length > 0 && <AttachmentList attachments={item.attachments} />}
-      </li>)}</ol>}
   </section>;
 }
 
@@ -129,10 +102,12 @@ interface CaseDetailsViewProps {
   contextKey: string;
   executeAction?: (action: AllowedActionOutput, payload: ActionPayload) => Promise<unknown>;
   actionRenderers?: ActionRenderers;
+  materialTransport?: MaterialTransport | undefined;
+  summaryExtra?: ReactNode;
 }
 
 export function CaseDetailsView({ caseId, role, transport, contextKey, executeAction,
-  actionRenderers = {} }: CaseDetailsViewProps) {
+  actionRenderers = {}, materialTransport, summaryExtra }: CaseDetailsViewProps) {
   const queryClient = useQueryClient();
   const queryKey = ['case-read', 'snapshot', contextKey, caseId, role] as const;
   const query = useQuery({ queryKey, queryFn: () => transport.snapshot(caseId, role),
@@ -169,7 +144,7 @@ export function CaseDetailsView({ caseId, role, transport, contextKey, executeAc
   }, [executeAction, queryClient, query.refetch, contextKey, caseId, role]);
 
   return <article className="case-read case-details" aria-label="Карточка случая">
-    <header className="case-read__header"><h1>Случай {query.data?.case.display_number ?? ''}</h1>
+    <header className="case-read__header"><h1>Обращение {caseReference(query.data?.case.display_number ?? '')}</h1>
       <button type="button" data-testid="case-details-refresh" onClick={refresh}>Обновить</button></header>
     {stale && <p role="alert" className="case-read__stale">{STALE_MESSAGE}</p>}
     {commandError && <p role="alert">{commandError}</p>}
@@ -177,37 +152,38 @@ export function CaseDetailsView({ caseId, role, transport, contextKey, executeAc
     {query.isPending ? <p role="status">Загрузка случая…</p>
       : query.isError ? <p role="alert">Не удалось загрузить случай. Обновите данные.</p>
         : <CaseDetailsContent snapshot={query.data} executeAction={executeAction}
-          actionRenderers={actionRenderers} run={run} />}
+          actionRenderers={actionRenderers} run={run} materialTransport={materialTransport} contextKey={contextKey} summaryExtra={summaryExtra} />}
   </article>;
 }
 
-function CaseDetailsContent({ snapshot, executeAction, actionRenderers, run }: {
+function CaseDetailsContent({ snapshot, executeAction, actionRenderers, run, materialTransport, contextKey, summaryExtra }: {
   snapshot: CaseSnapshotOutput;
   executeAction: CaseDetailsViewProps['executeAction'];
   actionRenderers: ActionRenderers;
   run: (action: AllowedActionOutput, payload: ActionPayload) => Promise<void>;
+  materialTransport?: MaterialTransport | undefined;
+  contextKey: string;
+  summaryExtra?: ReactNode;
 }) {
   const value = snapshot.case;
   const next = responsibilityLabel(value.responsibility);
   return <>
     <section className="case-details__summary">
-      <p><strong>Статус:</strong> <span data-testid="case-status">{statusLabel(value.state)}</span></p>
-      <p><strong>Ответственный и следующий шаг:</strong> {next}</p>
+      <p><span className="status-badge" data-testid="case-status">{statusLabel(value.state)}</span></p>
+      <p className="next-action"><strong>Следующий шаг:</strong> {next}</p>
+      {summaryExtra}
       <p><strong>Адрес:</strong> {value.location.house}, {value.location.premises}</p>
-      <p><strong>Категория:</strong> {value.category.name}</p>
+      <p><strong>Категория:</strong> {displayName(value.category.name)}</p>
       <p><strong>Описание:</strong> {value.description}</p>
-      <p><strong>Итерация:</strong> {value.current_iteration.number}</p>
-      {value.assignment && <p><strong>Назначение:</strong> {value.assignment.contractor.name}</p>}
-      {value.current_executor && <p><strong>Текущий исполнитель:</strong> {value.current_executor.name}</p>}
-      {value.current_result && <p><strong>Текущий результат:</strong> {value.current_result.description}</p>}
+      <p><strong>Этап работ:</strong> {stageLabel(value.current_iteration.number)}</p>
     </section>
     {value.initial_attachments.length > 0 && <section aria-label="Исходные материалы">
-      <h2>Исходные материалы</h2><AttachmentList attachments={value.initial_attachments} />
+      <h2>Исходные материалы</h2><AttachmentList attachments={value.initial_attachments} transport={materialTransport} contextKey={contextKey} />
     </section>}
-    <CaseActivity activity={value.activity} />
     <section aria-label="Доступные действия" className="case-actions"><h2>Доступные действия</h2>
       {value.allowed_actions.length === 0 ? <p>Сейчас действий нет.</p>
-        : <ul>{value.allowed_actions.map((action, index) => {
+        : <ul>{value.allowed_actions.filter(action => !(value.resident_feedback?.type === 'CONFIRMATION'
+          && value.resident_feedback.result_id === value.current_result?.result_id && action.code === 'ADD_COMMENT')).map((action, index) => {
           const renderer = actionRenderers[action.code] as
             ((value: AllowedActionOutput, submit: (payload: ActionPayload) => Promise<void>) => ReactNode) | undefined;
           return <li key={`${action.code}-${index}`}>
@@ -216,5 +192,6 @@ function CaseDetailsContent({ snapshot, executeAction, actionRenderers, run }: {
           </li>;
         })}</ul>}
     </section>
+    <CaseActivity activity={value.activity} transport={materialTransport} contextKey={contextKey} />
   </>;
 }

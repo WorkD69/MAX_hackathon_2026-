@@ -1,5 +1,6 @@
 import { DemoControls } from '../demo/demo-controls.js';
 import { useSession } from './session-provider.js';
+import { displayName, roleLabel } from '../cases/read/presentation.js';
 
 export function SessionGate() {
   const { status, session, busy, retry } = useSession();
@@ -18,8 +19,9 @@ export function SessionGate() {
   }
   return <>
     <div className="session-identity" aria-label="Текущий пользователь">
-      <span>{session?.real_max_identity.display_name}</span>
-      <span>{session?.effective_actor.display_name}</span>
+      <span>{displayName(session?.real_max_identity.display_name ?? '')}</span>
+      {session?.effective_actor.role && <strong className="role-badge">{roleLabel(session.effective_actor.role)}</strong>}
+      <span>{displayName(session?.effective_actor.display_name ?? '')}</span>
     </div>
     <DemoControls />
   </>;

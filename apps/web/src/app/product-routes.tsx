@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { AppRouteModule } from './routes.js';
 import { useSession } from '../features/session/session-provider.js';
 import { createHttpCaseReadTransport } from '../features/cases/read/read-transport.js';
@@ -29,13 +29,28 @@ export function ProductHome() {
 }
 
 export function ProductNavigation() {
-  const { session } = useSession();
+  const { session, status, busy } = useSession();
   const role = session?.effective_actor.role;
-  if (!role) return null;
+  const navigate = useNavigate();
+  const location = useLocation();
+  const previous = useRef({ runId: session?.demo_run_id, role });
+  useEffect(() => {
+    if (status !== 'ready' || busy) return;
+    const old = previous.current;
+    previous.current = { runId: session?.demo_run_id, role };
+    if (old.runId && session?.demo_run_id !== old.runId) {
+      void navigate('/', { replace: true });
+    } else if (old.role && role && old.role !== role && (
+      location.pathname === '/configuration' && role !== 'UK_ADMIN'
+      || location.pathname === '/resident/cases/new' && role !== 'RESIDENT')) {
+      void navigate(session?.primary_case_id ? `/cases/${session.primary_case_id}` : '/cases', { replace: true });
+    }
+  }, [session?.demo_run_id, session?.primary_case_id, role, status, busy, navigate, location.pathname]);
+  if (status !== 'ready' || busy || !role) return null;
   return <nav aria-label="Разделы приложения" className="product-navigation">
     <Link to="/cases">Случаи</Link>
-    {session?.primary_case_id && <Link to={`/cases/${session.primary_case_id}`}>Основной случай</Link>}
-    {role === 'RESIDENT' && !session?.primary_case_id && <Link to="/resident/cases/new">Создать обращение</Link>}
+    {session?.demo_mode && session.primary_case_id && <Link to={`/cases/${session.primary_case_id}`}>Текущее обращение</Link>}
+    {role === 'RESIDENT' && (!session?.demo_mode || !session.primary_case_id) && <Link to="/resident/cases/new">Создать обращение</Link>}
     {role === 'UK_ADMIN' && <Link to="/configuration">Настройки</Link>}
   </nav>;
 }
@@ -53,15 +68,15 @@ function DetailsRoute() {
   const { caseId } = useParams();
   if (!role || !caseId) return <p>Выберите роль для просмотра случая.</p>;
   if (role === 'RESIDENT') return <ResidentCaseView caseId={caseId} readTransport={read} residentTransport={resident} contextKey={key} />;
-  if (role === 'CONTRACTOR_EMPLOYEE') return <ContractorCaseView caseId={caseId} read={read} commands={commands} contextKey={key} />;
-  return <UkWorkflowCaseView caseId={caseId} role={role} transport={read} contextKey={key} authorizedFetch={session.authorizedFetch} />;
+  if (role === 'CONTRACTOR_EMPLOYEE') return <ContractorCaseView caseId={caseId} read={read} commands={commands} contextKey={key} materialTransport={resident} />;
+  return <UkWorkflowCaseView caseId={caseId} role={role} transport={read} contextKey={key} authorizedFetch={session.authorizedFetch} materialTransport={resident} />;
 }
 
 function CreateRoute() {
   const { resident, key, role, session } = useProductContext();
   const navigate = useNavigate();
   if (role !== 'RESIDENT') return <p>Создание обращения доступно жителю.</p>;
-  if (session.session?.primary_case_id) return <Link to={`/cases/${session.session.primary_case_id}`}>Открыть основной случай</Link>;
+  if (session.session?.demo_mode && session.session.primary_case_id) return <p>В этом демо-прогоне уже есть обращение. <Link to={`/cases/${session.session.primary_case_id}`}>Текущее обращение</Link></p>;
   return <CreateCaseForm transport={resident} contextKey={key} onPrimaryCaseExists={session.refreshSession}
     onCreated={id => { void navigate(`/cases/${id}`); void session.refreshSession(); }} />;
 }

@@ -1,5 +1,5 @@
 import { act } from 'react';
-import { MemoryRouter, useNavigate, useRoutes } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate, useRoutes } from 'react-router-dom';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { SessionReadResponseOutput } from '@max-smart-city/contracts';
 import { buildAppRoutes } from '../../app/routes.js';
@@ -24,7 +24,8 @@ const initial: SessionReadResponseOutput = {
 
 function Routed() { return useRoutes(buildAppRoutes([createContractorRouteModule()])); }
 let navigate: ReturnType<typeof useNavigate>;
-function NavigationProbe() { navigate = useNavigate(); return null; }
+let currentPath: string;
+function NavigationProbe() { navigate = useNavigate(); currentPath = useLocation().pathname; return null; }
 
 afterEach(() => { queryClient.clear(); vi.unstubAllGlobals(); });
 
@@ -50,8 +51,13 @@ async function mount() {
   await waitForUi(() => expect(view.container.querySelector('[name=comment]')).not.toBeNull());
   return { ...view, mutations, fetch,
     refresh: async (next = session) => {
+      const previousRun = session.demo_run_id;
       session = structuredClone(next);
       await act(async () => { for (const callback of [...foreground]) callback(); });
+      if (previousRun !== next.demo_run_id) {
+        await waitForUi(() => expect(currentPath).toBe('/'));
+        await act(async () => { await navigate(`/contractor/cases/${ids.case}`); });
+      }
       await waitForUi(() => expect(view.container.querySelector('[name=comment]')).not.toBeNull());
     },
   };

@@ -122,7 +122,7 @@ test('selected, sent and accepted labels and rejected reason follow server proje
   expect(view.container.textContent).not.toContain('Отправлено'); view.unmount();
   data.case.assignment = { assignment_id: id(8), contractor: { contractor_id: contractorId, name: 'Б' }, decision: 'PENDING' };
   const sent = renderReactTree(<UkWorkflowFacts snapshot={data} />, { adapter });
-  expect(sent.container.textContent).toContain('Отправлено: Б');
+  expect(sent.container.textContent).toContain('Направлено: Б');
   expect(sent.container.textContent).not.toContain('Принято подрядчиком'); sent.unmount();
   data.case.assignment.decision = 'ACCEPTED';
   const accepted = renderReactTree(<UkWorkflowFacts snapshot={data} />, { adapter });
@@ -240,21 +240,23 @@ test('rework A to B keeps backend N+1, removes A actions and leaves B pending af
     await vi.waitFor(() => expect(view.container.textContent).toContain('Вернуть на доработку'));
     await act(async () => { (view.container.querySelector('form') as HTMLFormElement)
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    await vi.waitFor(() => expect(view.container.textContent).toContain('Сменить подрядчика'));
+    await act(async () => { [...view.container.querySelectorAll('button')].find(button => button.textContent === 'Сменить подрядчика')!.click(); });
     await vi.waitFor(() => expect(view.container.querySelector('[name="contractor_id"]')).not.toBeNull());
-    expect(view.container.textContent).toContain('Итерация: 3');
+    expect(view.container.textContent).toContain('Этап работ: Доработка №2');
     expect(view.container.textContent).not.toContain('Вернуть на доработку');
     await selectCandidate(view);
     await send(view);
-    await vi.waitFor(() => expect(view.container.textContent).toContain('Отправить назначение'));
-    expect(view.container.textContent).toContain('Итерация: 3');
+    await vi.waitFor(() => expect(view.container.textContent).toContain('Направить: Б'));
+    expect(view.container.textContent).toContain('Этап работ: Доработка №2');
     expect(view.container.textContent).toContain('Выбран: Б');
     expect(view.container.textContent).not.toContain('Текущий исполнитель: А');
-    expect(view.container.textContent).not.toContain('Отправлено: Б');
+    expect(view.container.textContent).not.toContain('Направлено: Б');
     await send(view);
-    await vi.waitFor(() => expect(view.container.textContent).toContain('Отправлено: Б'));
+    await vi.waitFor(() => expect(view.container.textContent).toContain('Направлено: Б'));
     expect(view.container.textContent).toContain('Ожидается принятие');
     expect(view.container.textContent).not.toContain('Принято подрядчиком: Б');
-    expect(view.container.textContent).toContain('Итерация: 3');
+    expect(view.container.textContent).toContain('Этап работ: Доработка №2');
     expect(fetch.mock.calls.filter(([path]) => !String(path).endsWith('/contractor-candidates'))).toHaveLength(3);
   } finally { view.unmount(); }
 });
@@ -334,7 +336,7 @@ test('409 refetch removes stale form and never retries or retargets it', async (
     expect(JSON.parse(mutations[0]![1].body)).toEqual({ contractor_id: contractorId, iteration_id: iterationId });
     expect(api.snapshot).toHaveBeenCalledTimes(2);
     expect((view.container.querySelector('[name="contractor_id"]') as HTMLSelectElement).value).toBe('');
-    expect(view.container.textContent).toContain('Итерация: 3');
+    expect(view.container.textContent).toContain('Этап работ: Доработка №2');
   } finally { view.unmount(); }
 });
 

@@ -17,7 +17,7 @@ export function AppShell() {
   return (
     <SessionProvider>
       <div className="app-shell app-shell--session">
-        <header className="app-shell__header">MAX Smart City</header>
+        <header className="app-shell__header">Обращения по дому <span>в MAX</span></header>
         <main className="app-shell__main">
           <SessionGate />
           <ProductNavigation />

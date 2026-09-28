@@ -18,7 +18,7 @@ test('TG-020 shell shows bootstrap error and retry without a session in direct b
   ]);
   const view = renderReactTree(<RouterProvider router={router} />);
   try {
-    expect(view.container.querySelector('.app-shell__header')?.textContent).toContain('MAX Smart City');
+    expect(view.container.querySelector('.app-shell__header')?.textContent).toContain('Обращения по дому');
     await act(async () => { await Promise.resolve(); });
     expect(view.container.querySelector('.app-shell__main [data-testid="outlet"]')).not.toBeNull();
     expect(view.container.querySelector('[role="alert"]')?.textContent).toContain('Не удалось');
