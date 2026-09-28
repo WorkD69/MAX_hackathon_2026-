@@ -126,7 +126,9 @@ export async function lockById(db: DatabaseTransaction, table: 'house' | 'premis
     else if (table === 'premises') await db.selectFrom('premises').select('premises_id').where('premises_id', '=', id).forUpdate().executeTakeFirst();
     else if (table === 'category') await db.selectFrom('category').select('category_id').where('category_id', '=', id).forUpdate().executeTakeFirst();
     else if (table === 'contractor') await db.selectFrom('contractor').select('contractor_id').where('contractor_id', '=', id).forUpdate().executeTakeFirst();
-    else await db.selectFrom('app_user').select('app_user_id').where('app_user_id', '=', id).forUpdate().executeTakeFirst();
+    // Serialize absent child binding creation without conflicting with the
+    // principal FK's KEY SHARE acquired by another CommandExecution reservation.
+    else await db.selectFrom('app_user').select('app_user_id').where('app_user_id', '=', id).forNoKeyUpdate().executeTakeFirst();
   }
 }
 

@@ -104,6 +104,113 @@ async function setup(database: Kysely<Database>, pool: Pool, migration: Pool, ur
 }
 
 describe.skipIf(!enabled)('TG-018 configuration API on owned real PostgreSQL', () => {
+  it('keeps both configuration writers out of the reservation/FK versus Organization deadlock', async () => {
+    for (const order of [['A', 'B'], ['B', 'A']]) {
+      await fixture(async ({ call, pool, migration, tokens }) => {
+        const blocker = await migration.connect();
+        await blocker.query('BEGIN');
+        await blocker.query(`SELECT organization_id FROM organization WHERE organization_id=$1 FOR UPDATE`, [ids.org]);
+        const write = (name: string) => call('PUT', `/users/${ids.admin}/role-binding`, tokens.admin,
+          { role: 'UK_ADMIN', contractor_id: null, house_ids: [ids.house] }, `former-cycle-${name}`);
+        const waitForWriters = async (count: number) => {
+          for (let attempt = 0; attempt < 200; attempt++) {
+            const result = await pool.query(`SELECT count(*)::int AS n FROM pg_stat_activity
+              WHERE datname=current_database() AND wait_event_type='Lock'
+                AND query ILIKE '%organization%'`);
+            if (result.rows[0].n >= count) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error(`Expected ${count} configuration writers at the Organization barrier`);
+        };
+        const first = write(order[0]!);
+        let second: ReturnType<typeof write> | undefined;
+        try {
+          await waitForWriters(1);
+          second = write(order[1]!);
+          await waitForWriters(2);
+        } finally {
+          await blocker.query('COMMIT');
+          blocker.release();
+        }
+        const responses = await Promise.all([first, second!]);
+        expect(responses.map(response => response.status)).toEqual([200, 200]);
+        await pool.query('SELECT pg_stat_clear_snapshot()');
+        expect((await pool.query(`SELECT deadlocks::int AS n FROM pg_stat_database
+          WHERE datname=current_database()`)).rows[0].n).toBe(0);
+        expect((await pool.query(`SELECT count(*)::int AS n FROM configuration_change
+          WHERE entity_type='USER_ROLE_BINDING'`)).rows[0].n).toBe(2);
+        expect((await pool.query(`SELECT count(*)::int AS n FROM command_execution
+          WHERE idempotency_key LIKE 'former-cycle-%' AND execution_status='SUCCEEDED'`)).rows[0].n).toBe(2);
+      });
+    }
+  }, 180_000);
+
+  it('sustains concurrent same-principal configuration writes without infrastructure errors', async () => {
+    await fixture(async ({ call, pool, tokens }) => {
+      for (let round = 0; round < 8; round++) {
+        const responses = await Promise.all([0, 1].map(index =>
+          call('PUT', `/users/${ids.admin}/role-binding`, tokens.admin,
+            { role: 'UK_ADMIN', contractor_id: null, house_ids: [ids.house] }, `stress-${round}-${index}`)));
+        expect(responses.map(response => response.status)).toEqual([200, 200]);
+      }
+      expect((await pool.query(`SELECT count(*)::int AS n FROM configuration_change
+        WHERE entity_type='USER_ROLE_BINDING'`)).rows[0].n).toBe(16);
+      await pool.query('SELECT pg_stat_clear_snapshot()');
+      expect((await pool.query(`SELECT deadlocks::int AS n FROM pg_stat_database
+        WHERE datname=current_database()`)).rows[0].n).toBe(0);
+    });
+  }, 180_000);
+
+  it('resolves cross-endpoint reuse from the original execution and checks both targets first', async () => {
+    await fixture(async ({ call, pool, migration, tokens }) => {
+      const categoryKey = randomUUID();
+      const categoryPayload = { name: 'Original category' };
+      const category = await call('PATCH', `/categories/${ids.category}`, tokens.admin, categoryPayload, categoryKey);
+      expect(category.status).toBe(200);
+      const baseline = (await pool.query(`SELECT config_revision FROM category WHERE category_id=$1`, [ids.category])).rows[0];
+      const auditCount = (await pool.query(`SELECT count(*)::int AS n FROM configuration_change`)).rows[0].n;
+      const visibleReuse = await call('PATCH', `/houses/${ids.house}`, tokens.admin,
+        { address: 'Reuse' }, categoryKey);
+      expect(visibleReuse.status).toBe(409);
+      expect(visibleReuse.body.error.code).toBe('IDEMPOTENCY_KEY_REUSE');
+      const hiddenRequested = await call('PATCH', `/houses/${ids.foreignHouse}`, tokens.admin,
+        { address: 'Foreign' }, categoryKey);
+      expect(hiddenRequested.status).toBe(404);
+      expect(hiddenRequested.body.error.code).toBe('RESOURCE_NOT_FOUND');
+      const replay = await call('PATCH', `/categories/${ids.category}`, tokens.admin, categoryPayload, categoryKey);
+      expect(replay).toMatchObject({ status: 200, body: category.body,
+        headers: { 'idempotency-replayed': 'true' } });
+      const changed = await call('PATCH', `/categories/${ids.category}`, tokens.admin,
+        { name: 'Different fingerprint' }, categoryKey);
+      expect(changed.status).toBe(409);
+      expect(changed.body.error.code).toBe('IDEMPOTENCY_KEY_REUSE');
+      expect((await pool.query(`SELECT config_revision FROM category WHERE category_id=$1`, [ids.category])).rows[0]).toEqual(baseline);
+      expect((await pool.query(`SELECT count(*)::int AS n FROM configuration_change`)).rows[0].n).toBe(auditCount);
+
+      const houseKey = randomUUID();
+      expect((await call('PATCH', `/houses/${ids.house}`, tokens.admin,
+        { address: 'Original house' }, houseKey)).status).toBe(200);
+      const reverse = await call('PATCH', `/categories/${ids.category}`, tokens.admin,
+        { name: 'Reverse reuse' }, houseKey);
+      expect(reverse.status).toBe(409);
+      expect(reverse.body.error.code).toBe('IDEMPOTENCY_KEY_REUSE');
+      expect((await pool.query(`SELECT config_revision FROM category WHERE category_id=$1`, [ids.category])).rows[0]).toEqual(baseline);
+
+      expect((await call('PATCH', `/categories/${ids.category}`, tokens.admin,
+        { name: 'Current category' }, randomUUID())).status).toBe(200);
+      const oldReplay = await call('PATCH', `/categories/${ids.category}`, tokens.admin, categoryPayload, categoryKey);
+      expect(oldReplay).toMatchObject({ status: 200, body: category.body,
+        headers: { 'idempotency-replayed': 'true' } });
+
+      await migration.query(`DELETE FROM category WHERE category_id=$1`, [ids.category]);
+      const hiddenStored = await call('PATCH', `/houses/${ids.house}`, tokens.admin,
+        { address: 'Stored hidden' }, categoryKey);
+      expect(hiddenStored.status).toBe(404);
+      expect(hiddenStored.body.error.code).toBe('RESOURCE_NOT_FOUND');
+      expect((await pool.query(`SELECT count(*)::int AS n FROM configuration_change`)).rows[0].n).toBe(auditCount + 2);
+    });
+  }, 120_000);
+
   it('enforces five own-scope reads and executes all nine mutations with strict stored success', async () => {
     await fixture(async ({ call, pool, tokens, migration }) => {
       const organization = await call('GET', '/organization');

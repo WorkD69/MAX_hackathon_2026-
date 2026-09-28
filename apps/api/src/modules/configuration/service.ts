@@ -54,6 +54,10 @@ const successSchemas = {
   'contractor.employee': ContractorEmployeePutSuccessSchema,
 } satisfies Record<Operation, z.ZodType>;
 
+const commandType = (operation: Operation) => `CONFIG_${operation.toUpperCase().replaceAll('.', '_')}`;
+const storedOperationFor = (type: string): Operation | undefined =>
+  (Object.keys(successSchemas) as Operation[]).find(operation => commandType(operation) === type);
+
 const bodyId = (operation: Operation, body: unknown): string | null => {
   if (typeof body !== 'object' || body === null) return null;
   const object = body as Record<string, unknown>;
@@ -151,10 +155,13 @@ export class ConfigurationService {
       requestedTarget: () => ({ kind: 'NON_CASE', caseId: null,
         authorizationKey: `${operation}:${targetId ?? organizationId}`, authorizationContext: context(targetId) }),
       storedTarget: execution => {
-        const id = bodyId(operation, execution.response_body);
+        const storedOperation = storedOperationFor(execution.command_type);
+        if (!storedOperation) throw new Error('CONFIGURATION_STORED_OPERATION_UNKNOWN');
+        const originalBody = successSchemas[storedOperation].parse(execution.response_body);
+        const id = bodyId(storedOperation, originalBody);
         if (!id) throw new Error('CONFIGURATION_STORED_TARGET_MISSING');
-        return { kind: 'NON_CASE', caseId: null, authorizationKey: `${operation}:${id}`,
-          authorizationContext: context(id) };
+        return { kind: 'NON_CASE', caseId: null, authorizationKey: `${storedOperation}:${id}`,
+          authorizationContext: { organizationId, targetId: id, operation: storedOperation } };
       },
       lockAuthorizationResources: async ({ transaction }) => { await lockOrganization(transaction, [organizationId]); },
       lockReplayResources: async ({ transaction }) => { await lockOrganization(transaction, [organizationId]); },
@@ -162,15 +169,15 @@ export class ConfigurationService {
         await new AuthorizationPolicy(createTransactionAuthorizationRepository(transaction))
           .configuration(claims, organizationId);
         let authorizedContext = target.authorizationContext;
-        if (phase !== 'NEW') {
+        if (phase === 'REPLAY_STORED') {
           const original = await transaction.selectFrom('configuration_change').select(['organization_id', 'after_data'])
             .where('command_id', '=', execution.commandId).executeTakeFirst();
           if (!original || original.organization_id !== organizationId) return hidden();
-          if (phase === 'REPLAY_STORED' && operation === 'contractor.employee') {
+          if (authorizedContext.operation === 'contractor.employee') {
             const after = original.after_data as { role_bindings?: Binding[] };
             const contractorId = after.role_bindings?.find(row => row.role === 'CONTRACTOR_EMPLOYEE')?.contractor_id;
             if (!contractorId) return hidden();
-            authorizedContext = context(`${contractorId}:${target.authorizationContext.targetId}`);
+            authorizedContext = { ...authorizedContext, targetId: `${contractorId}:${authorizedContext.targetId}` };
           }
         }
         await this.visibleTarget(transaction, claims, authorizedContext);
@@ -197,12 +204,12 @@ export class ConfigurationService {
     };
     return this.kernel.run({
       authenticate: () => ({ type: 'APP_USER' as const, appUserId: actorId }),
-      idempotencyKey, commandType: `CONFIG_${operation.toUpperCase().replaceAll('.', '_')}`,
+      idempotencyKey, commandType: commandType(operation),
       prepare: () => {
         const parsed = requestSchemas[operation].parse(body) as Record<string, unknown>;
         normalizedPayload = parsed;
         return { payload: parsed, requestHash: createCommandFingerprint({
-          method, path, commandType: `CONFIG_${operation.toUpperCase().replaceAll('.', '_')}`,
+          method, path, commandType: commandType(operation),
           normalizedPayload: parsed,
         }) };
       },
