@@ -261,17 +261,23 @@ test('unchanged comment retry keeps its key; edited text creates a new key', asy
 test('file input clears only after confirmed comment success', async () => {
   const addComment = vi.fn().mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValueOnce(addCommentSuccessFixture);
+  const onMutated = vi.fn();
   const view = renderReactTree(<ResidentCommentFeed transport={transport({ addComment })}
-    snapshot={withAllowedActions(residentSnapshot(), [addCommentAction])} onMutated={() => {}} />, { adapter });
+    snapshot={withAllowedActions(residentSnapshot(), [addCommentAction])} onMutated={onMutated} />, { adapter });
   try {
     await type(view.container, 'Фото');
     const input = view.container.querySelector('[data-testid="comment-files"]') as HTMLInputElement;
     Object.defineProperty(input, 'value', { configurable: true, writable: true, value: 'C:\\fakepath\\proof.jpg' });
     await selectFile(view.container, new File(['one'], 'proof.jpg'));
     await submit(view.container);
+    // The click's act() does not await the file digest or the async command.
+    await waitForUi(() => expect(addComment).toHaveBeenCalledTimes(1));
+    expect(view.container.textContent).toContain('Не удалось отправить сообщение');
+    expect(onMutated).not.toHaveBeenCalled();
     expect(input.value).toContain('proof.jpg');
     expect(view.container.textContent).toContain('Выбрано файлов: 1');
     await submit(view.container);
+    await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
     expect(input.value).toBe('');
     expect(view.container.textContent).not.toContain('Выбрано файлов: 1');
     expect(addComment.mock.calls[0]![1].idempotencyKey).toBe(addComment.mock.calls[1]![1].idempotencyKey);
