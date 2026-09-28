@@ -1,0 +1,76 @@
+name: max-smart-city
+
+x-app-image: &app-image
+  image: max-smart-city:${BUILD_SHA:?Set BUILD_SHA to the exact source commit}
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      BUILD_SHA: ${BUILD_SHA:?Set BUILD_SHA to the exact source commit}
+
+services:
+  postgres:
+    image: postgres:16.13-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-city}
+      POSTGRES_DB: ${POSTGRES_DB:-city}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate a local hex DB password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    restart: unless-stopped
+
+  migrate:
+    <<: *app-image
+    command: [node, scripts/delivery/migrate.mjs]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-city}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-city}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      disable: true
+
+  app:
+    <<: *app-image
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-3000}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-city}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-city}
+      APP_SESSION_SECRET: ${APP_SESSION_SECRET:?Generate a local session secret}
+      MAX_ADAPTER_MODE: ${MAX_ADAPTER_MODE:-live}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?Set organizer-issued Bot Token outside Git}
+      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:?Generate webhook secret outside Git}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:?Set Mini App HTTPS URL}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:?Set HTTPS URL ending in /api/v1}
+      MAX_INIT_DATA_MAX_AGE_SECONDS: ${MAX_INIT_DATA_MAX_AGE_SECONDS:-300}
+      MAX_INIT_DATA_FUTURE_SKEW_SECONDS: ${MAX_INIT_DATA_FUTURE_SKEW_SECONDS:-30}
+      APP_SESSION_TTL_SECONDS: ${APP_SESSION_TTL_SECONDS:-900}
+      MAX_REQUEST_TIMEOUT_MS: ${MAX_REQUEST_TIMEOUT_MS:-10000}
+      MAX_SUBSCRIPTION_RECONCILE_INTERVAL_MS: ${MAX_SUBSCRIPTION_RECONCILE_INTERVAL_MS:-300000}
+      NOTIFICATION_WORKER_POLL_INTERVAL_MS: ${NOTIFICATION_WORKER_POLL_INTERVAL_MS:-1000}
+      NOTIFICATION_WORKER_CONCURRENCY: ${NOTIFICATION_WORKER_CONCURRENCY:-4}
+      NOTIFICATION_RETRY_BASE_MS: ${NOTIFICATION_RETRY_BASE_MS:-1000}
+      NOTIFICATION_RETRY_MAX_MS: ${NOTIFICATION_RETRY_MAX_MS:-300000}
+      NOTIFICATION_LEASE_MS: ${NOTIFICATION_LEASE_MS:-30000}
+      NOTIFICATION_MAX_ATTEMPTS: ${NOTIFICATION_MAX_ATTEMPTS:-8}
+    expose:
+      - "${PORT:-3000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+volumes:
+  postgres-data:

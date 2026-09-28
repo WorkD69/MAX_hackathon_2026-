@@ -1,0 +1,10 @@
+{
+  "extends": "../../apps/api/tsconfig.json",
+  "compilerOptions": { "sourceMap": false },
+  "include": ["../../apps/api/src/**/*.ts"],
+  "exclude": [
+    "../../apps/api/dist", "../../apps/api/node_modules",
+    "../../apps/api/src/**/*.test.ts", "../../apps/api/src/**/*.spec.ts",
+    "../../apps/api/src/**/*.typecheck.ts", "../../apps/api/src/**/*.fixture.ts"
+  ]
+}

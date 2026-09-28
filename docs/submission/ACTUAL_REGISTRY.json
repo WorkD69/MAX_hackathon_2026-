@@ -1,0 +1,249 @@
+[
+  {
+    "method": "GET",
+    "url": "/health/live"
+  },
+  {
+    "method": "HEAD",
+    "url": "/health/live"
+  },
+  {
+    "method": "GET",
+    "url": "/health/ready"
+  },
+  {
+    "method": "HEAD",
+    "url": "/health/ready"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/system/info"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/system/info"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/auth/max"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/session"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/session"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/demo/runs"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/demo/session/actor"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/cases/create-options"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/cases/create-options"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/accept"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/select-contractor"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/send-assignment"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/accept-assignment"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/reject-assignment"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/comments"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/result-materials"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/submit-result"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/resident-confirmation"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/resident-remark"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/request-clarification"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/record-no-resident-feedback"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/return-to-rework"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/complete"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/cases/:caseId/commands/complete-with-explanation"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/attachments/:attachmentId"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/attachments/:attachmentId"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/attachments/:attachmentId/download-capability"
+  },
+  {
+    "method": "GET",
+    "url": "/downloads/:capability"
+  },
+  {
+    "method": "HEAD",
+    "url": "/downloads/:capability"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/cases"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/cases"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/cases/:caseId"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/cases/:caseId"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/cases/:caseId/contractor-candidates"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/cases/:caseId/contractor-candidates"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/config/organization"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/config/organization"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/config/houses"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/config/houses"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/config/categories"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/config/categories"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/config/contractors"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/config/contractors"
+  },
+  {
+    "method": "GET",
+    "url": "/api/v1/config/users"
+  },
+  {
+    "method": "HEAD",
+    "url": "/api/v1/config/users"
+  },
+  {
+    "method": "PATCH",
+    "url": "/api/v1/config/organization"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/config/houses"
+  },
+  {
+    "method": "PATCH",
+    "url": "/api/v1/config/houses/:houseId"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/config/categories"
+  },
+  {
+    "method": "PATCH",
+    "url": "/api/v1/config/categories/:categoryId"
+  },
+  {
+    "method": "POST",
+    "url": "/api/v1/config/contractors"
+  },
+  {
+    "method": "PUT",
+    "url": "/api/v1/config/contractors/:contractorId/binding"
+  },
+  {
+    "method": "PUT",
+    "url": "/api/v1/config/users/:appUserId/role-binding"
+  },
+  {
+    "method": "PUT",
+    "url": "/api/v1/config/contractors/:contractorId/employees/:appUserId"
+  },
+  {
+    "method": "POST",
+    "url": "/integrations/max/webhook"
+  },
+  {
+    "method": [
+      "HEAD",
+      "GET"
+    ],
+    "url": "/*"
+  }
+]

@@ -1,0 +1,132 @@
+{
+  "title": "MAX Smart City",
+  "status": "DRAFT • FINAL_SYNC_REQUIRED = YES",
+  "slides": [
+    {
+      "eyebrow": "01 / ТЕХНИЧЕСКИЙ СЛАЙД ДЛЯ ЭКСПЕРТА",
+      "title": "Доступ и маршрут проверки",
+      "subtitle": "MAX Hackathon 2026 • Умный город • заполнить перед финальной сдачей",
+      "columns": [
+        {"title": "Версия и адреса", "items": [
+          "Bot: PLACEHOLDER_MAX_BOT_LINK",
+          "Mini App: PLACEHOLDER_MINI_APP_HTTPS",
+          "API origin: https://api.example.invalid (placeholder)",
+          "Repo: github.com/WorkD69/MAX_hackathon_2026-",
+          "Submission SHA: PLACEHOLDER_SUBMISSION_SHA",
+          "Expected build_sha: тот же submitted SHA",
+          "TG-029 SHA: PLACEHOLDER_TG029_SHA"
+        ]},
+        {"title": "Тестовый доступ", "items": [
+          "MAX Bot → Mini App → signed initData → новый DemoRun",
+          "DEMO_MODE: Resident / UK Employee / UK Admin / Contractor Employee",
+          "Synthetic roles без паролей. Рабочие server secrets — вне Git/PDF.",
+          "Проверить /health/ready и /api/v1/system/info",
+          "Case → УК → Assignment → Contractor → Result → feedback → УК",
+          "README, DATA-API.yaml и VERIFICATION.md задают точные запросы",
+          "Секреты нужны для собственного deployment; команда передаёт их защищённо"
+        ]}
+      ],
+      "note": "Этот PDF — черновик. Public URLs, fixed SHA, live evidence и availability ещё не подтверждены."
+    },
+    {
+      "eyebrow": "02 / ПРОБЛЕМА И ПРИОРИТЕТНЫЙ ПОЛЬЗОВАТЕЛЬ",
+      "title": "Один случай до проверенного результата",
+      "subtitle": "Житель квартиры с неаварийной неисправностью внутридомового отопления / стояка",
+      "columns": [
+        {"title": "Ситуация", "items": [
+          "Для диагностики / ремонта подрядчику нужен доступ в квартиру.",
+          "УК организует работу по принятому конкретному случаю.",
+          "После сообщения о выполнении житель проверяет фактический результат.",
+          "Замечание не должно заставлять повторно описывать ту же проблему."
+        ]},
+        {"title": "Что делает сервис", "items": [
+          "Одна карточка и история: от Resident до завершения УК.",
+          "Выбор, отправка и принятие подрядчиком — разные действия.",
+          "Result с материалами запускает проверку жителем.",
+          "При доработке сохраняются case_id, прежние результаты и события."
+        ]}
+      ],
+      "note": "Ценность — проверяемая целостность процесса. Ускорение и экономический эффект не измерены."
+    },
+    {
+      "eyebrow": "03 / ОСНОВНОЙ ПУТЬ",
+      "title": "Четыре роли. Одна история.",
+      "subtitle": "Демонстрация должна пройти в реальном MAX web и mobile",
+      "columns": [
+        {"title": "От обращения до Result", "items": [
+          "Resident: выбирает помещение/категорию, создаёт Case.",
+          "UK Employee: принимает, выбирает Contractor, отправляет Assignment.",
+          "Contractor Employee: принимает поручение, добавляет материал, отправляет Result.",
+          "MAX Bot уведомляет реальную identity эксперта о готовом Result."
+        ]},
+        {"title": "Проверка и доработка", "items": [
+          "Resident: скачивает материал, подтверждает или оставляет замечание.",
+          "УК: рассматривает замечание, возвращает тот же Case на N+1.",
+          "Contractor: новый Result в N+1; прежний accepted Assignment может сохраняться.",
+          "Завершает УК по явному основанию. Новый DemoRun повторяет путь без reset истории."
+        ]}
+      ],
+      "note": "Сценарий описывает acceptance target. Draft-пакет не содержит доказательства прохода final MVP."
+    },
+    {
+      "eyebrow": "04 / ТЕХНИЧЕСКИЙ СОСТАВ",
+      "title": "MAX → Mini App → HTTP API → PostgreSQL",
+      "subtitle": "Docker topology: postgres → migrate + idempotent seed → app",
+      "columns": [
+        {"title": "Внутри решения", "items": [
+          "React + Vite: общая Mini App для четырёх role views.",
+          "Fastify + TypeScript: explicit commands, roles, current targets, idempotency.",
+          "PostgreSQL + Kysely: migrations, Case/history, attachments bytea.",
+          "Notification outbox worker: внутри app-процесса после final TG-029 wiring."
+        ]},
+        {"title": "Доставка и проверка", "items": [
+          "Node 24.21.0 / npm 11.19.0 / root lockfile; base images закреплены digest.",
+          "Named DB volume переживает остановку/пересоздание контейнеров.",
+          "App/DB без публичных ports; Caddy обслуживает HTTPS через внутреннюю сеть.",
+          "OpenAPI 3.1 + DATA-API + readiness/build_sha + независимый verification runbook."
+        ]}
+      ],
+      "note": "Docker Engine автора недоступен: full build/up, ≤5 min и persistence evidence требуют final gate."
+    },
+    {
+      "eyebrow": "05 / ПРОИСХОЖДЕНИЕ ДАННЫХ И ГРАНИЦЫ",
+      "title": "SYNTHETIC данные раскрыты явно",
+      "subtitle": "Никаких заявлений о реальном ремонте, CRM/ГИС выгрузке или официальной регистрации",
+      "columns": [
+        {"title": "SYNTHETIC / DEMO", "items": [
+          "Resident, сотрудники УК, Contractor A/B, адреса и помещения — вымышленные.",
+          "Категории, тексты Case/комментариев и result PNG — тестовые.",
+          "DemoRun и role switch — механизм экспертной демонстрации.",
+          "Real MAX identity эксперта нужна для bootstrap/уведомления, не является seed persona."
+        ]},
+        {"title": "Интеграции и ограничения", "items": [
+          "К сдаче подтвердить реальные MAX launch, initData, webhook, Bot API и download.",
+          "Fake transport автоматических тестов не является live evidence.",
+          "CRM, ГИС ЖКХ, платежи, свободные слоты и маршрутизация мастеров не подключены.",
+          "Расширение через конфигурацию домов/категорий/подрядчиков; эффект масштабирования не измерен."
+        ]}
+      ],
+      "note": "Рабочие secrets и реальные personal data в репозиторий/презентацию не включаются."
+    },
+    {
+      "eyebrow": "06 / FINAL SYNC И ПРИЁМКА",
+      "title": "Осталось подтвердить работающую сдачу",
+      "subtitle": "FINAL_SYNC_REQUIRED = YES • acceptance gates открыты",
+      "columns": [
+        {"title": "После final TG-029", "items": [
+          "Сверить actual API/web registry, schemas, env и production entrypoint.",
+          "Подтвердить static serving, DB/readiness, in-process worker, webhook.",
+          "Запустить OpenAPI/DATA-API validators и final runtime route parity.",
+          "Заполнить HTTPS/доступы, fixed source SHA и technical first slide."
+        ]},
+        {"title": "Evidence эксперту", "items": [
+          "Docker up одной командой, build ≤5 min без initial base-image pull.",
+          "Happy path, rework N+1, rejection continuation, повтор DemoRun.",
+          "MAX web/mobile, реальное notification и attachment download.",
+          "Restart persistence, deployed build_sha == submitted SHA, решение online."
+        ]}
+      ],
+      "note": "Наличие delivery draft файлов не закрывает эти gates. Финальные claims должны опираться на evidence."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# Изолированные delivery authoring/validation tools; не application dependencies.
+# Версии уже доступного Python окружения автора, без изменения npm manifests/lockfile.
+PyYAML==6.0.3
+jsonschema==4.26.0
+openapi-spec-validator==0.9.0
+reportlab==5.0.0
+pypdf==6.11.0
+PyMuPDF==1.27.2.3
