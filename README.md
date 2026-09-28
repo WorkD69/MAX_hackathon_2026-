@@ -1,24 +1,194 @@
-# MAX Hackathon 2026 — «Умный город»
+# MAX Smart City — «Умный город»
 
-Сервис в MAX ведёт один жилищный случай от обращения жителя через работу УК и подрядчика до проверки результата и, при необходимости, доработки того же случая.
+Сервис в MAX ведёт один жилищный случай от обращения жителя через УК и подрядчика до проверки
+фактического результата. Приоритетный пользователь — житель квартиры с неаварийной неисправностью
+внутридомового отопления / общедомового стояка, для ремонта которой нужен доступ в квартиру.
+Сообщение подрядчика о выполнении запускает проверку результата жителем; завершает случай УК.
+Замечание и доработка сохраняют тот же `case_id`, результаты и историю.
 
-- **Статус продукта:** Product Freeze и Product Spec утверждены.
-- **Текущая стадия:** `CREATE / PRE-ARCHITECTURE`.
-- **Реализация:** `NOT STARTED`.
+**Статус этого пакета: delivery draft, `FINAL_SYNC_REQUIRED = YES`.** База:
+`6b97fed7dd87cf7ed3281314d0a85a0b9e2f4328`. На этой базе центральный app registry подключает только
+health/system routes, entrypoint ещё не подключает static assets, readiness всегда отрицательная.
+Docker wiring и API-документы готовы к синхронизации с final TG-029; это не подтверждение рабочего MVP.
+Оставшиеся gates перечислены в [KNOWN_LIMITATIONS](docs/submission/KNOWN_LIMITATIONS.md).
 
-## Нормативные документы
+## Доступ и фиксированная версия
 
-- [Product Freeze](docs/01_PRODUCT_FREEZE.md) — утверждённые границы продукта.
-- [Product Spec](docs/02_PRODUCT_SPEC.md) — утверждённое поведение продукта.
-- [Критерии хакатона](docs/09_HACKATHON_CRITERIA.md) — подтверждённые требования и оценка.
+| Данные сдачи | Значение до final sync |
+| --- | --- |
+| MAX Bot / deep link | `PLACEHOLDER_MAX_BOT_LINK` |
+| Mini App HTTPS | `PLACEHOLDER_MINI_APP_HTTPS` |
+| API HTTPS origin | `https://api.example.invalid` — placeholder, не работающий адрес |
+| Репозиторий | [MAX_hackathon_2026-](https://github.com/WorkD69/MAX_hackathon_2026-) |
+| Final TG-029 SHA | `PLACEHOLDER_TG029_SHA` |
+| Submission candidate SHA | `PLACEHOLDER_SUBMISSION_SHA` |
+| Expected deployed build_sha | `PLACEHOLDER_SUBMISSION_SHA` |
+| PDF | [Черновик презентации](docs/submission/PRESENTATION_DRAFT.pdf), требуется final sync |
 
-## Структура репозитория
+После интеграции delivery-пакета фиксируется **новый итоговый submission SHA**, включающий TG-029 и
+эти файлы. SHA TG-029 отдельно не является автоматически SHA сдаваемого исходного кода.
+`GET /api/v1/system/info` должен вернуть этот итоговый SHA; процедура сравнения — в runbook.
 
-- [AGENTS.md](AGENTS.md) — правила для агентов.
-- [docs/00_PROJECT_BRIEF.md](docs/00_PROJECT_BRIEF.md) — краткое введение.
-- [docs/07_DECISIONS.md](docs/07_DECISIONS.md) — журнал существенных решений.
-- [docs/08_PROJECT_STATE.md](docs/08_PROJECT_STATE.md) — текущий этап и ограничения.
-- [docs/ORCHESTRATOR_HANDOFF.md](docs/ORCHESTRATOR_HANDOFF.md) — вход для CREATE-оркестратора.
-- [tasks/BACKLOG.md](tasks/BACKLOG.md) и [tasks/TASK_TEMPLATE.md](tasks/TASK_TEMPLATE.md) — этапы и контракт задачи.
+## Состав и роль MAX
 
-Текущее состояние и следующий шаг зафиксированы в [PROJECT_STATE](docs/08_PROJECT_STATE.md).
+React + Vite Mini App, Fastify HTTP API на TypeScript, PostgreSQL, Kysely migrations.
+Backend отвечает за роли, переходы, exact target IDs, idempotency, role-filtered snapshot и activity.
+Фото/файлы хранятся в PostgreSQL (`bytea`), а не в файловой системе контейнера.
+Docker содержит `postgres`, one-shot `migrate`, `app`. Notification outbox worker работает внутри
+app-процесса после final composition; дополнительного worker service нет.
+Публичный трафик: `Caddy → app` через внутреннюю Docker-сеть; Caddy — существующая VPS-инфраструктура.
+
+MAX обеспечивает запуск Bot → Mini App, signed raw `initData` bootstrap и Bot API уведомление жителя
+о новом Result. Session token не заменяет серверную проверку актуальных прав.
+Нужны реальный Bot Token организаторов, подключённая Mini App, HTTPS и live web/mobile verification.
+Успех fake transport в тестах не доказывает доставку в MAX.
+
+`DEMO_MODE=true` предоставляет ровно четыре role views:
+
+| Role view | Роль в проверке |
+| --- | --- |
+| `RESIDENT` | Создание Case, проверка Result, подтверждение/замечание |
+| `UK_EMPLOYEE` | Приём, выбор/отправка подрядчику, рассмотрение замечаний, завершение |
+| `UK_ADMIN` | Конфигурация своей УК и её справочников |
+| `CONTRACTOR_EMPLOYEE` | Принятие/отказ Assignment, материал и Result |
+
+Contractor A/B — synthetic actors одной role view; актуального actor выбирает backend.
+Реальная MAX identity эксперта отличается от effective synthetic actor. Для synthetic roles нет
+логинов/паролей. Войти нужно через MAX; DemoRun изолирован для этой identity.
+
+## Предварительная подготовка и запуск
+
+Нужны Docker Engine с Linux containers и Docker Compose v2, Git, интернет для base images/npm,
+рабочий MAX Bot и будущие HTTPS URL. Для host-проверок закреплены **Node 24.21.0, npm 11.19.0**;
+root `package-lock.json` используется без обновления зависимостей. В Docker toolchain проверяется точно.
+Перед запуском дождитесь final TG-029 composition; на текущей базе app будет unhealthy.
+
+1. Получите чистый checkout submission SHA, скопируйте `.env.example` в локальный `.env`.
+2. Заполните `MAX_BOT_TOKEN` выданным токеном, `PUBLIC_APP_URL`, `PUBLIC_API_BASE_URL`.
+   API base должен заканчиваться `/api/v1`; для production адреса HTTPS.
+3. Сгенерируйте **разные** случайные hex-значения для `POSTGRES_PASSWORD`, `APP_SESSION_SECRET`,
+   `MAX_WEBHOOK_SECRET` и впишите только в локальный `.env`. Каждое значение можно получить:
+
+   ```sh
+   node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+   ```
+
+   `DATABASE_URL` Compose выводит из `POSTGRES_*`; поле в `.env.example` служит для запуска вне Docker.
+   Test-only auth keys оставьте пустыми. Не передавайте весь `.env` через `env_file` в приложение.
+4. Установите SHA исходников для build. PowerShell:
+
+   ```powershell
+   $env:BUILD_SHA = git rev-parse HEAD
+   ```
+
+   На Linux:
+
+   ```sh
+   export BUILD_SHA="$(git rev-parse HEAD)"
+   ```
+
+   Можно сохранить это значение в локальный `.env`. Сборка должна выполняться из чистого checkout.
+5. Одна команда для всех локальных компонентов:
+
+   ```sh
+   docker compose up --build
+   ```
+
+PostgreSQL становится ready → `migrate` применяет versioned migrations → выполняет idempotent
+TG-008 seed → app стартует только после exit code 0. Seed добавляет недостающий SYNTHETIC каталог,
+сохраняет существующие настройки/Case/DemoRun и не создаёт MAX identity, DemoRun или Case.
+При schema/seed conflict migrate завершится с ошибкой, app не запустится: исправление передать владельцу.
+
+Проверка Compose без вывода секретов: `docker compose config --quiet`.
+В VPS-профиле вместо шага 5:
+
+```sh
+docker compose -f compose.yaml -f compose.vps.yaml up --build
+```
+
+Host CA `/etc/max-smart-city/russian-trusted-root-ca.pem` монтируется read-only в
+`/etc/ssl/custom/max-root-ca.pem`; Node получает `NODE_EXTRA_CA_CERTS` с этим путём.
+Файл должен существовать заранее. TLS verification остаётся включённой; CA не включается в образ/Git.
+Проверка сертификатов и подключение Caddy к внутренней сети — deployment gates.
+
+## Конфигурация
+
+Все canonical keys представлены в `.env.example`; `node scripts/delivery/validate.mjs` проверяет
+двустороннюю parity с `apps/api/src/config/schema.ts`. Пустые required secrets означают необходимость
+локального заполнения, а не валидную production-конфигурацию.
+
+| Ключи | Назначение / значения |
+| --- | --- |
+| `APP_ENV`, `HOST`, `PORT` | `production`, `0.0.0.0`, `3000`; app port только внутри сети |
+| `DEMO_MODE` | `true` для экспертного demo; роли SYNTHETIC, не production enrollment |
+| `DATABASE_URL` | Postgres connection; в Compose выводится из `POSTGRES_*` |
+| `APP_SESSION_SECRET` | Локальный секрет подписи session, минимум 32 UTF-8 bytes |
+| `MAX_ADAPTER_MODE` | `live`; `fake` разрешён typed schema только в `APP_ENV=test` |
+| `MAX_BOT_TOKEN`, `MAX_WEBHOOK_SECRET` | Рабочие значения только вне Git; webhook secret также нужен MAX subscription |
+| `PUBLIC_APP_URL`, `PUBLIC_API_BASE_URL` | Реальные HTTPS URL Mini App/API; API suffix `/api/v1` |
+| `BUILD_SHA` | 40 lowercase hex, immutable image identity и tag/OCI label |
+| `MAX_INIT_DATA_MAX_AGE_SECONDS`, `MAX_INIT_DATA_FUTURE_SKEW_SECONDS` | `300`, `30`; freshness и допустимый clock skew |
+| `APP_SESSION_TTL_SECONDS` | `900`; после expiry fresh MAX bootstrap |
+| `MAX_REQUEST_TIMEOUT_MS`, `MAX_SUBSCRIPTION_RECONCILE_INTERVAL_MS` | `10000`, `300000` |
+| `NOTIFICATION_WORKER_POLL_INTERVAL_MS`, `NOTIFICATION_WORKER_CONCURRENCY` | `1000`, `4` |
+| `NOTIFICATION_RETRY_BASE_MS`, `NOTIFICATION_RETRY_MAX_MS` | `1000`, `300000` |
+| `NOTIFICATION_LEASE_MS`, `NOTIFICATION_MAX_ATTEMPTS` | `30000`, `8`; lease больше request timeout |
+| `TEST_AUTH_DEMO_PROFILE`, `TEST_MAX_INIT_DATA_SIGNING_KEY` | Пусты; только изолированные automated E2E, не экспертный live доступ |
+| `POSTGRES_USER`, `POSTGRES_DB`, `POSTGRES_PASSWORD` | Delivery keys: `city`, `city`, локально сгенерированный hex password |
+| `NODE_EXTRA_CA_CERTS` | Delivery/Node key: задаётся VPS override, не typed application key |
+
+## Порты, остановка, повторный запуск, persistence
+
+Postgres `5432` и app `3000` доступны только внутри Compose network; public `ports:` отсутствуют.
+MAX не входит в Compose. Публичные `80/443` принадлежат Caddy; он должен иметь сетевой доступ к
+service `app` и передавать API, webhook и static traffic. Адрес localhost не является public MAX доступом.
+
+```sh
+docker compose ps
+docker compose exec app node scripts/delivery/healthcheck.mjs
+docker compose exec app node -e "fetch('http://127.0.0.1:3000/api/v1/system/info').then(r=>r.json()).then(console.log)"
+docker compose stop
+docker compose start
+docker compose restart app
+docker compose down
+docker compose up --build
+```
+
+`down` удаляет контейнеры/сеть, **сохраняет** named volume `max-smart-city_postgres-data`.
+Case, history, attachments, DemoRun и notification intents сохраняются в этом volume.
+Сохраняйте Compose project name `max-smart-city`, иначе будет выбран другой volume.
+`restart app` не переигрывает миграции; после нового исходного SHA используйте `up --build`.
+Для смены DB password на существующем volume нужен отдельный DB credential rotation, простая правка
+`.env` не меняет пароль существующего PostgreSQL role.
+
+## Как эксперт проверяет решение
+
+Полный [VERIFICATION runbook](docs/submission/VERIFICATION.md) задаёт последовательность действий,
+ожидаемые состояния, отрицательные проверки, повтор DemoRun, restart persistence и SHA comparison.
+[DATA-API.yaml](DATA-API.yaml) содержит method/path, role, request/schema/test fixtures, success и negative checks;
+[openapi.yaml](openapi.yaml) — OpenAPI 3.1 draft. Сначала завершите final sync и gates.
+
+Путь: MAX → новый DemoRun → Resident создаёт Case → УК принимает/выбирает/отправляет → Contractor
+принимает → файл и Result → реальное MAX уведомление → Resident оставляет замечание → УК возвращает
+тот же Case на N+1 → тот же Contractor отправляет новый Result без нового accept → Resident подтверждает
+→ УК завершает. Второй DemoRun повторяет путь с новым Case, сохраняя первый.
+
+Тестовые данные и ID: [SYNTHETIC_DATA](docs/submission/SYNTHETIC_DATA.md). Текущий seed содержит
+сантехнику/электрику; чтобы проверить приоритетный сценарий отопления, UK Admin заранее создаёт отдельную
+SYNTHETIC категорию «Отопление / стояк» с доступом в помещение и PHOTO requirement через config API/UI.
+Это настройка справочника, а не изменение seed или product scope.
+
+## Интеграции, ограничения и сдача
+
+Реальная проверяемая интеграция к сдаче: MAX launch, signed initData, webhook, Bot API notification,
+native/web attachment download. Её факт подтверждается **live evidence**, которого этот draft не создаёт.
+Backend/DB workflow — собственная реализация. SYNTHETIC жители, адреса, сотрудники, подрядчики,
+категории, тексты и изображения не являются выгрузкой CRM/ГИС ЖКХ. Реального подключения к CRM,
+ГИС ЖКХ, расписаниям мастеров и платёжным системам нет; официальная регистрация обращения не заявляется.
+Границы MVP и текущие delivery gaps — в [KNOWN_LIMITATIONS](docs/submission/KNOWN_LIMITATIONS.md).
+
+[SUBMISSION_CHECKLIST](docs/submission/SUBMISSION_CHECKLIST.md) содержит обязательные gates, включая
+build ≤ 5 min, presentation PDF, технический первый слайд, final route parity и online availability.
+Порядок final sync и валидаторы — в [scripts/delivery/README](scripts/delivery/README.md).
+Действующие нормативные документы: [Product Freeze](docs/01_PRODUCT_FREEZE.md),
+[Product Spec](docs/02_PRODUCT_SPEC.md), [Interface Contracts](docs/05_INTERFACE_CONTRACTS.md).
