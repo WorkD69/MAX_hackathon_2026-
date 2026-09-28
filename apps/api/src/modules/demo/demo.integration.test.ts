@@ -1,6 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { verifyOwnedPostgresConnection } from '../../../../../tests/support/postgres.mjs';
+import { verifyOwnedLegacySuite } from '../../../../../tests/support/postgres.mjs';
 import fastify from 'fastify';
 import pino from 'pino';
 import { Kysely, PostgresDialect } from 'kysely';
@@ -87,12 +86,7 @@ async function insertCase(tx: DatabaseTransaction, run: string) {
 }
 beforeAll(async () => {
   if (!new URL(url!).pathname.endsWith('_tg013_test')) throw new Error('UNSAFE_TG013_TEST_DATABASE');
-  const receiptPath = process.env.TG013_TEST_DATABASE_RECEIPT;
-  if (!receiptPath) throw new Error('MISSING_OWNED_RECEIPT');
-  const adminUrl = process.env.TEST_POSTGRES_ADMIN_URL;
-  if (!adminUrl) throw new Error('MISSING_TEST_POSTGRES_ADMIN_URL');
-  const receipt = JSON.parse(await readFile(receiptPath, 'utf8'));
-  await verifyOwnedPostgresConnection({ adminUrl }, receipt, url!);
+  await verifyOwnedLegacySuite('TG013');
   ownedTargetVerified = true;
   await admin.query(`CREATE SCHEMA "${schema}"`);
   schemaCreated = true;

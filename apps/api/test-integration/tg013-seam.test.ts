@@ -1,6 +1,5 @@
-import { readFile } from 'node:fs/promises';
 import fastify from 'fastify';
-import { verifyOwnedPostgresConnection } from '../../../tests/support/postgres.mjs';
+import { verifyOwnedLegacySuite } from '../../../tests/support/postgres.mjs';
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
 import type { DestinationStream } from 'pino';
@@ -68,12 +67,7 @@ async function expectExpired(token: string) {
 }
 
 beforeEach(async () => {
-  const receiptPath = process.env.TG013_SEAM_TEST_DATABASE_RECEIPT;
-  if (!receiptPath) throw new Error('MISSING_OWNED_RECEIPT');
-  const adminUrl = process.env.TEST_POSTGRES_ADMIN_URL;
-  if (!adminUrl) throw new Error('MISSING_TEST_POSTGRES_ADMIN_URL');
-  const receipt = JSON.parse(await readFile(receiptPath, 'utf8'));
-  await verifyOwnedPostgresConnection({ adminUrl }, receipt, url!);
+  await verifyOwnedLegacySuite('TG013_SEAM');
   ownedTargetVerified = true;
   await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   await admin.query(`CREATE SCHEMA ${schema}`);

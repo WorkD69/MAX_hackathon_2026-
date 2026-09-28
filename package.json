@@ -27,12 +27,16 @@
     "test:integration:owned-db": "node scripts/test/with-legacy-databases.mjs test:integration"
   },
   "devDependencies": {
+    "@max-smart-city/contracts": "0.0.0",
     "@playwright/test": "1.63.0",
     "@types/node": "24.13.6",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "kysely": "0.29.6",
     "pg": "8.23.0",
     "typescript": "7.0.2",
     "vite": "8.3.0",
-    "vitest": "5.0.1"
+    "vitest": "5.0.1",
+    "yaml": "2.9.1"
   }
 }

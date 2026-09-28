@@ -2,7 +2,8 @@ import type { MigrationResultSet } from 'kysely';
 
 export interface TestDatabaseReceipt {
   readonly version: 1;
-  readonly suite: 'tg026' | 'tg005' | 'tg006' | 'tg007' | 'tg008' | 'tg012' | 'tg013' | 'tg013_seam';
+  readonly suite: 'tg026' | 'tg005' | 'tg006' | 'tg007' | 'tg008' | 'tg012' | 'tg013' | 'tg013_seam' | 'tg015_auth';
+  readonly legacyKey?: (typeof LEGACY_TEST_TARGETS)[number]['key'];
   readonly runId: string;
   readonly ownerToken: string;
   readonly systemIdentifier: string;
@@ -18,6 +19,7 @@ export interface ProvisionOptions {
   adminUrl: string;
   env?: Readonly<Record<string, string | undefined>>;
   suite?: TestDatabaseReceipt['suite'];
+  legacyKey?: (typeof LEGACY_TEST_TARGETS)[number]['key'];
   receiptPath?: string;
 }
 export interface PostgresTestTarget {
@@ -32,6 +34,12 @@ export interface PostgresTestTarget {
   migrate(): Promise<MigrationResultSet>;
   cleanup(): Promise<void>;
 }
+export const LEGACY_TEST_TARGETS: ReadonlyArray<Readonly<{
+  key: 'TG005_FOUNDATION' | 'TG005_CONSTRAINTS' | 'TG006' | 'TG007' | 'TG008' | 'TG012_KERNEL' | 'TG012_POLICY' | 'TG013' | 'TG013_SEAM' | 'TG015';
+  suite: TestDatabaseReceipt['suite'];
+}>>;
+export function assertDistinctLegacyTargets(env?: Readonly<Record<string, string | undefined>>): void;
+export function verifyOwnedLegacySuite(key: (typeof LEGACY_TEST_TARGETS)[number]['key'], env?: Readonly<Record<string, string | undefined>>): Promise<string>;
 export function requireTestProvisioning(env?: Readonly<Record<string, string | undefined>>): void;
 export function validateReceipt(receipt: unknown): asserts receipt is TestDatabaseReceipt;
 export function ownershipMarker(receipt: TestDatabaseReceipt): string;

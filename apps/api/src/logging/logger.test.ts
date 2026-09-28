@@ -69,6 +69,11 @@ describe('closed runtime logger', () => {
   it('redacts Pino paths and never serializes Error internals', () => {
     const pair = capture();
     const sentinel = 'SECRET_SENTINEL_42';
+    pair.loggerInstance.info({ TEST_MAX_INIT_DATA_SIGNING_KEY: sentinel,
+      config: { TEST_MAX_INIT_DATA_SIGNING_KEY: sentinel },
+      req: { body: { TEST_MAX_INIT_DATA_SIGNING_KEY: sentinel } } });
+    expect(sanitizeForLog({ nested: { test_max_init_data_signing_key: sentinel } }))
+      .toEqual({ nested: { test_max_init_data_signing_key: '[REDACTED]' } });
     pair.loggerInstance.info({ req: { headers: { authorization: sentinel, cookie: sentinel, 'x-max-bot-api-secret': sentinel }, body: { init_data: sentinel, initData: sentinel } }, err: new Error(sentinel) });
     const text = pair.lines.join('');
     expect(text).not.toContain(sentinel);

@@ -10,6 +10,7 @@ export const ENV_KEYS = [
   'NOTIFICATION_WORKER_POLL_INTERVAL_MS', 'NOTIFICATION_WORKER_CONCURRENCY',
   'NOTIFICATION_RETRY_BASE_MS', 'NOTIFICATION_RETRY_MAX_MS',
   'NOTIFICATION_LEASE_MS', 'NOTIFICATION_MAX_ATTEMPTS',
+  'TEST_AUTH_DEMO_PROFILE', 'TEST_MAX_INIT_DATA_SIGNING_KEY',
 ] as const;
 
 const integer = (min: number, max: number, fallback: string) =>
@@ -58,11 +59,20 @@ export const inputSchema = z.object({
   NOTIFICATION_RETRY_MAX_MS: integer(1000, 3600000, '300000'),
   NOTIFICATION_LEASE_MS: integer(5000, 300000, '30000'),
   NOTIFICATION_MAX_ATTEMPTS: integer(1, 20, '8'),
+  TEST_AUTH_DEMO_PROFILE: z.literal('TEST_DEMO_E2E_V1').optional(),
+  TEST_MAX_INIT_DATA_SIGNING_KEY: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 }).superRefine((value, context) => {
   const issue = (key: keyof typeof value) => context.addIssue({ code: 'custom', path: [key], message: 'invalid combination' });
   if (value.MAX_INIT_DATA_FUTURE_SKEW_SECONDS >= value.MAX_INIT_DATA_MAX_AGE_SECONDS) issue('MAX_INIT_DATA_FUTURE_SKEW_SECONDS');
   if (value.NOTIFICATION_RETRY_MAX_MS < value.NOTIFICATION_RETRY_BASE_MS) issue('NOTIFICATION_RETRY_MAX_MS');
   if (value.NOTIFICATION_LEASE_MS <= value.MAX_REQUEST_TIMEOUT_MS) issue('NOTIFICATION_LEASE_MS');
+  const hasTestProfile = value.TEST_AUTH_DEMO_PROFILE !== undefined;
+  const hasTestKey = value.TEST_MAX_INIT_DATA_SIGNING_KEY !== undefined;
+  if (hasTestProfile !== hasTestKey || ((hasTestProfile || hasTestKey) &&
+    (value.APP_ENV !== 'test' || value.MAX_ADAPTER_MODE !== 'fake' || !value.DEMO_MODE))) {
+    issue('TEST_AUTH_DEMO_PROFILE');
+    issue('TEST_MAX_INIT_DATA_SIGNING_KEY');
+  }
   if (value.MAX_ADAPTER_MODE === 'live') {
     if (!value.MAX_BOT_TOKEN) issue('MAX_BOT_TOKEN');
     if (!value.MAX_WEBHOOK_SECRET) issue('MAX_WEBHOOK_SECRET');

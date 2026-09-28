@@ -1,4 +1,5 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { ErrorResponseSchema, RequestIdHeaderSchema } from '@max-smart-city/contracts';
 import type { FastifyPluginAsync } from 'fastify';
 import type { RuntimeConfig } from '../../config/types.js';
 import { MaxAdapterError } from '../../modules/max-adapter/errors.js';
@@ -32,7 +33,14 @@ export function createMaxWebhookPlugin(options: {
       const raw = request.headers['x-max-bot-api-secret'];
       const supplied = Array.isArray(raw) ? undefined : raw;
       if (!secretMatches(expectedSecret, supplied)) {
-        await reply.code(401).send({ error: 'MAX_WEBHOOK_UNAUTHORIZED' });
+        const incomingId = RequestIdHeaderSchema.safeParse(request.headers['x-request-id']);
+        await reply.code(401).send(ErrorResponseSchema.parse({
+          error: {
+            code: 'UNAUTHENTICATED',
+            message: 'UNAUTHENTICATED',
+            request_id: incomingId.success ? incomingId.data : randomUUID(),
+          },
+        }));
       }
     });
 

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
+import { verifyOwnedLegacySuite } from '../../../tests/support/postgres.mjs';
 import { migrateToLatest } from '@max-smart-city/db';
 import type { Database } from '@max-smart-city/db';
 import type { SessionClaims } from '../src/modules/auth/session-token.js';
@@ -45,6 +46,7 @@ let db: Kysely<Database>;
 let admin: Pool;
 
 beforeAll(async () => {
+  await verifyOwnedLegacySuite('TG015');
   admin = new Pool(poolConfig('public'));
   await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   await admin.query(`CREATE SCHEMA ${schema}`);

@@ -40,4 +40,30 @@ test('receipt rejects arbitrary targets, forged names, mismatched identity and f
   for (const patch of [{ oid: 999 }, { marker: 'another-run' }, { owner: 999 }]) {
     assert.throws(() => guards.assertOwnedResource(receipt, 'database', { ...resource, ...patch }), /OWNERSHIP_MISMATCH/);
   }
+  const prefix = `tg005_${receipt.runId}`;
+  const legacy = { ...receipt, suite: 'tg005', legacyKey: 'TG005_FOUNDATION',
+    database: `${prefix}_tg005_test`, migrationRole: `${prefix}_migration`, runtimeRole: `${prefix}_runtime` };
+  const marker = guards.ownershipMarker(legacy);
+  assert.notEqual(marker, guards.ownershipMarker({ ...legacy, legacyKey: 'TG005_CONSTRAINTS' }));
+  assert.throws(() => guards.validateReceipt({ ...receipt, legacyKey: 'TG005_FOUNDATION' }), /UNSAFE_TEST_RECEIPT/);
+});
+
+test('concurrent legacy suites cannot reuse a database or ownership receipt', () => {
+  assert.equal(typeof guards.assertDistinctLegacyTargets, 'function');
+  const env = {
+    TG005_FOUNDATION_TEST_DATABASE_URL: 'postgresql://localhost/a_tg005_test',
+    TG005_FOUNDATION_TEST_DATABASE_RECEIPT: 'foundation-receipt',
+    TG005_CONSTRAINTS_TEST_DATABASE_URL: 'postgresql://localhost/b_tg005_test',
+    TG005_CONSTRAINTS_TEST_DATABASE_RECEIPT: 'constraints-receipt',
+  };
+  guards.assertDistinctLegacyTargets(env);
+  assert.throws(() => guards.assertDistinctLegacyTargets({
+    ...env, TG005_CONSTRAINTS_TEST_DATABASE_RECEIPT: 'foundation-receipt',
+  }), /REUSED_OWNED_TARGET/);
+  assert.throws(() => guards.assertDistinctLegacyTargets({
+    ...env, TG005_CONSTRAINTS_TEST_DATABASE_URL: env.TG005_FOUNDATION_TEST_DATABASE_URL,
+  }), /REUSED_OWNED_TARGET/);
+  assert.throws(() => guards.assertDistinctLegacyTargets({
+    ...env, TG005_CONSTRAINTS_TEST_DATABASE_RECEIPT: '',
+  }), /MISSING_OWNED_TARGET_INPUT/);
 });
