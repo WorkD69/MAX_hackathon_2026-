@@ -2,7 +2,7 @@
 
 **Проект:** MAX Hackathon 2026 — трек «Умный город»  
 **Статус документа:** Final Candidate Architecture after TCR-MAJ-001 / TCR-MIN-001 Closure Fix  
-**Нормативная база:** `docs/01_PRODUCT_FREEZE.md` > `docs/02_PRODUCT_SPEC.md`  
+**Нормативная база:** официальные требования и уточнения (включая FAQ, см. `docs/09_HACKATHON_CRITERIA.md`) > `docs/01_PRODUCT_FREEZE.md` > `docs/02_PRODUCT_SPEC.md`
 **Ожидаемый SHA:** `03bbece0fe40b24e4c2cdbbc5b8800bc14e82920`  
 **Дата синтеза:** 21 сентября 2026
 
@@ -238,6 +238,8 @@ UI не обращается напрямую к DB или MAX Bot API. MAX-spec
 
 ### 7.1. Bot → Mini App
 
+По [официальному FAQ](09_HACKATHON_CRITERIA.md#5-max-requirements) Mini App не обязателен для всех участников, но выбранный продукт сохраняет Bot + Mini App. До launch path команда размещает Mini App по публичному HTTPS URL и отправляет его через [форму организаторов](https://sbor-ssylok-dlya-mini-prilojeniy.testograf.ru/); привязку к выданному боту выполняют организаторы. «MAX для партнёров» не требуется. Команда имеет Bot Token, а не Bot admin access; username получает через `GET /me`. В онлайн-этапе имя, ник и логотип бота не меняются. Настройки, недоступные через API, запрашиваются у организаторов.
+
 Основной launch path:
 
 1. пользователь открывает MAX Bot;
@@ -260,6 +262,7 @@ MUST-flow **не зависит** от передачи per-button payload че�
 
 - outbound Bot API base host: `https://platform-api2.max.ru`;
 - Bot Token передаётся только сервером в `Authorization` header; query-параметр для токена не используется;
+- webhook subscription и reconciliation выполняются через доступный по Bot Token MAX Bot API; organizer binding Mini App не является требованием административного доступа для webhook;
 - runtime/container обязан доверять актуальной цепочке сертификатов MAX, включая требуемый текущей документацией сертификат Минцифры;
 - webhook endpoint доступен публично только по HTTPS на порту `443`, с доменным именем, совпадающим с CN/SAN, и полной доверенной certificate chain; self-signed certificate не допускается;
 - при создании подписки server задаёт отдельный webhook `secret`; каждый входящий webhook до parsing/business processing проверяет `X-Max-Bot-Api-Secret`;
@@ -903,13 +906,14 @@ PostgreSQL persistent DB
 
 ### 20.2. Requirements
 
-- стабильный публичный hostname;
+- стабильный публичный HTTPS hostname; собственный домен не обязателен, hostname от хостинга достаточен;
 - HTTPS Mini App;
 - webhook только HTTPS/443, trusted full certificate chain, CN/SAN match;
 - provisioned `MAX_WEBHOOK_SECRET` и обязательная проверка `X-Max-Bot-Api-Secret`;
 - outbound Bot API через `platform-api2.max.ru`;
 - runtime TLS trust совместим с текущей MAX certificate chain, включая требуемый сертификат Минцифры;
 - webhook subscription reconciliation после restart/outage и восстановление после auto-unsubscribe;
+- привязка публичного Mini App URL к выданному боту организаторами через форму; отсутствие Bot admin access у команды не блокирует token API;
 - persistent PostgreSQL;
 - secrets через environment/secret manager;
 - automatic restart;
@@ -936,6 +940,8 @@ Private:
 ---
 
 ## 21. Docker Model
+
+Docker обязателен по [официальному FAQ](09_HACKATHON_CRITERIA.md#8-docker--readme-requirements). Внешние сервисы, которые невозможно запустить в Docker, включая MAX, описываются в README с условиями доступа и проверки.
 
 Local `compose.yaml` содержит минимально:
 
@@ -971,10 +977,12 @@ MAX не входит в compose.
 - OpenAPI `3.0` или `3.1`, соответствующий Interface Contracts;
 - `DATA-API.yaml` с обязательными проверками, method/path, parameters, role, expected codes/response format;
 - synthetic test data и test access по нужным ролям;
-- публичный HTTPS address собственного API на период проверки;
+- публичный HTTPS address собственного API на весь период экспертной проверки; собственный домен не требуется;
 - Docker build check `<= 5 минут` без времени первоначальной загрузки base images;
 - fixed submission SHA и процедура сопоставления deployed `build_sha` с этим SHA;
 - проверяемая процедура independent E2E в реальном MAX.
+
+Дедлайн сдачи — **30.09.2026 12:00 по Москве (UTC+03:00)**. После него переданная версия заморожена; смена SHA/image не разрешает её замену. Бот и решение остаются доступны весь период экспертной проверки ([Criteria §4](09_HACKATHON_CRITERIA.md#4-submission-requirements)).
 
 Эти артефакты — future delivery output, не разрешение создавать их на текущем blocked coding gate.
 
@@ -1231,6 +1239,8 @@ Playwright против deployed/local app с test auth harness, не выдав
 ### 26.8. Manual real MAX gate
 
 Automated browser test не заменяет live MAX verification. Перед submission обязательны отдельные проходы в mobile MAX и web MAX.
+
+Локальный web UI/logic можно тестировать до публикации. Полноценный MAX gate начинается только после публичного HTTPS deployment и organizer binding Mini App; подтверждение отправки формы само по себе ещё не подтверждает привязку.
 
 ---
 
