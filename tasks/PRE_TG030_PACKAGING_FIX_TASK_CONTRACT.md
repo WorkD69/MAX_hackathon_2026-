@@ -32,6 +32,11 @@ runtime output Docker spike без изменения обычной тесто�
 `Dockerfile.spike`, `compose.spike.yaml`, `.dockerignore`, `.gitignore`,
 `tests/support/production-package.test.mjs`, `spike/README.md` и этот контракт.
 
+Packaging closure от candidate `a314e74eec676db7e9fb0226129775c6e64a358f`
+также включает `apps/api/scripts/production-boundary.mjs`: fail-closed обработку
+только team-owned test adapter seam после полной production-компиляции.
+Это не TG-029 composition и не изменение feature source.
+
 ## 6. Forbidden scope
 
 Product Freeze/Spec, TG-029 registry, canonical `Dockerfile`/`compose.yaml`,
@@ -43,6 +48,16 @@ Production API output исключает `*.test.*`, `*.spec.*`, integration/e2e
 fixtures и test-only modules. Runtime сохраняет API, web assets, DB migrations,
 seed CLI/dependencies, workspace metadata и `USER node`. Healthcheck проверяет
 только liveness. `BUILD_SHA` задаётся полным immutable commit SHA при build.
+
+Классификация runtime boundary: TG-030 в Task Graph запрещает working token;
+Architecture §§20–22, 25–26, Hackathon Criteria §§4, 7–8 и Testability contract
+TG-028 §§6–7, 9 запрещают secrets, team test auth/bypass и test artifacts в
+production build. Они не запрещают опубликованные third-party `test/tests`.
+`pino@10.3.1/test/**` — содержимое vendor npm tarball, не output тестов приложения.
+Vendor contents сохраняются; scan запрещает team credential sentinels также
+в dependencies, проверяет lockfile provenance и отсутствие dev-only packages.
+Vendor test paths сами по себе не являются secret finding. Любой найденный
+team sentinel в vendor file остаётся ошибкой, а не исключением из scan.
 
 ## 8. Dependency requests
 

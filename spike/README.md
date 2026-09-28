@@ -5,10 +5,19 @@
 Ветка `codex/docker-production-output-fix` включает исходный spike-коммит
 `12ec1a66d34ee30ae234ff531d6ad1a96cf9effa` и актуальный `main`.
 Обычный `apps/api/dist` по-прежнему компилирует тесты для разработки.
-`npm run build:production --workspace @max-smart-city/api` компилирует только
-`src/app/main.ts` и достижимые production-модули в `apps/api/dist-production`.
-Runtime stage копирует этот каталог в `/app/apps/api/dist`; test-only файлы,
-fixture credentials и fake adapter в нём запрещены структурным тестом.
+`npm run build:production --workspace @max-smart-city/api` компилирует всё
+production-дерево `src/**/*.ts` в `apps/api/dist-production`, включая отдельные
+auth, DemoRun, authorization, command kernel, MAX/webhook, notification worker,
+redrive и recovery CLI. Будущие Case/configuration modules автоматически входят
+в это дерево; их отсутствие на candidate не восполняется реализацией TG-029.
+Тесты, test fixtures/helpers и typecheck-only modules исключены.
+Runtime stage копирует этот каталог в `/app/apps/api/dist`.
+
+TypeScript следует imports даже для excluded roots. Поэтому build-only
+`apps/api/scripts/production-boundary.mjs` проверяет точную team-owned MAX seam,
+убирает fake export/import и fake adapter output; factory сохраняет live branch
+и fail-closed отказывает при `fake`. При drift этой seam сборка падает.
+Обычные source/test build и TEST fake adapter остаются доступны.
 
 После `npm ci` и `npm run build` выполнить:
 
@@ -20,7 +29,32 @@ node --test tests/support/production-package.test.mjs
 `.dockerignore` исключает тестовые файлы и локальный `dist-production` из
 Docker build context. Тест проверяет production output, необходимые web/DB/seed
 артефакты, границу Docker COPY и известные синтетические credential markers.
+Gate сверяет полный source→output inventory, импортирует все production modules,
+проверяет migrations/seed и fail-closed запуск CLI без credentials/внешнего I/O.
+Отдельно он создаёт временный runtime-набор с чистым
+`npm ci --omit=dev --ignore-scripts --offline`, проверяет lockfile tree, отсутствие dev-only packages,
+критические dependency imports и sentinels во всех vendor files. Временный
+runtime-набор автоматически удаляется. В build stage gate использует cache от
+`npm ci`; install policy совпадает с отдельной Docker dependency stage.
 Он не заменяет inspection собранного Linux-образа.
+
+### Published vendor content
+
+Contract adjudication: [TG-030](../tasks/TASK_GRAPH.md) запрещает «не include
+working token»; [Testability TG-028 §§6–7, 9](../tasks/TG-028_TASK_CONTRACT.md)
+требует «TEST auth и artifacts не попадают в production build» и запрещает
+тестовые credentials/actor selector. [Architecture §§20–22, 25–26](../docs/03_ARCHITECTURE.md)
+и [Hackathon Criteria §§4, 7–8](../docs/09_HACKATHON_CRITERIA.md) не устанавливают
+запрет на каталоги `test/tests` в опубликованных npm dependencies.
+
+`pino@10.3.1/test/**` — vendor package content из pinned npm tarball, а не
+скомпилированные тесты команды. Оно сохраняется вместе с main/bin/runtime files.
+Gate проверяет integrity tarball по lockfile и побайтовое совпадение **всех**
+установленных файлов pino, включая test fixtures; выполняет pino logging smoke.
+Vendor test paths не считаются team test output. Проверка team credential
+sentinels применяется также к vendor files без исключений по имени каталога.
+Локальные fixtures из build context в dependencies не копируются; vendor
+packages устанавливаются чистым locked install без lifecycle scripts.
 
 `BUILD_SHA` передаётся при сборке образа как точный 40-символьный SHA commit:
 
@@ -47,6 +81,23 @@ commit образа. `HEALTHCHECK` обращается только к `/health
 - `compose.spike.yaml`: только локальный smoke с фиктивными test-значениями и PostgreSQL на `tmpfs`, без публикации DB-порта и постоянного volume.
 
 ## Выполненные проверки
+
+Packaging closure от `a314e74eec676db7e9fb0226129775c6e64a358f` проверена
+на Node **24.21.0**, npm **11.19.0**: normal build, typecheck, production build,
+структурный gate (45 API modules), production/CLI imports, чистый production
+dependency tree без dev-only packages, dependency imports, pino logging/tarball
+integrity и sentinel scan — PASS. Source feature modules и TG-029 registry
+не изменены. Эти PASS относятся к packaging/import boundary, а не к полному
+продуктовому E2E или выполнению migrations/seed на БД.
+
+Дополнительный `npm run test` не прошёл без внешних `TG*_TEST_DATABASE_URL`:
+11 PostgreSQL suites отказались запускаться; также был timeout worker test под
+параллельной нагрузкой. Отдельный повтор worker suite прошёл **23/23**.
+Остальные выполненные tests: contracts **95**, domain **141**, DB unit **20**,
+API **639**, web **268** — PASS. DB provisioning не предоставлен.
+Docker/Linux runtime данной closure — **NOT_RUN**.
+
+Ниже сохранена история проверок исходного spike:
 
 | Проверка | Результат |
 | --- | --- |

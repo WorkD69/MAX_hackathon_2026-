@@ -20,6 +20,8 @@
 !spike/entrypoint.mjs
 !spike/migrate.mjs
 **/tests
+**/test
+**/__tests__
 **/test-integration
 **/e2e
 **/fixtures
@@ -27,6 +29,7 @@
 **/harness
 **/*.test.*
 **/*.spec.*
+**/*.typecheck.*
 **/*.integration.*
 **/*.e2e.*
 **/*.fixture.*
@@ -51,3 +54,7 @@
 **/*.temp
 **/*~
 **/*.swp
+# Build-only structural gate; never copied into the runtime stage.
+!tests/
+!tests/support/
+!tests/support/production-package.test.mjs

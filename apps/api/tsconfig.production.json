@@ -4,7 +4,14 @@
     "outDir": "dist-production",
     "sourceMap": false
   },
-  "files": ["src/app/main.ts"],
-  "include": [],
-  "exclude": ["dist", "dist-production", "node_modules"]
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "dist", "dist-production", "node_modules",
+    "src/**/*.test.*", "src/**/*.spec.*", "src/**/*.typecheck.*",
+    "src/**/*.integration.*", "src/**/*.e2e.*", "src/**/*.fixture.*",
+    "src/**/test/**", "src/**/tests/**", "src/**/__tests__/**", "src/**/test-integration/**",
+    "src/**/fixtures/**", "src/**/__fixtures__/**", "src/**/e2e/**",
+    "src/**/harness/**", "src/**/*test-helpers*", "src/**/*harness*",
+    "src/modules/max-adapter/fake.ts"
+  ]
 }

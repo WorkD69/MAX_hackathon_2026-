@@ -17,6 +17,7 @@ RUN npm ci
 COPY tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
+COPY tests/support/production-package.test.mjs ./tests/support/production-package.test.mjs
 RUN npm run build \
     && npm run build:production --workspace @max-smart-city/api \
     && test -s apps/api/dist/app/main.js \
@@ -25,7 +26,16 @@ RUN npm run build \
     && test -s packages/db/dist/migrations/0001_foundation.js \
     && test -s packages/db/dist/migrations/0002_case_workflow.js \
     && test -s packages/db/dist/migrations/0003_operational_persistence.js \
-    && npm prune --omit=dev
+    && node --test tests/support/production-package.test.mjs
+
+FROM toolchain AS production-dependencies
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/domain/package.json packages/domain/package.json
+COPY packages/db/package.json packages/db/package.json
+RUN npm ci --omit=dev --ignore-scripts
 
 FROM toolchain AS runtime
 ARG BUILD_SHA
@@ -34,8 +44,9 @@ ENV NODE_ENV=production
 ENV BUILD_SHA=${BUILD_SHA}
 LABEL org.opencontainers.image.revision=${BUILD_SHA}
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/package.json
+COPY --from=build --chown=node:node /app/apps/web/package.json ./apps/web/package.json
 COPY --from=build --chown=node:node /app/apps/api/dist-production ./apps/api/dist
 COPY --from=build --chown=node:node /app/apps/web/dist ./apps/web/dist
 COPY --from=build --chown=node:node /app/packages/contracts/package.json ./packages/contracts/package.json
