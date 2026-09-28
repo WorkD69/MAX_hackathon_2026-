@@ -129,6 +129,144 @@ async function sentCase(contractorId = DEMO_IDS.contractorA) {
   return { caseId, iterationId, selectionId, assignmentId: sent.json().created.assignment_id as string };
 }
 
+async function effectCounts() {
+  const result = await pool.query(`SELECT
+    (SELECT count(*) FROM case_table) AS cases,
+    (SELECT count(*) FROM case_iteration) AS iterations,
+    (SELECT count(*) FROM contractor_selection) AS selections,
+    (SELECT count(*) FROM assignment) AS assignments,
+    (SELECT count(*) FROM attachment) AS attachments,
+    (SELECT count(*) FROM case_initial_attachment) AS initial_links,
+    (SELECT count(*) FROM case_event) AS events,
+    (SELECT count(*) FROM notification_intent) AS notifications,
+    (SELECT count(*) FROM command_execution) AS commands`);
+  return result.rows[0];
+}
+
+// Барьер по фактическому PostgreSQL lock wait: команда уже прошла initial authorization.
+async function waitForCategoryLock(writerPid: number) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const result = await admin.query(`SELECT pid FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'
+        AND $1 = ANY(pg_blocking_pids(pid))
+        AND query ILIKE '%from "category"%for share%'`, [writerPid]);
+    if (result.rowCount === 1) return;
+  }
+  throw new Error('CREATE_CASE_DID_NOT_REACH_CATEGORY_LOCK');
+}
+
+async function setContractorBAvailable(dependency: 'contractor' | 'mapping', active: boolean) {
+  if (dependency === 'contractor') {
+    await database.updateTable('contractor').set({ active })
+      .where('contractor_id', '=', DEMO_IDS.contractorB).execute();
+  } else {
+    await database.updateTable('organization_contractor').set({ active })
+      .where('organization_id', '=', DEMO_IDS.organization)
+      .where('contractor_id', '=', DEMO_IDS.contractorB).execute();
+  }
+}
+
+describe('TG-014 targeted adjudication on real PostgreSQL', () => {
+  it('F1: hides config errors after concurrent Category deactivation and resident access revocation', async () => {
+    const before = await effectCounts();
+    const writer = await pool.connect();
+    let pending: Promise<Awaited<ReturnType<typeof create>>> | undefined;
+    await writer.query('BEGIN');
+    try {
+      const { rows } = await writer.query('SELECT pg_backend_pid() AS pid');
+      await writer.query('SELECT category_id FROM category WHERE category_id=$1 FOR UPDATE', [DEMO_IDS.categoryA]);
+      // .then запускает inject; writer продолжает только после наблюдаемого lock wait.
+      pending = create('F1 authorization before config', randomUUID(),
+        [{ name: 'f1.txt', content: Buffer.from('f1'), mime: 'text/plain' }]).then(result => result);
+      await waitForCategoryLock(rows[0].pid as number);
+      await writer.query('UPDATE category SET active=false WHERE category_id=$1', [DEMO_IDS.categoryA]);
+      await writer.query(`UPDATE resident_premises_access SET active=false
+        WHERE app_user_id=$1 AND premises_id=$2`, [DEMO_IDS.resident, DEMO_IDS.premises]);
+      await writer.query('COMMIT');
+      const result = await pending;
+      expect(result.statusCode, result.body).toBe(404);
+      expect(result.json().error.code).toBe('RESOURCE_NOT_FOUND');
+      expect(result.body).not.toContain('CATEGORY_INACTIVE');
+      expect(await effectCounts()).toEqual(before);
+    } finally {
+      await writer.query('ROLLBACK');
+      writer.release();
+      if (pending) await pending;
+      await database.updateTable('resident_premises_access').set({ active: true })
+        .where('app_user_id', '=', DEMO_IDS.resident).where('premises_id', '=', DEMO_IDS.premises).execute();
+      await database.updateTable('category').set({ active: true })
+        .where('category_id', '=', DEMO_IDS.categoryA).execute();
+    }
+  }, 30_000);
+
+  it.each(['contractor', 'mapping'] as const)(
+    'F2 Selection: old A selection precedes current B unavailable %s', async dependency => {
+      const created = await create('F2 stale selection');
+      expect(created.statusCode).toBe(201);
+      const caseId = created.json().case_id as string;
+      const iterationId = created.json().created.iteration_id as string;
+      expect((await command(caseId, 'accept', ukToken, {})).statusCode).toBe(200);
+      const oldSelection = await command(caseId, 'select-contractor', ukToken,
+        { iteration_id: iterationId, contractor_id: DEMO_IDS.contractorA });
+      expect(oldSelection.statusCode).toBe(200);
+      const currentSelection = await command(caseId, 'select-contractor', ukToken,
+        { iteration_id: iterationId, contractor_id: DEMO_IDS.contractorB });
+      expect(currentSelection.statusCode).toBe(200);
+      await setContractorBAvailable(dependency, false);
+      try {
+        const before = await effectCounts();
+        const row = await database.selectFrom('case_table').selectAll()
+          .where('case_id', '=', caseId).executeTakeFirstOrThrow();
+        const stale = await command(caseId, 'send-assignment', ukToken,
+          { iteration_id: iterationId, selection_id: oldSelection.json().created.selection_id });
+        expect(stale.statusCode, stale.body).toBe(409);
+        expect(stale.json().error.code).toBe('STALE_SELECTION');
+        const current = await command(caseId, 'send-assignment', ukToken,
+          { iteration_id: iterationId, selection_id: currentSelection.json().created.selection_id });
+        expect(current.statusCode, current.body).toBe(422);
+        expect(current.json().error.code).toBe('CONTRACTOR_NOT_AVAILABLE');
+        expect(await effectCounts()).toEqual(before);
+        expect(await database.selectFrom('case_table').selectAll()
+          .where('case_id', '=', caseId).executeTakeFirstOrThrow()).toEqual(row);
+      } finally { await setContractorBAvailable(dependency, true); }
+    }, 30_000);
+
+  it.each(['contractor', 'mapping'] as const)(
+    'F2 iteration: old N precedes unavailable B %s in current rework N+1', async dependency => {
+      const { caseId, iterationId, assignmentId } = await sentCase();
+      expect((await command(caseId, 'accept-assignment', contractorToken,
+        { assignment_id: assignmentId })).statusCode).toBe(200);
+      const nextIteration = randomUUID();
+      await database.transaction().execute(async tx => {
+        await tx.insertInto('case_iteration').values({ iteration_id: nextIteration, case_id: caseId,
+          iteration_no: 2, start_reason: 'REWORK', started_at: new Date(),
+          started_by_user_id: DEMO_IDS.ukEmployee, source_result_id: null,
+          source_feedback_id: null, started_by_event_id: null }).execute();
+        await tx.updateTable('case_table').set({ current_state: 'REWORK',
+          current_iteration_id: nextIteration, current_selection_id: null, current_result_id: null })
+          .where('case_id', '=', caseId).execute();
+      });
+      await setContractorBAvailable(dependency, false);
+      try {
+        const before = await effectCounts();
+        const row = await database.selectFrom('case_table').selectAll()
+          .where('case_id', '=', caseId).executeTakeFirstOrThrow();
+        const stale = await command(caseId, 'select-contractor', ukToken,
+          { iteration_id: iterationId, contractor_id: DEMO_IDS.contractorB });
+        expect(stale.statusCode, stale.body).toBe(409);
+        expect(stale.json().error.code).toBe('STALE_ITERATION');
+        const current = await command(caseId, 'select-contractor', ukToken,
+          { iteration_id: nextIteration, contractor_id: DEMO_IDS.contractorB });
+        expect(current.statusCode, current.body).toBe(422);
+        expect(current.json().error.code).toBe('CONTRACTOR_NOT_AVAILABLE');
+        expect(await effectCounts()).toEqual(before);
+        expect(await database.selectFrom('case_table').selectAll()
+          .where('case_id', '=', caseId).executeTakeFirstOrThrow()).toEqual(row);
+      } finally { await setContractorBAvailable(dependency, true); }
+    }, 30_000);
+});
+
 describe('TG-014 resident intake on real PostgreSQL', () => {
   it('returns current accessible premises without categories until one is selected', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/v1/cases/create-options',

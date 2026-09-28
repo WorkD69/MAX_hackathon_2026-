@@ -189,6 +189,18 @@ export class AssignmentLifecycleService {
       validateExactTargets: async input => {
         if (!input.lockedCase) throw new AuthorizationError('NOT_FOUND');
         snapshot = await loadSnapshot(input.transaction, input.lockedCase);
+        if (kind === 'SELECT_CONTRACTOR' || kind === 'SEND_ASSIGNMENT') {
+          if (claims.role !== 'UK_EMPLOYEE' && claims.role !== 'UK_ADMIN') {
+            throw new AuthorizationError('FORBIDDEN');
+          }
+          // The kernel's current visibility gate has passed and the Case is locked.
+          // Use the same domain rules for state/currentness before config availability;
+          // actual availability and current authority are still revalidated below.
+          const validation = evaluateDomain(snapshot,
+            { role: claims.role, organizationId: input.lockedCase.organization_id },
+            commandFor(kind, input.payload, true));
+          if (!validation.ok) return domainError(validation.code);
+        }
       },
       validateStateContext: async input => {
         if (kind === 'REJECT_ASSIGNMENT' && typeof input.payload.reason === 'string' &&
@@ -218,11 +230,14 @@ export class AssignmentLifecycleService {
       },
       validateDomain: async input => {
         if (!snapshot || !actor) throw new IntakeError('INTERNAL_ERROR', 500);
-        if ((kind === 'SELECT_CONTRACTOR' || kind === 'SEND_ASSIGNMENT') && !available) {
-          throw new IntakeError('CONTRACTOR_NOT_AVAILABLE', 422);
-        }
         const validation = evaluateDomain(snapshot, actor, commandFor(kind, input.payload, available));
-        if (!validation.ok) return domainError(validation.code);
+        if (!validation.ok) {
+          if (validation.code === 'BUSINESS_INPUT' &&
+            (kind === 'SELECT_CONTRACTOR' || kind === 'SEND_ASSIGNMENT') && !available) {
+            throw new IntakeError('CONTRACTOR_NOT_AVAILABLE', 422);
+          }
+          return domainError(validation.code);
+        }
         domain = validation.plan;
       },
       writeDomain: async input => {
