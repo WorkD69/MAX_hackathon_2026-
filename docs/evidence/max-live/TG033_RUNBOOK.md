@@ -4,10 +4,12 @@
 
 ## 1. Условия запуска и дисциплина evidence
 
-1. Начинать TG-033 только после TG-032: зафиксированы доступный public HTTPS deployment, judging account, подписка webhook, candidate Git SHA и immutable image digest. Сравнить candidate SHA с полем `build_sha` ответа `GET /api/v1/system/info`; несовпадение — `BLOCKED` для этого candidate. Записать безопасную метку окружения и URL без query/secrets.
-2. Все live-наблюдения относятся к **одному** deployed candidate и его image digest. При исправлении дефекта и новом SHA открыть новый evidence set; старые `PASS` не переносить. Скриншоты браузерного viewport, fake MAX adapter, прямой URL и toast не заменяют реальный MAX client, запуск через Bot и доставленное сообщение.
+1. Начинать TG-033 только после TG-032: зафиксированы доступный public HTTPS deployment, подтверждённая привязка Mini App к выданному боту организаторами после отправки URL через [форму](https://sbor-ssylok-dlya-mini-prilojeniy.testograf.ru/), judging account, подписка webhook, candidate Git SHA и immutable image digest. Собственный домен и «MAX для партнёров» не требуются. Локально допустимы web UI/logic tests; полноценное MAX testing — только после HTTPS и organizer binding. Сравнить candidate SHA с полем `build_sha` ответа `GET /api/v1/system/info`; несовпадение — `BLOCKED` для этого candidate. Записать безопасную метку окружения и URL без query/secrets.
+2. Все live-наблюдения относятся к **одному** deployed candidate и его image digest. При исправлении дефекта **до дедлайна** и новом SHA открыть новый evidence set; старые `PASS` не переносить. После **30.09.2026 12:00 по Москве (UTC+03:00)** submitted version заморожена: новый SHA/image не разрешает её замену. Бот и решение должны оставаться доступными весь период экспертной проверки. Скриншоты браузерного viewport, fake MAX adapter, прямой URL и toast не заменяют реальный MAX client, запуск через Bot и доставленное сообщение.
 3. Для **каждой** проверки записывать время с часовым поясом, candidate SHA, image digest, MAX client/platform/version, безопасную метку учётной записи, DemoRun/Case (где применимо), expected, actual, ссылку на обезличенный артефакт и статус `PENDING | PASS | FAIL | BLOCKED`. Исходно все проверки `PENDING`; заполнять только после исполнения. Отсутствие возможности наблюдать — `BLOCKED`, отрицательное наблюдение — `FAIL` с шагом воспроизведения.
 4. Артефакты ограничить `docs/evidence/max-live/**`. Никаких Bot Token, webhook secret, session token, raw initData, приватных заголовков, персональных данных или рабочих credentials. Безопасные псевдонимы должны позволять сопоставить M/W и Case без раскрытия исходных ID. Перед commit проверить артефакты на секреты.
+
+Нормативны [официальные уточнения FAQ](../../09_HACKATHON_CRITERIA.md#5-max-requirements), в том числе при расхождении с историческим TG-033 contract. Команда имеет технический Bot Token, а не Bot admin access; username узнаётся через `GET /me`. Webhook subscription/reconciliation выполняются по токену; настройки, недоступные через API, запрашиваются у организаторов. Имя, ник и логотип бота в онлайн-этапе участники не меняют.
 
 ## 2. Подготовка платформы и защитных границ
 
@@ -17,7 +19,7 @@
 | G-02 | Public Mini App URL, TLS/443, hostname и полная цепочка | HTTPS URL доступен из MAX; сертификат и цепочка принимаются MAX. |
 | G-03 | Outbound TLS trust и связь backend с актуальным MAX Bot API | Реальный вызов работает без локальной подмены транспорта. |
 | G-04 | Expected webhook subscription и контролируемая потеря/восстановление | Reconciliation находит и восстанавливает ожидаемую подписку. |
-| G-05 | Доступность Bot, Mini App URL и judging account | Организаторский путь активен; секреты не попадают в evidence. |
+| G-05 | Organizer binding и доступность Bot, Mini App URL, judging account | Привязка после отправки формы подтверждена запуском из MAX; доступ сохраняется весь период экспертной проверки; секреты не попадают в evidence. |
 | WH-01 | Webhook с валидным `X-Max-Bot-Api-Secret` | HTTP `200` не позднее 30 секунд; долгая бизнес-обработка не удерживает ответ. |
 | WH-02 | Неверный и отсутствующий secret | Оба отклонены **до** бизнес-обработки; статус записать фактически. Конкретный HTTP-код не предписывать до интеграции canonical interface patch. |
 | ID-01 | Подлинный raw MAX initData при запуске из Bot | Backend подтверждает HMAC и freshness, создаёт trusted session. В evidence только факт проверки. |

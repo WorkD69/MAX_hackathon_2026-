@@ -2,7 +2,7 @@
 
 **Статус:** подготовка решения; приложение не развёрнуто, публичные URL, сертификат, подписка MAX, backup и runtime smoke ещё не проверены. Этот документ передаётся TG-030 и будущему исполнителю TG-032. Он не заменяет PASS зависимостей TG-026/027/028/030/031 и не меняет продуктовые правила.
 
-**Нормативные границы:** [Task Graph](../../tasks/TASK_GRAPH.md) §§ TG-029/030/032; [Architecture](../03_ARCHITECTURE.md) §§ 19–21, 24–25; [Data Model](../04_DATA_MODEL.md) §§ 6.5, 19; [Interface Contracts](../05_INTERFACE_CONTRACTS.md) §§ 1.1, 1.4, 27–28, 37A; точные runtime keys — [`apps/api/src/config/schema.ts`](../../apps/api/src/config/schema.ts). Если готовый TG-029/TG-030 образ расходится с этими контрактами, вернуть дефект владельцу соответствующей задачи до выкладки.
+**Нормативные границы:** официальные уточнения «Общий FAQ (2).pdf», отражённые в [Hackathon Criteria §§4–5, 8–9](../09_HACKATHON_CRITERIA.md), имеют приоритет над внутренними контрактами; [Task Graph](../../tasks/TASK_GRAPH.md) §§ TG-029/030/032; [Architecture](../03_ARCHITECTURE.md) §§ 19–21, 24–25; [Data Model](../04_DATA_MODEL.md) §§ 6.5, 19; [Interface Contracts](../05_INTERFACE_CONTRACTS.md) §§ 1.1, 1.4, 27–28, 37A; точные runtime keys — [`apps/api/src/config/schema.ts`](../../apps/api/src/config/schema.ts). Если готовый TG-029/TG-030 образ расходится с этими контрактами, вернуть дефект владельцу соответствующей задачи до выкладки.
 
 ## 1. Однозначная схема и размер сервера
 
@@ -17,16 +17,16 @@
 
 ## 2. DNS, TLS и маршрутизация
 
-**Единственный публичный hostname:** `app.<домен-команды>` — placeholder, который владелец домена заменяет реальным FQDN до настройки MAX. DNS `A` указывает на статический публичный IPv4 VM; `AAAA` добавлять только при реально работающем IPv6. После выбора имени оно одинаково используется для сертификата, Mini App, webhook и production config:
+**Единственный публичный hostname:** `<public-hostname>` — placeholder стабильного публичного hostname, в том числе выданного хостингом. **Собственный домен и владение DNS не обязательны.** Если выбран собственный домен, DNS `A` указывает на статический публичный IPv4 VM; `AAAA` добавлять только при реально работающем IPv6. Для hostname от хостинга маршрутизацию/TLS обеспечивает провайдер по условиям размещения. После выбора имени оно одинаково используется для сертификата, Mini App, webhook и production config:
 
 | Назначение | Схема / значение |
 | --- | --- |
-| Mini App, `PUBLIC_APP_URL` | `https://app.<домен-команды>/` |
-| API, `PUBLIC_API_BASE_URL` | `https://app.<домен-команды>/api/v1` |
-| MAX webhook | `https://app.<домен-команды>/integrations/max/webhook` |
-| Диагностика | `https://app.<домен-команды>/health/live`, `/health/ready`, `/api/v1/system/info` |
+| Mini App, `PUBLIC_APP_URL` | `https://<public-hostname>/` |
+| API, `PUBLIC_API_BASE_URL` | `https://<public-hostname>/api/v1` |
+| MAX webhook | `https://<public-hostname>/integrations/max/webhook` |
+| Диагностика | `https://<public-hostname>/health/live`, `/health/ready`, `/api/v1/system/info` |
 
-Caddy принимает **80/tcp** для HTTP-01 challenge и перенаправления на HTTPS, **443/tcp** для HTTPS. Сертификат от публично доверенного CA выпускается и продлевается автоматически; Caddy data volume хранит ACME account/cert state между пересозданиями. До установки MAX URL проверить валидный full chain, SAN для точного hostname и автоматическое продление. Self-signed cert, отключение проверки TLS и HTTP webhook запрещены. Режим challenge не должен быть сломан редиректом или firewall. Proxy передаёт исходные `/api/v1/*`, `/integrations/max/webhook`, `/health/*` без обрезания пути, web/static — app; принимает корректные `Host`/`X-Forwarded-*` только от доверенного proxy. Прямой порт app в Internet не публикуется.
+В выбранной VM-схеме Caddy принимает **80/tcp** для HTTP-01 challenge и перенаправления на HTTPS, **443/tcp** для HTTPS. Сертификат от публично доверенного CA выпускается и продлевается автоматически; Caddy data volume хранит ACME account/cert state между пересозданиями. Если публичный TLS завершается на хостинге, провайдер обеспечивает ту же внешнюю HTTPS/443/full-chain гарантию и продление; владение доменом для этого не требуется. До отправки Mini App URL организаторам проверить валидный full chain, SAN для точного hostname и автоматическое продление. Self-signed cert, отключение проверки TLS и HTTP webhook запрещены. Режим challenge не должен быть сломан редиректом или firewall. Proxy передаёт исходные `/api/v1/*`, `/integrations/max/webhook`, `/health/*` без обрезания пути, web/static — app; принимает корректные `Host`/`X-Forwarded-*` только от доверенного proxy. Прямой порт app в Internet не публикуется.
 
 **Сеть/firewall:** Internet inbound только 80/443; SSH/управление — через ограниченный административный канал/VPN, без открытого DB/admin UI. `postgres:5432` доступен лишь app/migrate по отдельной private Docker network без `ports`; app дополнительно подключён к сети proxy для исходящего HTTPS. Разрешить app outbound `443/tcp` к `platform-api2.max.ru` и DNS/NTP для разрешения имени и проверки сертификатов; системный CA trust должен поддерживать требуемую текущим MAX цепочку (включая сертификат Минцифры согласно контракту). Сертификаты нельзя обходить `rejectUnauthorized=false` или аналогом. Webhook должен отвечать в пределах 30 секунд.
 
@@ -55,8 +55,9 @@ Production config задаётся только через типизирова�
 
 ## 5. MAX: действия после upstream PASS
 
-1. После готовности DNS/TLS установить у управляемого командой бота HTTPS Mini App URL `PUBLIC_APP_URL` и проверить открытие из реального MAX, а не только в браузере по прямой ссылке.
+1. После публикации Mini App и проверки публичного HTTPS/TLS отправить `PUBLIC_APP_URL` через [форму организаторов](https://sbor-ssylok-dlya-mini-prilojeniy.testograf.ru/). Организаторы привязывают URL к выданному боту; дождаться подтверждённой привязки и проверить открытие из реального MAX. Отправка формы ещё не подтверждает binding. «MAX для партнёров» и административный доступ команды к боту не требуются. До этой привязки допустимы локальные web UI/logic tests, но полноценный MAX live-прогон не начинается.
 2. Provision `MAX_BOT_TOKEN` и `MAX_WEBHOOK_SECRET` вне репозитория. Установить/сверить subscription точного webhook URL через реализованный TG-019 reconciler: он читает текущие subscriptions, создаёт/обновляет ожидаемую и восстанавливает отсутствующую после restart/auto-unsubscribe. Проверить, что неверный/отсутствующий `X-Max-Bot-Api-Secret` получает canonical `401` без side effects, а валидное событие быстро подтверждается `200`. Не публиковать сам secret в evidence.
+   Технический доступ команды — Bot Token: username узнать через `GET /me` с `Authorization: <Bot Token>`. Webhook API доступен по токену и не требует отдельного действия Bot admin/организаторов. Только настройки, недоступные через API, запрашивать у организаторов. В онлайн-этапе участники не меняют имя, ник и логотип бота.
 3. Запустить Mini App в MAX, провести server validation signed `initData`; сохранить validated `chat.id/chat.type` как delivery target. Для normal mode — единственный outbound-ready `MaxIdentity`, mapped к Resident; для `DEMO_MODE` — explicit current `DemoRun.notification_recipient_max_identity_id`. Не выводить `chat_id` из `user.id`, `bot_user_id` или `startapp`.
 4. Подтвердить при `SubmitResult` один durable intent и доставку в **этот** validated target. Проверить восстановление subscription после удаления/потери, временный сбой outbound и retry/expired lease; фактическое MAX mobile/web evidence остаётся TG-033 после TG-032.
 
@@ -69,11 +70,15 @@ Production config задаётся только через типизирова�
 | `GET /api/v1/system/info` | Public read с machine-readable `build_sha`, равным fixed candidate Git SHA/образу; без env/secrets. |
 | Startup | DB health → one-shot migrations/идемпотентный seed TG-030 → app init → worker/reconciler startup → ready. Worker не обрабатывает intents до DB/migration readiness. |
 | Shutdown/restart | SIGTERM прекращает новые HTTP requests/claims, останавливает timers/reconciler, дожидается bounded in-flight операций и закрывает DB; незавершённый claim восстанавливается после lease expiry. |
-| Public/TLS | HTTPS trusted full chain, hostname match, 80→443, 443 webhook, приватный DB, egress MAX с проверкой TLS. |
+| Public/TLS | Стабильный public HTTPS hostname (URL хостинга достаточен), trusted full chain, hostname match, 80→443, 443 webhook, приватный DB, egress MAX с проверкой TLS. |
+| Organizer binding | URL отправлен через форму; привязка Mini App к выданному боту подтверждена организаторами и запуском из MAX. |
+| Review availability | Бот, Mini App, API и test access остаются доступны весь период экспертной проверки; submitted version после 30.09.2026 12:00 по Москве заморожена. |
 | Persistence | Штатный restart и `down`/`up` сохраняют Case/history/config/attachments/outbox; backup restore проверен отдельно. |
 
-**Порядок execution TG-032:** дождаться PASS TG-026/027/028/030/031 и fixed candidate SHA → получить человеческие входы ниже → собрать/взять immutable TG-030 image и проверить `BUILD_SHA` → подготовить VM/DNS/firewall/volume/backup → установить секреты вне Git → поднять composition и дождаться readiness → проверить TLS/DB privacy/persistence → выставить Mini App URL и reconcile webhook → проверить MAX delivery target → записать runtime evidence в `docs/evidence/deployment/**`. Только после этого TG-033 собирает live MAX evidence. Ни один из этих действий на внешней инфраструктуре данной prep-задачей не выполнен.
+**Порядок execution TG-032:** дождаться PASS TG-026/027/028/030/031 и fixed candidate SHA → получить человеческие входы ниже → собрать/взять immutable TG-030 image и проверить `BUILD_SHA` → подготовить VM/маршрутизацию/firewall/volume/backup → установить секреты вне Git → поднять composition и дождаться readiness → проверить TLS/DB privacy/persistence → отправить Mini App URL через форму и дождаться organizer binding; reconcile webhook по Bot Token → проверить MAX delivery target → записать runtime evidence в `docs/evidence/deployment/**`. Только после этого TG-033 собирает live MAX evidence. Ни один из этих действий на внешней инфраструктуре данной prep-задачей не выполнен.
 
-**Человеческий ввод перед TG-032:** домен и управление DNS, VM/IP и административный доступ, согласованный `DEMO_MODE`, владелец бота с правом настройки Mini App/subscriptions, реальные значения перечисленных secrets, место и ключи off-host backup, fixed candidate SHA после PASS upstream. TG-030 получает схему без этих значений уже сейчас.
+**Человеческий ввод перед TG-032:** стабильный public HTTPS hostname и условия хостинга (собственный домен необязателен), VM/IP и доступ оператора к инфраструктуре, согласованный `DEMO_MODE`, Bot Token и реальные значения остальных secrets, ответственный за отправку URL через форму и контакт с организаторами для binding/недоступных через API настроек, место и ключи off-host backup, fixed candidate SHA после PASS upstream. Управление DNS нужно только при собственном домене; Bot admin access не предоставлен и не является prerequisite. TG-030 получает схему без этих значений уже сейчас.
+
+**Передача TG-034/TG-035:** Docker обязателен; внешние сервисы, которые невозможно запустить в Docker, включая MAX, описать в README с условиями доступа и проверки. Для нашего HTTP API проверить обязательные public HTTPS address, OpenAPI 3.0/3.1, test data/access и `DATA-API.yaml`. Дедлайн — **30.09.2026 12:00 по Москве (UTC+03:00)**; после дедлайна submitted version не заменяется новым SHA/image. Поддерживать бот и решение доступными весь период экспертной проверки.
 
 **Внешняя техническая справка:** [Docker guide по PostgreSQL 18 volume](https://docs.docker.com/guides/postgresql/), [Docker Official Image: изменение PGDATA в 18+](https://hub.docker.com/_/postgres), [PostgreSQL 18: Backup and Restore](https://www.postgresql.org/docs/18/backup.html), [PostgreSQL 18: pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html).

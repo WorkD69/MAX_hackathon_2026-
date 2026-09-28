@@ -21,7 +21,7 @@
 | G-02 | — | — | — | — | — | — | Public HTTPS/443, hostname и полная цепочка приняты MAX | — | — | PENDING |
 | G-03 | — | — | — | — | — | — | Outbound TLS/Bot API работает | — | — | PENDING |
 | G-04 | — | — | — | — | — | — | Подписка восстановлена reconciliation после loss | — | — | PENDING |
-| G-05 | — | — | — | — | — | — | Bot, Mini App URL и judging account доступны | — | — | PENDING |
+| G-05 | — | — | — | — | — | — | Organizer binding после формы подтверждена запуском из MAX; Bot, Mini App URL и judging account доступны весь период экспертной проверки | — | — | PENDING |
 | WH-01 | — | — | — | — | — | — | Валидный secret: HTTP 200 ≤30 с | — | — | PENDING |
 | WH-02 | — | — | — | — | — | — | Неверный и отсутствующий secret отклонены до бизнес-обработки | — | — | PENDING |
 | ID-01 | — | — | — | — | — | — | Реальный initData прошёл HMAC/freshness | — | — | PENDING |
