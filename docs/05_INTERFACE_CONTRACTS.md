@@ -2,7 +2,7 @@
 
 **Проект:** MAX Hackathon 2026 — трек «Умный город»  
 **Статус документа:** Final Candidate Normative Interface Contract after TCR-MAJ-001 / TCR-MIN-001 Closure Fix  
-**Нормативная база:** `docs/01_PRODUCT_FREEZE.md` > `docs/02_PRODUCT_SPEC.md`  
+**Нормативная база:** официальные требования и уточнения (включая FAQ, см. `docs/09_HACKATHON_CRITERIA.md`) > `docs/01_PRODUCT_FREEZE.md` > `docs/02_PRODUCT_SPEC.md`
 **Связанные документы:** `docs_03_ARCHITECTURE_FINAL_CANDIDATE.md`, `docs_04_DATA_MODEL_FINAL_CANDIDATE.md`  
 **Дата:** 21 сентября 2026
 
@@ -2323,6 +2323,7 @@ Verified against current official MAX documentation on 21 September 2026.
 - API domain: `https://platform-api2.max.ru`;
 - server calls use `Authorization: <Bot Token>`;
 - Bot Token is server-only;
+- технический доступ команды ограничен Bot Token; Bot admin access не предоставлен. Username получать через `GET /me` с этим токеном в `Authorization`. Имя, ник и логотип бота в онлайн-этапе участники не меняют; настройки, недоступные через API, запрашиваются у организаторов ([FAQ / Criteria §5](09_HACKATHON_CRITERIA.md#5-max-requirements));
 - outbound environment trusts the certificate chain required by current MAX endpoint, including current Ministry of Digital certificate requirement documented by MAX;
 - `POST /messages` may address documented `chat_id`;
 - for Mini App, `chat_id` may be obtained from validated `window.WebApp.initData`.
@@ -2341,6 +2342,7 @@ Production contract:
 - hostname matches certificate CN/SAN;
 - server presents full certificate chain;
 - subscription is created with a strong `secret`;
+- subscription и reconciliation выполняются командой по Bot Token через MAX Bot API; административное действие организаторов для доступных через API операций не требуется;
 - backend verifies exact `X-Max-Bot-Api-Secret` before parsing/processing update and any side effects;
 - missing or invalid secret returns HTTP `401` in existing TG-002 `ErrorResponseSchema`: `error.code = UNAUTHENTICATED`, fixed safe `error.message = UNAUTHENTICATED`, `error.request_id` is a canonical UUID (valid incoming `X-Request-Id` or a newly generated UUID). Response does not reflect expected or provided secret;
 - valid secret with a valid or unknown update retains normal webhook handling and acknowledgement semantics: HTTP 200 within **30 seconds**;
@@ -2349,6 +2351,8 @@ Production contract:
 MAX retries failed webhook delivery with exponential intervals (up to 10 retries in current docs). If no successful response is obtained within roughly 8 hours, MAX automatically unsubscribes the bot. Therefore operations must reconcile subscriptions using current subscriptions API and recreate missing expected subscription.
 
 ### 27.3. Bot → Mini App
+
+Перед подключением наш Mini App размещается по публичному HTTPS URL; собственный домен не требуется, URL хостинга достаточен. URL отправляется через [форму организаторов](https://sbor-ssylok-dlya-mini-prilojeniy.testograf.ru/), привязку к выданному боту выполняют организаторы. «MAX для партнёров» не требуется. Mini App необязателен для хакатона в целом, но остаётся частью нашего Product scope. Локально допустимы web UI/logic tests; полноценные MAX tests — только после HTTPS и подтверждённой organizer binding ([FAQ / Criteria §5](09_HACKATHON_CRITERIA.md#5-max-requirements)).
 
 Bot uses documented Mini App/open action and HTTPS application URL. `startapp/start_param` may carry **untrusted contextual data only** after ordinary validation.
 
@@ -2743,6 +2747,7 @@ Live MAX tests additionally prove real notification and native/web download on j
 - `.env.example` без рабочих secrets;
 - README с purpose/scenario/architecture/start-stop/env/ports/dependencies/integrations/data/verification;
 - one-command Docker startup;
+- Docker обязателен; внешние сервисы, которые невозможно запустить в Docker (включая MAX), описываются в README с условиями доступа и проверки;
 - build criterion ≤ 5 minutes excluding initial base-image pull;
 - public HTTPS application/API address;
 - OpenAPI 3.0/3.1 for own API;
@@ -2750,6 +2755,8 @@ Live MAX tests additionally prove real notification and native/web download on j
 - test roles/access and synthetic test data;
 - fixed submission SHA;
 - verification procedure including `/api/v1/system/info.build_sha`, MAX mobile/web flow and restart persistence.
+
+Для собственного HTTP(S) API все четыре deliverables обязательны: публичный HTTPS address, OpenAPI 3.0/3.1, test data/access и `DATA-API.yaml`. Собственный домен не требуется. Дедлайн — **30.09.2026 12:00 по Москве (UTC+03:00)**; после него submitted version заморожена и не заменяется новым SHA/image. Бот и решение доступны весь период экспертной проверки ([FAQ / Criteria §§4, 8–9](09_HACKATHON_CRITERIA.md)).
 
 These are delivery artifacts, not new Product Spec features.
 
