@@ -12,6 +12,14 @@ const context = {
   demo_mode: true, demo_run_id: u, primary_case_id: null,
   effective_actor: { app_user_id: u, role: 'RESIDENT', display_name: 'Resident' },
 };
+const startContext = {
+  ...context, effective_actor: { app_user_id: null, role: null, display_name: '' },
+};
+const startResponse = {
+  demo_run_id: u, status: 'ACTIVE', primary_case_id: null,
+  role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'],
+  session_token: 'new-opaque-token', expires_at: t, session: startContext,
+};
 const activity = {
   activity_id: u, event_id: u, event_seq: 1, semantic_code: 'EVT_001', occurred_at: t,
   iteration_no: 1, actor: { role: 'RESIDENT', display_name: 'Resident' }, text: 'Created',
@@ -27,6 +35,7 @@ const snapshot = {
   selection: null, assignment: null, current_executor: null, current_result: null,
   resident_feedback: null, activity: [activity], allowed_actions: [],
 };
+const residentSnapshot = { ...snapshot, actionable_clarification_requests: [] };
 const success = { command_id: u, case_id: u, state: 'CREATED', revision: 1,
   created: { iteration_id: u }, event_ids: [u] };
 const emptySuccess = { ...success, created: {} };
@@ -41,11 +50,11 @@ const fixtures: [string, Schema, unknown, unknown][] = [
   ['07 error code', C.SemanticErrorCodeSchema, 'STALE_ASSIGNMENT', 'UNKNOWN_ERROR'],
   ['08 session', C.SessionReadResponseSchema, context, { ...context, session_token: 'secret' }],
   ['09 actor switch', C.ActorSwitchRequestSchema, { role_view: 'CONTRACTOR_EMPLOYEE' }, { role_view: 'CONTRACTOR_EMPLOYEE', actor_alias: 'A' }],
-  ['10 demo run', C.DemoRunStartResponseSchema, { demo_run_id: u, status: 'ACTIVE', primary_case_id: null, role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'] }, { demo_run_id: u, status: 'ACTIVE', primary_case_id: null, role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE', 'CONTRACTOR_EMPLOYEE'] }],
+  ['10 demo run', C.DemoRunStartResponseSchema, startResponse, { ...startResponse, role_views: [...startResponse.role_views, 'CONTRACTOR_EMPLOYEE'] }],
   ['11 list query', C.CaseListQuerySchema, { limit: '50' }, { limit: '1.5' }],
   ['12 list response', C.CaseListResponseSchema, { items: [{ case_id: u, display_number: 'C-1', state: 'CREATED', category: 'Heating', location_label: '1', current_iteration_no: 1, updated_at: t, responsibility: 'UK' }], next_cursor: null }, { items: [], next_cursor: 9 }],
   ['13 snapshot wrapper', C.CaseSnapshotSchema, { case: snapshot }, snapshot],
-  ['14 resident projection', C.ResidentCaseSnapshotSchema, { case: snapshot }, { case: { ...snapshot, assignment: { assignment_id: u, contractor: { contractor_id: u, name: 'A' }, decision: 'REJECTED', reject_reason: 'private' } } }],
+  ['14 resident projection', C.ResidentCaseSnapshotSchema, { case: residentSnapshot }, { case: { ...residentSnapshot, assignment: { assignment_id: u, contractor: { contractor_id: u, name: 'A' }, decision: 'REJECTED', reject_reason: 'private' } } }],
   ['15 activity', C.ActivityItemSchema, activity, { ...activity, semantic_code: 'EVT_018' }],
   ['16 allowed action', C.AllowedActionSchema, { code: 'SEND_ASSIGNMENT', target: { selection_id: u, iteration_id: u }, input: {} }, { code: 'SEND_ASSIGNMENT', target: { contractor_id: u, iteration_id: u }, input: {} }],
   ['17 config write', C.HouseCreateRequestSchema, { address: 'Kazan', display_label: null, active: true }, { address: 'Kazan', display_label: null, active: true, organization_id: u }],
@@ -211,6 +220,69 @@ for (const [name, schema, valid, invalid] of configReads) {
   });
 }
 
+test('Resident CreateCase options have a strict query and no configuration internals', () => {
+  const premise = { premises_id: u, house_address: 'Kazan', premises_label: '12' };
+  const category = { category_id: v, name: 'Heating', description: null,
+    requires_premises_access: true, result_requirement: 'PHOTO' };
+  const response = { premises: [premise], selected_premises_id: u, categories: [category] };
+  expect(C.ResidentCreateCaseOptionsQuerySchema.parse({})).toEqual({});
+  expect(C.ResidentCreateCaseOptionsQuerySchema.safeParse({ premises_id: u }).success).toBe(true);
+  expect(C.ResidentCreateCaseOptionsQuerySchema.safeParse({ premises_id: 'bad' }).success).toBe(false);
+  expect(C.ResidentCreateCaseOptionsQuerySchema.safeParse({ organization_id: u }).success).toBe(false);
+  expect(C.ResidentCreateCaseOptionsResponseSchema.safeParse(response).success).toBe(true);
+  expect(C.ResidentCreateCaseOptionsResponseSchema.safeParse({ premises: [premise], selected_premises_id: null, categories: [] }).success).toBe(true);
+  expect(C.ResidentPremiseOptionSchema.safeParse({ ...premise, apartment_owner: 'secret' }).success).toBe(false);
+  expect(C.ResidentCategoryOptionSchema.safeParse({ ...category, default_contractor_id: u }).success).toBe(false);
+  expect(C.ResidentCreateCaseOptionsResponseSchema.safeParse({ ...response, contractor_id: u }).success).toBe(false);
+  expect(C.ResidentCreateCaseOptionsResponseSchema.safeParse(JSON.parse(JSON.stringify(response))).success).toBe(true);
+});
+
+test('contractor candidates expose current iteration and public labels only', () => {
+  const response = { iteration_id: u, items: [{ contractor_id: v, display_name: 'Contractor B' }] };
+  expect(C.ContractorCandidatesResponseSchema.safeParse(response).success).toBe(true);
+  expect(C.ContractorCandidatesResponseSchema.safeParse({ iteration_id: u, items: [] }).success).toBe(true);
+  expect(C.ContractorCandidateSchema.safeParse({ ...response.items[0], organization_id: u }).success).toBe(false);
+  expect(C.ContractorCandidatesResponseSchema.safeParse({ ...response, config_revision: 1 }).success).toBe(false);
+  expect(C.ContractorCandidatesResponseSchema.safeParse(JSON.parse(JSON.stringify(response))).success).toBe(true);
+});
+
+test('nine configuration mutation responses are strict own-scope read projections', () => {
+  const organization = { organization_id: u, name: 'UK', active: true };
+  const house = { house_id: u, address: 'Kazan', display_label: null, active: true };
+  const category = { category_id: u, name: 'Heating', description: null,
+    default_contractor_id: null, requires_premises_access: true, result_requirement: 'PHOTO', active: true };
+  const contractor = { contractor: { contractor_id: u, display_name: 'A', active: true },
+    organization_contractor: { organization_id: v, contractor_id: u, active: true } };
+  const user = { app_user: { app_user_id: u, display_name: 'A', active: true },
+    role_bindings: [], uk_house_access: [] };
+  const cases: [Schema, Record<string, unknown>][] = [
+    [C.OrganizationPatchSuccessSchema, organization],
+    [C.HouseCreateSuccessSchema, house], [C.HousePatchSuccessSchema, house],
+    [C.CategoryCreateSuccessSchema, category], [C.CategoryPatchSuccessSchema, category],
+    [C.ContractorCreateSuccessSchema, contractor], [C.ContractorBindingPutSuccessSchema, contractor],
+    [C.UserRoleBindingPutSuccessSchema, user], [C.ContractorEmployeePutSuccessSchema, user],
+  ];
+  for (const [schema, body] of cases) {
+    expect(schema.safeParse(body).success).toBe(true);
+    expect(schema.safeParse({ ...body, command_id: u }).success).toBe(false);
+    expect(schema.safeParse({ ...body, config_revision: 2 }).success).toBe(false);
+    expect(schema.safeParse({ ...body, audit: {} }).success).toBe(false);
+    expect(schema.safeParse(JSON.parse(JSON.stringify(body))).success).toBe(true);
+  }
+});
+
+test('Resident clarification targets are independently addressable and private', () => {
+  const first = { clarification_request_id: u, body: 'Where?', created_at: t };
+  const second = { clarification_request_id: v, body: 'Which room?', created_at: t };
+  expect(C.ResidentCaseSnapshotSchema.safeParse({ case: { ...residentSnapshot,
+    actionable_clarification_requests: [first, second] } }).success).toBe(true);
+  expect(C.ActionableClarificationRequestSchema.safeParse({ ...first, actor_user_id: v }).success).toBe(false);
+  expect(C.ResidentCaseSnapshotSchema.safeParse({ case: { ...residentSnapshot,
+    actionable_clarification_requests: [{ ...first, actor_user_id: v }] } }).success).toBe(false);
+  expect(C.ResidentCaseSnapshotSchema.safeParse({ case: { ...residentSnapshot,
+    actionable_clarification_requests: [first, second], reject_reason: 'private' } }).success).toBe(false);
+});
+
 const commandResponses: [string, Schema, Record<string, unknown>, Record<string, unknown>][] = [
   ['CreateCase', C.CreateCaseSuccessSchema, { iteration_id: u }, {}],
   ['AcceptCase', C.AcceptCaseSuccessSchema, {}, { state: 'CLIENT_STATE' }],
@@ -254,6 +326,13 @@ test('bootstrap, switch and session read have distinct token semantics', () => {
 test('demo start and normalized headers reject invented client authority', () => {
   expect(C.DemoRunStartRequestSchema.safeParse({ scenario_key: 'primary-housing-demo' }).success).toBe(true);
   expect(C.DemoRunStartRequestSchema.safeParse({ scenario_key: 'primary-housing-demo', actor_alias: 'A' }).success).toBe(false);
+  expect(C.DemoRunStartResponseSchema.safeParse(startResponse).success).toBe(true);
+  expect(C.DemoRunStartResponseSchema.safeParse({ ...startResponse, session_token: undefined }).success).toBe(false);
+  expect(C.DemoRunStartResponseSchema.safeParse({ ...startResponse, session: context }).success).toBe(false);
+  expect(C.DemoRunStartResponseSchema.safeParse({ ...startResponse,
+    session: { ...startContext, demo_run_id: v } }).success).toBe(false);
+  expect(C.DemoRunStartResponseSchema.safeParse({ ...startResponse,
+    session: { ...startContext, primary_case_id: v } }).success).toBe(false);
   expect(C.RequestIdHeaderSchema.safeParse(u).success).toBe(true);
   expect(C.RequestIdHeaderSchema.safeParse('bad').success).toBe(false);
   expect(C.IdempotencyKeyHeaderSchema.safeParse('opaque-key').success).toBe(true);
@@ -272,8 +351,12 @@ test('role snapshots keep the wrapper and omit forbidden fields', () => {
   expect(C.ContractorCaseSnapshotSchema.safeParse({ case: { ...snapshot, resident_identity: u } }).success).toBe(false);
   for (const schema of [C.ResidentCaseSnapshotSchema, C.UkCaseSnapshotSchema, C.ContractorCaseSnapshotSchema]) {
     expect(schema.safeParse(snapshot).success).toBe(false);
-    expect(schema.safeParse({ case: snapshot }).success).toBe(true);
   }
+  expect(C.ResidentCaseSnapshotSchema.safeParse({ case: residentSnapshot }).success).toBe(true);
+  expect(C.ResidentCaseSnapshotSchema.safeParse({ case: snapshot }).success).toBe(false);
+  expect(C.UkCaseSnapshotSchema.safeParse({ case: snapshot }).success).toBe(true);
+  expect(C.ContractorCaseSnapshotSchema.safeParse({ case: snapshot }).success).toBe(true);
+  expect(C.UkCaseSnapshotSchema.safeParse({ case: residentSnapshot }).success).toBe(false);
 });
 
 test('request and projection boundaries reject hidden and malformed fields', () => {

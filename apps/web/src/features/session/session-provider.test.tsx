@@ -26,6 +26,13 @@ function context(overrides: Record<string, unknown> = {}) {
 function auth(session = context(), token = 'server-token') {
   return { session_token: token, expires_at: '2030-01-01T00:00:00Z', session };
 }
+function started(demoRunId: string, token = 'fresh-token') {
+  return { demo_run_id: demoRunId, status: 'ACTIVE', primary_case_id: null,
+    role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'],
+    ...auth(context({ demo_run_id: demoRunId, primary_case_id: null,
+      effective_actor: { app_user_id: null, role: null, display_name: '' },
+    }), token) };
+}
 function json(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status });
 }
@@ -141,15 +148,12 @@ test('401 from protected request clears runtime session and enters safe error fl
   } finally { view.unmount(); }
 });
 
-test('starting a run reauthenticates with fresh platform initData and installs the new token', async () => {
+test('starting a run installs the returned actor-null session without MAX reauth', async () => {
   const newRun = '44444444-4444-4444-8444-444444444444';
-  const getRawInitData = vi.fn().mockReturnValueOnce('signed=initial').mockReturnValueOnce('signed=after-start');
+  const getRawInitData = vi.fn().mockReturnValueOnce('signed=initial').mockReturnValueOnce(null);
   const adapter = { ...maxAdapter, getRawInitData };
   const fetch = vi.fn().mockResolvedValueOnce(json(auth(context({ demo_run_id: null, primary_case_id: null }))))
-    .mockResolvedValueOnce(json({ demo_run_id: newRun, status: 'ACTIVE', primary_case_id: null, role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'] }, 201))
-    .mockResolvedValueOnce(json(auth(context({ demo_run_id: newRun, primary_case_id: null,
-      effective_actor: { app_user_id: null, role: null, display_name: 'Эксперт MAX' },
-    }), 'fresh-token')))
+    .mockResolvedValueOnce(json(started(newRun), 201))
     .mockResolvedValueOnce(json(context({ demo_run_id: newRun, primary_case_id: null })));
   vi.stubGlobal('fetch', fetch);
   const view = mount(adapter);
@@ -162,23 +166,90 @@ test('starting a run reauthenticates with fresh platform initData and installs t
     expect(view.container.querySelector('[data-testid="run"]')?.textContent).toBe(newRun);
     expect(view.container.querySelector('[data-testid="role"]')?.textContent).toBe('');
     expect(view.container.querySelector('[data-testid="cache"]')?.textContent).toBe('false');
-    expect(fetch.mock.calls.map((call) => call[0])).toEqual(['/api/v1/auth/max', '/api/v1/demo/runs', '/api/v1/auth/max']);
-    expect(getRawInitData).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(fetch.mock.calls[2]?.[1]?.body)).toEqual({ init_data: 'signed=after-start' });
-    expect(fetch.mock.calls[2]?.[1]?.headers.Authorization).toBeUndefined();
+    expect(fetch.mock.calls.map((call) => call[0])).toEqual(['/api/v1/auth/max', '/api/v1/demo/runs']);
+    expect(getRawInitData).toHaveBeenCalledTimes(1);
     click(view, 'Protected');
     await flush();
-    expect(fetch.mock.calls[3]?.[1]?.headers.get('Authorization')).toBe('Bearer fresh-token');
+    expect(fetch.mock.calls[2]?.[1]?.headers.get('Authorization')).toBe('Bearer fresh-token');
     expect(fetch.mock.calls.every((call) => call[0] !== '/api/v1/cases')).toBe(true);
   } finally { view.unmount(); }
 });
 
-test('fresh bootstrap run mismatch fails closed without adopting the issued token', async () => {
+test.each([401, 200])('late old protected %i cannot replace the new Start session', async status => {
+  let finish!: (response: Response) => void;
+  const oldRequest = new Promise<Response>(resolve => { finish = resolve; });
+  const fetch = vi.fn().mockResolvedValueOnce(json(auth(context({ demo_run_id: null, primary_case_id: null }))))
+    .mockReturnValueOnce(oldRequest)
+    .mockResolvedValueOnce(json(started(runId), 201))
+    .mockResolvedValueOnce(json(context({ demo_run_id: runId, primary_case_id: null })));
+  vi.stubGlobal('fetch', fetch);
+  const view = mount(maxAdapter);
+  try {
+    await flush();
+    click(view, 'Protected');
+    click(view, 'Start');
+    await flush();
+    expect(view.container.querySelector('[data-testid="run"]')?.textContent).toBe(runId);
+    await act(async () => finish(json({}, status)));
+    expect(view.container.querySelector('[data-testid="status"]')?.textContent).toBe('ready');
+    expect(view.container.querySelector('[data-testid="run"]')?.textContent).toBe(runId);
+    click(view, 'Protected');
+    await flush();
+    expect(fetch.mock.calls[3]?.[1]?.headers.get('Authorization')).toBe('Bearer fresh-token');
+  } finally { view.unmount(); }
+});
+
+test('late old session refresh cannot overwrite the new Start context', async () => {
+  let foreground!: () => void;
+  let finish!: (response: Response) => void;
+  const oldRefresh = new Promise<Response>(resolve => { finish = resolve; });
+  const adapter = { ...maxAdapter, subscribeForeground: (callback: () => void) => {
+    foreground = callback; return () => {};
+  } };
+  const fetch = vi.fn().mockResolvedValueOnce(json(auth(context({ demo_run_id: null, primary_case_id: null }))))
+    .mockReturnValueOnce(oldRefresh)
+    .mockResolvedValueOnce(json(started(runId), 201));
+  vi.stubGlobal('fetch', fetch);
+  const view = mount(adapter);
+  try {
+    await flush();
+    act(() => foreground());
+    click(view, 'Start');
+    await flush();
+    await act(async () => finish(json(context({ demo_run_id: null, primary_case_id: null }))));
+    expect(view.container.querySelector('[data-testid="run"]')?.textContent).toBe(runId);
+    expect(view.container.querySelector('[data-testid="status"]')?.textContent).toBe('ready');
+  } finally { view.unmount(); }
+});
+
+test('old expiry callback cannot clear the newly installed Start session', async () => {
+  const expiryCallbacks: Array<() => void> = [];
+  const original = window.setTimeout.bind(window);
+  vi.spyOn(window, 'setTimeout').mockImplementation((handler, timeout, ...args) => {
+    if (typeof handler === 'function' && Number(timeout) > 1000) expiryCallbacks.push(() => handler(...args));
+    return original(handler, timeout, ...args);
+  });
+  const fetch = vi.fn().mockResolvedValueOnce(json(auth(context({ demo_run_id: null, primary_case_id: null }))))
+    .mockResolvedValueOnce(json(started(runId), 201));
+  vi.stubGlobal('fetch', fetch);
+  const view = mount(maxAdapter);
+  try {
+    await flush();
+    const oldExpiry = expiryCallbacks.at(-1);
+    expect(oldExpiry).toBeDefined();
+    click(view, 'Start');
+    await flush();
+    act(() => oldExpiry!());
+    expect(view.container.querySelector('[data-testid="status"]')?.textContent).toBe('ready');
+    expect(view.container.querySelector('[data-testid="run"]')?.textContent).toBe(runId);
+  } finally { view.unmount(); }
+});
+
+test('Start response run mismatch fails closed without adopting its token', async () => {
   const initial = context({ demo_run_id: null, primary_case_id: null });
   const fetch = vi.fn().mockResolvedValueOnce(json(auth(initial)))
-    .mockResolvedValueOnce(json({ demo_run_id: runId, status: 'ACTIVE', primary_case_id: null,
-      role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'] }, 201))
-    .mockResolvedValueOnce(json(auth(context({ demo_run_id: caseId }), 'wrong-run-token')));
+    .mockResolvedValueOnce(json({ ...started(runId, 'wrong-run-token'),
+      session: context({ demo_run_id: caseId, primary_case_id: null }) }, 201));
   vi.stubGlobal('fetch', fetch);
   const view = mount(maxAdapter);
   try {
@@ -187,16 +258,14 @@ test('fresh bootstrap run mismatch fails closed without adopting the issued toke
     await flush();
     expect(view.container.querySelector('[data-testid="status"]')?.textContent).toBe('error');
     expect(view.container.querySelector('[data-testid="run"]')?.textContent).toBe('');
-    expect(fetch.mock.calls.map((call) => call[0])).toEqual(['/api/v1/auth/max', '/api/v1/demo/runs', '/api/v1/auth/max']);
+    expect(fetch.mock.calls.map((call) => call[0])).toEqual(['/api/v1/auth/max', '/api/v1/demo/runs']);
   } finally { view.unmount(); }
 });
 
-test('failed fresh bootstrap leaves no old-run authority', async () => {
+test('expired Start response leaves no old-run authority', async () => {
   const initial = context({ demo_run_id: null, primary_case_id: null });
   const fetch = vi.fn().mockResolvedValueOnce(json(auth(initial)))
-    .mockResolvedValueOnce(json({ demo_run_id: runId, status: 'ACTIVE', primary_case_id: null,
-      role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'] }, 201))
-    .mockResolvedValueOnce(json({ error: { code: 'MAX_INIT_DATA_EXPIRED' } }, 401));
+    .mockResolvedValueOnce(json({ ...started(runId), expires_at: '2000-01-01T00:00:00Z' }, 201));
   vi.stubGlobal('fetch', fetch);
   const view = mount(maxAdapter);
   try {
@@ -204,15 +273,14 @@ test('failed fresh bootstrap leaves no old-run authority', async () => {
     click(view, 'Start');
     await flush();
     expect(view.container.querySelector('[data-testid="status"]')?.textContent).toBe('error');
-    expect(fetch.mock.calls.map((call) => call[0])).toEqual(['/api/v1/auth/max', '/api/v1/demo/runs', '/api/v1/auth/max']);
+    expect(fetch.mock.calls.map((call) => call[0])).toEqual(['/api/v1/auth/max', '/api/v1/demo/runs']);
   } finally { view.unmount(); }
 });
 
-test('raw signed initData unavailable after Start fails closed without storage fallback', async () => {
+test('raw signed initData unavailable after Start does not block the new session', async () => {
   const getRawInitData = vi.fn().mockReturnValueOnce('signed=initial').mockReturnValueOnce(null);
   const fetch = vi.fn().mockResolvedValueOnce(json(auth(context({ demo_run_id: null, primary_case_id: null }))))
-    .mockResolvedValueOnce(json({ demo_run_id: runId, status: 'ACTIVE', primary_case_id: null,
-      role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'] }, 201));
+    .mockResolvedValueOnce(json(started(runId), 201));
   vi.stubGlobal('fetch', fetch);
   const storageRead = vi.spyOn(localStorage, 'getItem');
   const view = mount({ ...maxAdapter, getRawInitData });
@@ -220,24 +288,19 @@ test('raw signed initData unavailable after Start fails closed without storage f
     await flush();
     click(view, 'Start');
     await flush();
-    expect(view.container.querySelector('[data-testid="status"]')?.textContent).toBe('error');
-    expect(getRawInitData).toHaveBeenCalledTimes(2);
+    expect(view.container.querySelector('[data-testid="status"]')?.textContent).toBe('ready');
+    expect(getRawInitData).toHaveBeenCalledTimes(1);
     expect(storageRead).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledTimes(2);
   } finally { view.unmount(); }
 });
 
-test('repeat DemoRun uses another fresh bootstrap and the prior newly issued token only for Start', async () => {
+test('repeat DemoRun uses the returned token for the next Start', async () => {
   const nextRun = '44444444-4444-4444-8444-444444444444';
-  const getRawInitData = vi.fn().mockReturnValueOnce('signed=initial')
-    .mockReturnValueOnce('signed=run-one').mockReturnValueOnce('signed=run-two');
-  const startResponse = (demoRunId: string) => json({ demo_run_id: demoRunId, status: 'ACTIVE',
-    primary_case_id: null, role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'] }, 201);
+  const getRawInitData = vi.fn().mockReturnValueOnce('signed=initial').mockReturnValueOnce(null);
   const fetch = vi.fn().mockResolvedValueOnce(json(auth(context({ demo_run_id: null, primary_case_id: null }))))
-    .mockResolvedValueOnce(startResponse(runId))
-    .mockResolvedValueOnce(json(auth(context({ demo_run_id: runId, primary_case_id: null }), 'run-one-token')))
-    .mockResolvedValueOnce(startResponse(nextRun))
-    .mockResolvedValueOnce(json(auth(context({ demo_run_id: nextRun, primary_case_id: null }), 'run-two-token')));
+    .mockResolvedValueOnce(json(started(runId, 'run-one-token'), 201))
+    .mockResolvedValueOnce(json(started(nextRun, 'run-two-token'), 201));
   vi.stubGlobal('fetch', fetch);
   const view = mount({ ...maxAdapter, getRawInitData });
   try {
@@ -248,11 +311,10 @@ test('repeat DemoRun uses another fresh bootstrap and the prior newly issued tok
     await flush();
     expect(view.container.querySelector('[data-testid="run"]')?.textContent).toBe(nextRun);
     expect(fetch.mock.calls.map((call) => call[0])).toEqual([
-      '/api/v1/auth/max', '/api/v1/demo/runs', '/api/v1/auth/max', '/api/v1/demo/runs', '/api/v1/auth/max',
+      '/api/v1/auth/max', '/api/v1/demo/runs', '/api/v1/demo/runs',
     ]);
-    expect(fetch.mock.calls[3]?.[1]?.headers.Authorization).toBe('Bearer run-one-token');
-    expect(JSON.parse(fetch.mock.calls[4]?.[1]?.body)).toEqual({ init_data: 'signed=run-two' });
-    expect(getRawInitData).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls[2]?.[1]?.headers.Authorization).toBe('Bearer run-one-token');
+    expect(getRawInitData).toHaveBeenCalledTimes(1);
   } finally { view.unmount(); }
 });
 

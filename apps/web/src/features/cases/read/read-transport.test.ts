@@ -14,7 +14,7 @@ function snapshot() {
     responsibility: { semantic_code: 'UK_NEXT', text: 'УК примет случай' },
     initial_attachments: [], selection: null, assignment: null,
     current_executor: null, current_result: null, resident_feedback: null,
-    activity: [], allowed_actions: [],
+    activity: [], allowed_actions: [], actionable_clarification_requests: [],
   } };
 }
 

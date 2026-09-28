@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest';
 import type { AllowedActionOutput } from '@max-smart-city/contracts';
-import { createUkActionExecutor, UkCommandError } from './uk-transport.js';
+import { createUkActionExecutor, readContractorCandidates, UkCommandError } from './uk-transport.js';
 
 const caseId = '11111111-1111-4111-8111-111111111111';
 const iterationId = '22222222-2222-4222-8222-222222222222';
@@ -18,6 +18,18 @@ function success(path: string): Response {
     event_ids: path.endsWith('/return-to-rework') ? [iterationId, selectionId] : [], created,
     ...(path.endsWith('/record-no-resident-feedback') ? { no_feedback_event_id: selectionId } : {}) });
 }
+
+test('candidate read uses public endpoint and strict reviewed schema', async () => {
+  const body = { iteration_id: iterationId, items: [
+    { contractor_id: contractorId, display_name: 'Подрядчик Б' },
+  ] };
+  const fetch = vi.fn().mockResolvedValue(Response.json(body));
+  expect(await readContractorCandidates(caseId, fetch)).toEqual(body);
+  expect(fetch).toHaveBeenCalledWith(`/api/v1/cases/${caseId}/contractor-candidates`,
+    { method: 'GET', cache: 'no-store' });
+  fetch.mockResolvedValue(Response.json({ ...body, items: [{ ...body.items[0], organization_id: caseId }] }));
+  await expect(readContractorCandidates(caseId, fetch)).rejects.toThrow();
+});
 
 test('sends exact selection and assignment targets with an idempotency key', async () => {
   const fetch = vi.fn().mockImplementation(async (path: string) => success(path));

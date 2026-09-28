@@ -1,10 +1,10 @@
 import { useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ResidentCaseSnapshotOutput } from '@max-smart-city/contracts';
+import { ResidentCaseSnapshotSchema, type ResidentCaseSnapshotOutput } from '@max-smart-city/contracts';
 import { usePlatform } from '../../platform/platform-context.js';
 import type { CaseReadTransport } from '../cases/read/read-transport.js';
 import { statusLabel } from '../cases/read/presentation.js';
-import { ResidentCommentFeed, type ClarificationTarget } from './comments/comment-feed.js';
+import { ResidentCommentFeed } from './comments/comment-feed.js';
 import { ResidentFeedback } from './feedback/feedback-forms.js';
 import { ResidentResultView } from './result-view/result-view.js';
 import type { NativeDownloadBridge } from './result-view/download-capability.js';
@@ -16,18 +16,17 @@ export interface ResidentCaseViewProps {
   readonly readTransport: CaseReadTransport;
   readonly residentTransport: ResidentTransport;
   readonly contextKey: string;
-  readonly clarificationTargets?: readonly ClarificationTarget[];
   readonly downloadBridge?: NativeDownloadBridge | null;
 }
 
 export function ResidentCaseView({ caseId, readTransport, residentTransport, contextKey,
-  clarificationTargets, downloadBridge }: ResidentCaseViewProps) {
+  downloadBridge }: ResidentCaseViewProps) {
   const platform = usePlatform();
   const queryClient = useQueryClient();
   const queryKey = ['case-read', 'snapshot', contextKey, caseId, 'RESIDENT'] as const;
   const snapshot = useQuery({
     queryKey,
-    queryFn: () => readTransport.snapshot(caseId, 'RESIDENT'),
+    queryFn: async () => ResidentCaseSnapshotSchema.parse(await readTransport.snapshot(caseId, 'RESIDENT')),
     retry: false, staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: false,
   });
 
@@ -48,7 +47,6 @@ export function ResidentCaseView({ caseId, readTransport, residentTransport, con
     {snapshot.isError && <p role="alert">Не удалось загрузить обращение. Обновите данные.</p>}
     {snapshot.data && <ResidentCaseContent snapshot={snapshot.data} residentTransport={residentTransport}
       contextKey={contextKey} refresh={refresh}
-      {...(clarificationTargets === undefined ? {} : { clarificationTargets })}
       {...(downloadBridge === undefined ? {} : { downloadBridge })} />}
   </article>;
 }
@@ -57,12 +55,11 @@ interface ResidentCaseContentProps {
   readonly snapshot: ResidentCaseSnapshotOutput;
   readonly residentTransport: ResidentTransport;
   readonly contextKey: string;
-  readonly clarificationTargets?: readonly ClarificationTarget[];
   readonly downloadBridge?: NativeDownloadBridge | null;
   readonly refresh: () => Promise<void>;
 }
 
-function ResidentCaseContent({ snapshot, residentTransport, contextKey, clarificationTargets,
+function ResidentCaseContent({ snapshot, residentTransport, contextKey,
   downloadBridge, refresh }: ResidentCaseContentProps) {
   return <>
     <section className="resident-case__summary" aria-label="Сводка обращения">
@@ -73,8 +70,7 @@ function ResidentCaseContent({ snapshot, residentTransport, contextKey, clarific
     <ResidentResultView transport={residentTransport} snapshot={snapshot} contextKey={contextKey} onStale={refresh}
       {...(downloadBridge === undefined ? {} : { downloadBridge })} />
     <ResidentFeedback transport={residentTransport} snapshot={snapshot} onMutated={refresh} contextKey={contextKey} />
-    <ResidentCommentFeed transport={residentTransport} snapshot={snapshot} onMutated={refresh} contextKey={contextKey}
-      {...(clarificationTargets === undefined ? {} : { clarificationTargets })} />
+    <ResidentCommentFeed transport={residentTransport} snapshot={snapshot} onMutated={refresh} contextKey={contextKey} />
     <span hidden data-context-key={contextKey} />
   </>;
 }

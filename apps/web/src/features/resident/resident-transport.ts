@@ -1,5 +1,6 @@
 import {
-  AddCommentPayloadSchema, AddCommentSuccessSchema, CategoriesReadResponseSchema,
+  AddCommentPayloadSchema, AddCommentSuccessSchema, ResidentCreateCaseOptionsQuerySchema,
+  ResidentCreateCaseOptionsResponseSchema,
   CreateCasePayloadSchema, CreateCaseSuccessSchema, DownloadCapabilityResponseSchema,
   ErrorResponseSchema,
   ResidentConfirmationRequestSchema, ResidentConfirmationSuccessSchema,
@@ -8,7 +9,7 @@ import {
   type CreateCaseSuccessOutput, type DownloadCapabilityResponseOutput,
   type ResidentConfirmationRequestOutput, type ResidentConfirmationSuccessOutput,
   type ResidentRemarkPayloadOutput, type ResidentRemarkSuccessOutput,
-  type ResultRequirementOutput,
+  type ResidentCreateCaseOptionsResponseOutput,
 } from '@max-smart-city/contracts';
 
 export type AuthorizedFetch = (path: string, init?: RequestInit) => Promise<Response>;
@@ -25,23 +26,7 @@ export function isStaleResponse(error: unknown): boolean {
     && (error as { status: unknown }).status === 409;
 }
 
-export interface CategoryOption {
-  readonly categoryId: string;
-  readonly name: string;
-  readonly resultRequirement: ResultRequirementOutput;
-  readonly active: boolean;
-}
-
-export interface PremiseOption {
-  readonly premisesId: string;
-  readonly label: string;
-  readonly active: boolean;
-}
-
-export interface CreateCaseOptions {
-  readonly categories: readonly CategoryOption[];
-  readonly premises: readonly PremiseOption[];
-}
+export type CreateCaseOptions = ResidentCreateCaseOptionsResponseOutput;
 
 export interface CreateCaseRequest {
   readonly payload: CreateCasePayloadOutput;
@@ -67,10 +52,8 @@ export interface AddCommentRequest extends ResidentCommand {
   readonly files: readonly File[];
 }
 
-export type ReadResidentPremises = () => Promise<readonly PremiseOption[]>;
-
 export interface ResidentTransport {
-  createCaseOptions(): Promise<CreateCaseOptions>;
+  createCaseOptions(premisesId?: string): Promise<CreateCaseOptions>;
   createCase(request: CreateCaseRequest): Promise<CreateCaseSuccessOutput>;
   addComment(caseId: string, request: AddCommentRequest): Promise<AddCommentSuccessOutput>;
   confirmResult(caseId: string, request: ResidentConfirmRequest): Promise<ResidentConfirmationSuccessOutput>;
@@ -132,27 +115,17 @@ function casePath(caseId: string, suffix: string): string {
 
 export function createHttpResidentTransport(
   authorizedFetch: AuthorizedFetch,
-  readResidentPremises: ReadResidentPremises,
 ): ResidentTransport {
   return {
-    async createCaseOptions() {
-      const categories = CategoriesReadResponseSchema.parse(
-        await readJson(await authorizedFetch('/api/v1/config/categories', { method: 'GET', cache: 'no-store' }), 'CreateCase options'),
+    async createCaseOptions(premisesId) {
+      const query = ResidentCreateCaseOptionsQuerySchema.parse(
+        premisesId ? { premises_id: premisesId } : {},
       );
-      const premises = await readResidentPremises();
-      return {
-        categories: categories
-          .filter((category) => category.active)
-          .map((category) => ({
-            categoryId: category.category_id,
-            name: category.name,
-            resultRequirement: category.result_requirement,
-            active: category.active,
-          })),
-        premises: premises.map((premise) => ({
-          premisesId: premise.premisesId, label: premise.label, active: premise.active,
-        })),
-      };
+      const path = '/api/v1/cases/create-options'
+        + (query.premises_id ? `?premises_id=${encodeURIComponent(query.premises_id)}` : '');
+      return ResidentCreateCaseOptionsResponseSchema.parse(
+        await readJson(await authorizedFetch(path, { method: 'GET', cache: 'no-store' }), 'CreateCase options'),
+      );
     },
 
     async createCase({ payload, files, idempotencyKey }) {

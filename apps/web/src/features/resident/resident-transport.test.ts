@@ -13,17 +13,8 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function activeCategoriesResponse() {
-  return [
-    { category_id: IDS.categoryId, name: 'Отопление / стояк', description: null,
-      default_contractor_id: null, requires_premises_access: true, result_requirement: 'PHOTO', active: true },
-    { category_id: IDS.inactiveCategoryId, name: 'Архивная', description: null,
-      default_contractor_id: null, requires_premises_access: false, result_requirement: 'NONE', active: false },
-  ];
-}
-
-function transportWith(authorizedFetch: AuthorizedFetch, premises = [premiseFixture]) {
-  return createHttpResidentTransport(authorizedFetch, async () => premises);
+function transportWith(authorizedFetch: AuthorizedFetch) {
+  return createHttpResidentTransport(authorizedFetch);
 }
 
 /** vi.fn() is untyped by default, so it must be narrowed to the transport seam. */
@@ -31,14 +22,26 @@ function stubFetch(): AuthorizedFetch & MockInstance {
   return vi.fn() as unknown as AuthorizedFetch & MockInstance;
 }
 
-test('createCaseOptions reads active categories only and returns server premises', async () => {
-  const authorizedFetch = stubFetch().mockResolvedValue(jsonResponse(activeCategoriesResponse()));
-  const options = await transportWith(authorizedFetch).createCaseOptions();
-  expect(authorizedFetch).toHaveBeenCalledWith('/api/v1/config/categories', { method: 'GET', cache: 'no-store' });
-  expect(options.categories).toEqual([{
-    categoryId: IDS.categoryId, name: 'Отопление / стояк', resultRequirement: 'PHOTO', active: true,
-  }]);
-  expect(options.premises).toEqual([premiseFixture]);
+test('createCaseOptions reads public initial and selected projections without admin config', async () => {
+  const initial = { premises: [premiseFixture], selected_premises_id: null, categories: [] };
+  const selected = createCaseOptionsFixture;
+  const authorizedFetch = stubFetch()
+    .mockResolvedValueOnce(jsonResponse(initial)).mockResolvedValueOnce(jsonResponse(selected));
+  const transport = transportWith(authorizedFetch);
+  expect(await transport.createCaseOptions()).toEqual(initial);
+  expect(await transport.createCaseOptions(IDS.premisesId)).toEqual(selected);
+  expect(authorizedFetch.mock.calls.map((call) => call[0])).toEqual([
+    '/api/v1/cases/create-options',
+    `/api/v1/cases/create-options?premises_id=${IDS.premisesId}`,
+  ]);
+  expect(authorizedFetch.mock.calls.every((call) => !String(call[0]).includes('/config/'))).toBe(true);
+});
+
+test('createCaseOptions rejects admin fields in strict public schema', async () => {
+  const authorizedFetch = stubFetch().mockResolvedValue(jsonResponse({
+    ...createCaseOptionsFixture, categories: [{ ...createCaseOptionsFixture.categories[0], default_contractor_id: IDS.contractorId }],
+  }));
+  await expect(transportWith(authorizedFetch).createCaseOptions(IDS.premisesId)).rejects.toThrow();
 });
 
 test('createCase sends canonical multipart payload with idempotency key', async () => {
@@ -156,5 +159,5 @@ test('invalid success payloads are rejected by canonical schemas', async () => {
 });
 
 test('createCaseOptionsFixture stays in sync with the approved projection', () => {
-  expect(createCaseOptionsFixture.categories[0]!.active).toBe(true);
+  expect(createCaseOptionsFixture.categories[0]!.category_id).toBe(IDS.categoryId);
 });

@@ -8,7 +8,7 @@ import {
 
 type SessionState =
   | { status: 'pending'; session: null; token: null; expiresAt: null }
-  | { status: 'ready'; session: SessionReadResponseOutput; token: string; expiresAt: string }
+  | { status: 'ready'; session: SessionReadResponseOutput; token: string; expiresAt: string; generation: number }
   | { status: 'error'; session: null; token: null; expiresAt: null };
 
 interface SessionValue {
@@ -37,6 +37,7 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
   const [revision, setRevision] = useState(0);
   const current = useRef<SessionState>(pending);
   const generation = useRef(0);
+  const transitionEpoch = useRef(0);
   const operation = useRef(false);
 
   const changeState = useCallback((next: SessionState) => {
@@ -45,14 +46,31 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
   }, []);
 
   const failSession = useCallback(() => {
+    ++transitionEpoch.current;
     ++generation.current;
     queryClient.clear();
     changeState(error);
     setBusy(false);
   }, [changeState, queryClient]);
 
+  const isCurrent = useCallback((snapshot: Extract<SessionState, { status: 'ready' }>) => {
+    const active = current.current;
+    return active.status === 'ready' && active.token === snapshot.token &&
+      active.generation === snapshot.generation;
+  }, []);
+
+  const failIfCurrent = useCallback((snapshot: Extract<SessionState, { status: 'ready' }>) => {
+    if (isCurrent(snapshot)) failSession();
+  }, [failSession, isCurrent]);
+
+  const install = useCallback((session: SessionReadResponseOutput, token: string, expiresAt: string) => {
+    changeState({ status: 'ready', session, token, expiresAt, generation: ++generation.current });
+  }, [changeState]);
+
   const retry = useCallback(async () => {
-    const attempt = ++generation.current;
+    const attempt = ++transitionEpoch.current;
+    ++generation.current;
+    operation.current = false;
     queryClient.clear();
     changeState(pending);
     setActionError(null);
@@ -61,58 +79,57 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
       const raw = platform.isMiniAppContext ? platform.getRawInitData() : null;
       if (!raw?.trim()) throw new Error('MAX context unavailable');
       const issued = await authenticateMax(raw);
-      if (attempt !== generation.current) return;
+      if (attempt !== transitionEpoch.current) return;
       if (Date.parse(issued.expires_at) <= Date.now()) throw new Error('Expired session');
-      changeState({
-        status: 'ready', session: issued.session,
-        token: issued.session_token, expiresAt: issued.expires_at,
-      });
+      install(issued.session, issued.session_token, issued.expires_at);
     } catch {
-      if (attempt === generation.current) changeState(error);
+      if (attempt === transitionEpoch.current) changeState(error);
     }
-  }, [changeState, platform, queryClient]);
+  }, [changeState, install, platform, queryClient]);
 
   useEffect(() => {
     void retry();
-    return () => { ++generation.current; };
+    return () => { ++transitionEpoch.current; ++generation.current; };
   }, [retry]);
 
   useEffect(() => {
     if (state.status !== 'ready') return;
-    const remaining = Date.parse(state.expiresAt) - Date.now();
+    const snapshot = state;
+    const remaining = Date.parse(snapshot.expiresAt) - Date.now();
     if (remaining <= 0) {
-      failSession();
+      failIfCurrent(snapshot);
       return;
     }
-    const timer = window.setTimeout(failSession, Math.min(remaining, 2_147_483_647));
+    const timer = window.setTimeout(() => failIfCurrent(snapshot), Math.min(remaining, 2_147_483_647));
     return () => window.clearTimeout(timer);
-  }, [state, failSession]);
+  }, [state, failIfCurrent]);
 
   const credential = useCallback(() => {
     const snapshot = current.current;
     if (snapshot.status !== 'ready') throw new Error('Session unavailable');
     if (Date.parse(snapshot.expiresAt) <= Date.now()) {
-      failSession();
+      failIfCurrent(snapshot);
       throw new Error('Session expired');
     }
     return snapshot;
-  }, [failSession]);
+  }, [failIfCurrent]);
 
   const refreshSession = useCallback(async () => {
     let snapshot: Extract<SessionState, { status: 'ready' }>;
     try { snapshot = credential(); } catch { return; }
+    const epoch = transitionEpoch.current;
     try {
       const session = await readSession(snapshot.token);
-      if (current.current !== snapshot) return;
+      if (epoch !== transitionEpoch.current || !isCurrent(snapshot)) return;
       if (JSON.stringify(session) !== JSON.stringify(snapshot.session)) {
         queryClient.clear();
         setRevision((value) => value + 1);
       }
-      changeState({ ...snapshot, session });
+      install(session, snapshot.token, snapshot.expiresAt);
     } catch {
-      if (current.current === snapshot) failSession();
+      if (epoch === transitionEpoch.current) failIfCurrent(snapshot);
     }
-  }, [changeState, credential, failSession, queryClient]);
+  }, [credential, failIfCurrent, install, isCurrent, queryClient]);
 
   useEffect(() => {
     return platform.subscribeForeground(() => {
@@ -125,9 +142,9 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${snapshot.token}`);
     const response = await fetch(path, { ...init, headers, credentials: 'omit' });
-    if (response.status === 401) failSession();
+    if (response.status === 401) failIfCurrent(snapshot);
     return response;
-  }, [credential, failSession]);
+  }, [credential, failIfCurrent]);
 
   const startRun = useCallback(async () => {
     if (operation.current) return;
@@ -135,36 +152,35 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
     try { snapshot = credential(); } catch { return; }
     if (!snapshot.session.demo_mode || !snapshot.session.real_max_identity.outbound_max_ready) return;
     operation.current = true;
+    const epoch = ++transitionEpoch.current;
     setBusy(true);
     setActionError(null);
     let runCreated = false;
     try {
       const result = await startDemoRun(snapshot.token);
       runCreated = true;
-      const raw = platform.isMiniAppContext ? platform.getRawInitData() : null;
-      if (!raw?.trim()) throw new Error('MAX context unavailable');
-      const issued = await authenticateMax(raw);
-      if (Date.parse(issued.expires_at) <= Date.now()) throw new Error('Expired session');
-      if (issued.session.demo_run_id !== result.demo_run_id) throw new Error('DemoRun context mismatch');
-      if (current.current !== snapshot) return;
+      if (Date.parse(result.expires_at) <= Date.now() ||
+        result.session.demo_run_id !== result.demo_run_id ||
+        result.session.real_max_identity.max_identity_id !== snapshot.session.real_max_identity.max_identity_id ||
+        result.session.effective_actor.app_user_id !== null || result.session.effective_actor.role !== null ||
+        result.session.primary_case_id !== null) throw new Error('Invalid Start session');
+      if (epoch !== transitionEpoch.current || !isCurrent(snapshot)) return;
       await queryClient.invalidateQueries({ refetchType: 'none' });
+      if (epoch !== transitionEpoch.current || !isCurrent(snapshot)) return;
       queryClient.clear();
-      changeState({
-        status: 'ready', session: issued.session,
-        token: issued.session_token, expiresAt: issued.expires_at,
-      });
+      install(result.session, result.session_token, result.expires_at);
       setRevision((value) => value + 1);
     } catch (cause) {
-      if (runCreated || !(cause instanceof SessionHttpError) || cause.status === 401) failSession();
+      if (epoch !== transitionEpoch.current || !isCurrent(snapshot)) return;
+      if (runCreated || !(cause instanceof SessionHttpError) || cause.status === 401) failIfCurrent(snapshot);
       else {
         setActionError('Не удалось запустить демо. Повторите действие.');
         void refreshSession();
       }
     } finally {
-      operation.current = false;
-      setBusy(false);
+      if (epoch === transitionEpoch.current) { operation.current = false; setBusy(false); }
     }
-  }, [changeState, credential, failSession, platform, queryClient, refreshSession]);
+  }, [credential, failIfCurrent, install, isCurrent, queryClient, refreshSession]);
 
   const switchRole = useCallback(async (role: RoleOutput) => {
     if (operation.current) return;
@@ -172,6 +188,7 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
     try { snapshot = credential(); } catch { return; }
     if (!snapshot.session.demo_mode || !snapshot.session.demo_run_id) return;
     operation.current = true;
+    const epoch = ++transitionEpoch.current;
     setBusy(true);
     setActionError(null);
     let switchedOnServer = false;
@@ -180,25 +197,23 @@ export function SessionProvider({ children }: { readonly children: ReactNode }) 
       switchedOnServer = true;
       if (Date.parse(issued.expires_at) <= Date.now()) throw new Error('Expired session');
       const fresh = await readSession(issued.session_token);
-      if (current.current !== snapshot) return;
+      if (epoch !== transitionEpoch.current || !isCurrent(snapshot)) return;
       await queryClient.invalidateQueries({ refetchType: 'none' });
+      if (epoch !== transitionEpoch.current || !isCurrent(snapshot)) return;
       queryClient.clear();
-      changeState({
-        status: 'ready', session: fresh,
-        token: issued.session_token, expiresAt: issued.expires_at,
-      });
+      install(fresh, issued.session_token, issued.expires_at);
       setRevision((value) => value + 1);
     } catch (cause) {
-      if (switchedOnServer || !(cause instanceof SessionHttpError) || cause.status === 401) failSession();
+      if (epoch !== transitionEpoch.current || !isCurrent(snapshot)) return;
+      if (switchedOnServer || !(cause instanceof SessionHttpError) || cause.status === 401) failIfCurrent(snapshot);
       else {
         setActionError('Не удалось переключить роль. Обновите контекст и повторите действие.');
         void refreshSession();
       }
     } finally {
-      operation.current = false;
-      setBusy(false);
+      if (epoch === transitionEpoch.current) { operation.current = false; setBusy(false); }
     }
-  }, [changeState, credential, failSession, queryClient, refreshSession]);
+  }, [credential, failIfCurrent, install, isCurrent, queryClient, refreshSession]);
 
   return <SessionContext.Provider value={{
     status: state.status, session: state.session, busy, actionError, revision,
