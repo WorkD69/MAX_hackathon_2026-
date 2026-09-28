@@ -37,7 +37,7 @@ Implementation gate открывается после завершения **о�
 
 ## 5. Allowed write scope
 
-В этом canonical gap-closure pass — только согласованные contract/docs/graph files, без production code.
+В этой coordinated public API delta — только согласованные contracts/docs и TG-002 public schemas, без production code или Task Graph change.
 
 Будущий implementation scope: `apps/api/src/modules/configuration/**`, принадлежащие TG-018 config repositories/routes и их targeted tests. Точные paths config repositories в `packages/db/src/**` и shared registration files фиксирует Integration Agent до implementation. TG-007 владеет audit schema/constraints/base repository, TG-012 — kernel/transactions, TG-011 — policy, TG-002 — shared schemas; их файлы не изменять конкурентно. TG-018 использует transaction-aware repositories в transaction kernel и пишет audit через TG-007 surface. Shared wiring передаётся владельцу через Integration Agent.
 
@@ -66,6 +66,8 @@ Implementation gate открывается после завершения **о�
 | `PUT /api/v1/config/contractors/{contractorId}/employees/{appUserId}` | `active`; create/reactivate/deactivate соответствующий CONTRACTOR_EMPLOYEE binding предсозданного доступного AppUser у contractor текущей УК. Не создавать AppUser. |
 
 ### Authorization и mapping
+
+**Success wire.** Девять writes возвращают strict TG-002 named aliases по Interface §24.1: `OrganizationPatchSuccessSchema` (`200`), `HouseCreateSuccessSchema` (`201`), `HousePatchSuccessSchema` (`200`), `CategoryCreateSuccessSchema` (`201`), `CategoryPatchSuccessSchema` (`200`), `ContractorCreateSuccessSchema` (`201`), `ContractorBindingPutSuccessSchema` (`200`), `UserRoleBindingPutSuccessSchema` (`200`), `ContractorEmployeePutSuccessSchema` (`200`). Alias использует существующую own-scope read projection соответствующей сущности; contractor включает own OrganizationContractor, user — только разрешённые bindings/access. Нет `command_id` envelope, audit payload или публичного `config_revision`. Same-key authorized replay возвращает точно сохранённые исходные status/body; успешный ответ отражает committed эффект после всех связанных изменений.
 
 Reads и mutations — только active `UK_ADMIN` с server-selected effective context; никаких объединений прав всех bindings и доверия роли из payload. Organization определяется из текущей TG-011 policy. На reads права перечитываются до projection, на mutation — внутри transaction под совместимыми locks. Valid session не сохраняет отозванные права; demo obeys current run/actor boundary TG-011.
 
@@ -141,7 +143,7 @@ House/Category deactivation запрещает **новые** Case. Category/def
 
 ## 11. Git / integration handoff
 
-Исходные сведения о `codex/tg-018-contract` в §1 — provenance source contract. Текущий canonical gap closure коммитится вместе с Task Graph/Interface и смежными контрактами только в `codex/canonical-gap-closure-tg014-tg018-tg022`, без push `main` и без production implementation. Затем **один independent review в отдельном чистом чате** по exact closure SHA; этот authoring task его не закрывает. PASS review не снимает implementation dependency gate TG-007/TG-012. Интеграция и выдача будущей implementation базы — Integration Agent.
+Исходные сведения о `codex/tg-018-contract` в §1 — provenance source contract. Эта coordinated public API delta коммитится в `codex/canonical-public-api-surface-delta` от `28401166a340407297cfb942fd9a8bf978e6c2a2`, без push `main` и production implementation. После authoring выполняется один independent review всей delta. PASS review не снимает implementation dependency gate TG-007/TG-012. Интеграция и выдача будущей implementation базы — Integration Agent.
 
 ## 12. Blocker protocol
 

@@ -37,8 +37,13 @@ export async function fillCreateCaseForm(container: HTMLElement, description = '
   const text = container.querySelector<HTMLTextAreaElement>('[data-testid="description-input"]');
   if (!category || !premise || !text) throw new Error('create case form is not rendered yet');
   await act(async () => {
-    setNativeValue(category, category.options[1]?.value ?? '');
     setNativeValue(premise, premise.options[1]?.value ?? '');
+  });
+  await waitForUi(() => {
+    if (!category.options[1]) throw new Error('selected premises categories have not loaded');
+  });
+  await act(async () => {
+    setNativeValue(category, category.options[1]?.value ?? '');
     setNativeValue(text, description);
   });
 }

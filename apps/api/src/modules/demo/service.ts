@@ -9,6 +9,7 @@ import { SessionError, verifySession } from '../auth/session-token.js';
 import { createTransactionAuthorizationRepository } from '../commands/kernel/authorization.js';
 import { createCommandFingerprint } from '../commands/kernel/fingerprint.js';
 import { demoActors } from './catalog.js';
+import { canonicalJson } from './canonical-response.js';
 import { DemoError } from './errors.js';
 import { demoIdentityRepository, lockDemoIdentity, resolveDemoActor } from './repository.js';
 
@@ -72,8 +73,12 @@ export class DemoService {
           throw new DemoError('AUTH_BOOTSTRAP_FAILED', 500);
         }
         const service = createDemoAuthService(this.config, input.transaction, this.nowSeconds);
-        // Start can operate with actor-null bootstrap tokens, including same-key retry after the first start.
+        // Only a stored Start retry may use a stale actor-null token.
         if (kind === 'SWITCH' || claims.app_user_id !== null) await service.readSession(token);
+        if (kind === 'START' && input.phase === 'NEW' && claims.app_user_id === null) {
+          const current = await repository.currentDemoRun(claims.max_identity_id);
+          if ((current?.demo_run_id ?? null) !== claims.demo_run_id) throw new SessionError('SESSION_EXPIRED');
+        }
         if (input.target.authorizationContext.runId !== null) {
           const run = await repository.currentDemoRun(claims.max_identity_id);
           if (!run || run.demo_run_id !== input.target.authorizationContext.runId) throw new SessionError('SESSION_EXPIRED');
@@ -105,11 +110,16 @@ export class DemoService {
         await input.transaction.insertInto('demo_run_actor').values(demoActors.map(actor => ({
           demo_run_id: runId, app_user_id: actor.appUserId, role: actor.role, actor_alias: actor.actorAlias,
         }))).execute();
+        const issued = await createDemoAuthService(this.config, input.transaction, this.nowSeconds)
+          .issueDemoStartSession(claims.max_identity_id, runId, claims.real_display_name);
         return DemoRunStartResponseSchema.parse({ demo_run_id: runId, status: 'ACTIVE', primary_case_id: null,
-          role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'] });
+          role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'], ...issued });
       },
       updateProjection: noop, appendEvents: noop, createNotificationIntents: noop,
-      canonicalResponse: input => ({ status: kind === 'START' ? 201 : 200, body: input.effect }),
+      canonicalResponse: input => {
+        canonicalJson(input.effect); // Fail inside the transaction if the public body cannot be serialized.
+        return { status: kind === 'START' ? 201 : 200, body: input.effect };
+      },
     };
     return this.kernel.run({
       authenticate: () => ({ type: 'MAX_IDENTITY', maxIdentityId: claims.max_identity_id }),

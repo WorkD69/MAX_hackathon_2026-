@@ -7,7 +7,7 @@ import { Kysely, PostgresDialect } from 'kysely';
 
 const ident = value => '"' + value.replaceAll('"', '""') + '"';
 const literal = value => "'" + value.replaceAll("'", "''") + "'";
-const suites = ['tg026', 'tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam', 'tg015_auth'];
+const suites = ['tg026', 'tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam', 'tg015_auth', 'tg019'];
 export const LEGACY_TEST_TARGETS = Object.freeze([
   { key: 'TG005_FOUNDATION', suite: 'tg005' },
   { key: 'TG005_CONSTRAINTS', suite: 'tg005' },
@@ -19,6 +19,7 @@ export const LEGACY_TEST_TARGETS = Object.freeze([
   { key: 'TG013', suite: 'tg013' },
   { key: 'TG013_SEAM', suite: 'tg013_seam' },
   { key: 'TG015', suite: 'tg015_auth' },
+  { key: 'TG019', suite: 'tg019' },
 ].map(target => Object.freeze(target)));
 
 export function assertDistinctLegacyTargets(env = process.env) {

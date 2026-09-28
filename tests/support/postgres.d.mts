@@ -2,7 +2,7 @@ import type { MigrationResultSet } from 'kysely';
 
 export interface TestDatabaseReceipt {
   readonly version: 1;
-  readonly suite: 'tg026' | 'tg005' | 'tg006' | 'tg007' | 'tg008' | 'tg012' | 'tg013' | 'tg013_seam' | 'tg015_auth';
+  readonly suite: 'tg026' | 'tg005' | 'tg006' | 'tg007' | 'tg008' | 'tg012' | 'tg013' | 'tg013_seam' | 'tg015_auth' | 'tg019';
   readonly legacyKey?: (typeof LEGACY_TEST_TARGETS)[number]['key'];
   readonly runId: string;
   readonly ownerToken: string;
@@ -35,7 +35,7 @@ export interface PostgresTestTarget {
   cleanup(): Promise<void>;
 }
 export const LEGACY_TEST_TARGETS: ReadonlyArray<Readonly<{
-  key: 'TG005_FOUNDATION' | 'TG005_CONSTRAINTS' | 'TG006' | 'TG007' | 'TG008' | 'TG012_KERNEL' | 'TG012_POLICY' | 'TG013' | 'TG013_SEAM' | 'TG015';
+  key: 'TG005_FOUNDATION' | 'TG005_CONSTRAINTS' | 'TG006' | 'TG007' | 'TG008' | 'TG012_KERNEL' | 'TG012_POLICY' | 'TG013' | 'TG013_SEAM' | 'TG015' | 'TG019';
   suite: TestDatabaseReceipt['suite'];
 }>>;
 export function assertDistinctLegacyTargets(env?: Readonly<Record<string, string | undefined>>): void;

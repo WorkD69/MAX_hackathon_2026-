@@ -59,11 +59,15 @@ test('integration discovery includes canonical and existing workspace suites and
     assert.equal(result.groups.reduce((n, group) => n + group.files.length, 0), 4);
     await mkdir(path.join(root, 'apps/api/test-integration'), { recursive: true });
     await mkdir(path.join(root, 'apps/api/src/modules/demo'), { recursive: true });
+    await mkdir(path.join(root, 'apps/api/src/modules/notifications'), { recursive: true });
     await writeFile(path.join(root, 'apps/api/test-integration/tg013-seam.test.ts'), '');
     await writeFile(path.join(root, 'apps/api/src/modules/demo/demo.integration.test.ts'), '');
+    await writeFile(path.join(root, 'apps/api/src/modules/notifications/store.pg.test.ts'), '');
     result = await discoverIntegrationSuites(root);
     assert.deepEqual(result.groups.find(group => group.cwd === 'apps/api').files, [
-      'apps/api/src/modules/demo/demo.integration.test.ts', 'apps/api/test-integration/tg013-seam.test.ts',
+      'apps/api/src/modules/demo/demo.integration.test.ts',
+      'apps/api/src/modules/notifications/store.pg.test.ts',
+      'apps/api/test-integration/tg013-seam.test.ts',
     ]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -101,6 +105,7 @@ test('root integration refuses legacy DB suites with arbitrary URLs and no owned
         TG005_FOUNDATION_TEST_DATABASE_URL: 'postgresql://arbitrary.example/customer_tg005_test',
         TG006_TEST_DATABASE_URL: 'postgresql://arbitrary.example/customer_tg006_test',
         TG005_FOUNDATION_TEST_DATABASE_RECEIPT: '', TG006_TEST_DATABASE_RECEIPT: '',
+        TG013_TEST_DATABASE_RECEIPT: '', TG013_SEAM_TEST_DATABASE_RECEIPT: '',
       },
     });
     assert.notEqual(result.status, 0);

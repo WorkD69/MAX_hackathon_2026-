@@ -27,6 +27,7 @@ function roleFilteredFixture(role: RoleOutput, state: CaseStateOutput) {
     initial_attachments: [], selection: null, assignment,
     current_executor: null, current_result: null, resident_feedback: null,
     activity: [], allowed_actions: [],
+    ...(role === 'RESIDENT' ? { actionable_clarification_requests: [] } : {}),
   } };
 }
 

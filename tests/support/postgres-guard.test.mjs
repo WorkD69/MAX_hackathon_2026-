@@ -25,7 +25,7 @@ test('receipt rejects arbitrary targets, forged names, mismatched identity and f
     databaseOid: 101, migrationRoleOid: 102, runtimeRoleOid: 103,
   };
   guards.validateReceipt(receipt);
-  for (const suite of ['tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam']) {
+  for (const suite of ['tg005', 'tg006', 'tg007', 'tg008', 'tg012', 'tg013', 'tg013_seam', 'tg015_auth', 'tg019']) {
     const prefix = `${suite}_${receipt.runId}`;
     guards.validateReceipt({ ...receipt, suite,
       database: `${prefix}_${suite}_test`,

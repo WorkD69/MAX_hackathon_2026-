@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { UuidSchema, type AllowedActionOutput, type CaseSnapshotOutput } from '@max-smart-city/contracts';
+import { type AllowedActionOutput, type CaseSnapshotOutput } from '@max-smart-city/contracts';
 import { renderReactTree } from '../../app/test-render.js';
 import { queryClient } from '../../app/query-client.js';
 import type { PlatformAdapter } from '../../platform/platform-adapter.js';
@@ -49,15 +49,21 @@ function event(code: 'EVT_015' | 'EVT_007', number = 2): CaseSnapshotOutput['cas
 
 function control(value: AllowedActionOutput, data = snapshot()) {
   const submit = vi.fn().mockResolvedValue(undefined);
-  const view = renderReactTree(<UkActionControl action={value} submit={submit} snapshot={data} />, { adapter });
+  const authorizedFetch = vi.fn().mockResolvedValue(Response.json({ iteration_id: iterationId,
+    items: [{ contractor_id: contractorId, display_name: 'Подрядчик Б' }] }));
+  const view = renderReactTree(<UkActionControl action={value} submit={submit} snapshot={data}
+    caseId={caseId} contextKey="control" authorizedFetch={authorizedFetch} />, { adapter });
   return { view, submit };
 }
 function input(view: ReturnType<typeof control>['view'], name: string, value: string) {
-  const field = view.container.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLTextAreaElement;
-  act(() => { const setter = Object.getOwnPropertyDescriptor(field instanceof HTMLTextAreaElement
-    ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value')!.set!;
+  const field = view.container.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+  act(() => { const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')!.set!;
     setter.call(field, value); field.dispatchEvent(new Event('input', { bubbles: true }));
     field.dispatchEvent(new Event('change', { bubbles: true })); });
+}
+async function selectCandidate(view: ReturnType<typeof control>['view']) {
+  await act(async () => { await vi.waitFor(() => expect(view.container.textContent).toContain('Подрядчик Б')); });
+  input(view, 'contractor_id', contractorId);
 }
 function check(view: ReturnType<typeof control>['view'], name: string) {
   const field = view.container.querySelector(`[name="${name}"]`) as HTMLInputElement;
@@ -73,9 +79,9 @@ test('accept, select and send are separate exact-target actions', async () => {
   const accept = control(action('ACCEPT_CASE', {}));
   await send(accept.view); expect(accept.submit).toHaveBeenCalledWith({}); accept.view.unmount();
   const select = control(action('SELECT_CONTRACTOR', { iteration_id: iterationId }));
-  expect(UuidSchema.safeParse(contractorId).success).toBe(true);
-  input(select.view, 'contractor_id', contractorId);
-  expect((select.view.container.querySelector('[name="contractor_id"]') as HTMLInputElement).value).toBe(contractorId);
+  await selectCandidate(select.view);
+  expect((select.view.container.querySelector('[name="contractor_id"]') as HTMLSelectElement).value).toBe(contractorId);
+  expect(select.view.container.querySelector('input[name="contractor_id"]')).toBeNull();
   await send(select.view);
   expect(select.submit).toHaveBeenCalledWith({ contractor_id: contractorId, iteration_id: iterationId });
   select.view.unmount();
@@ -83,6 +89,29 @@ test('accept, select and send are separate exact-target actions', async () => {
   await send(assignment.view);
   expect(assignment.submit).toHaveBeenCalledWith({ selection_id: selectionId, iteration_id: iterationId });
   assignment.view.unmount();
+});
+
+test('candidate disappearing after refetch clears the prior selection', async () => {
+  const submit = vi.fn().mockResolvedValue(undefined);
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(Response.json({ iteration_id: iterationId,
+      items: [{ contractor_id: contractorId, display_name: 'Подрядчик Б' }] }))
+    .mockResolvedValue(Response.json({ iteration_id: iterationId, items: [] }));
+  const view = renderReactTree(<UkActionControl action={action('SELECT_CONTRACTOR', { iteration_id: iterationId })}
+    submit={submit} snapshot={snapshot()} caseId={caseId} contextKey="disappear"
+    authorizedFetch={fetch} />, { adapter });
+  try {
+    await selectCandidate(view);
+    await act(async () => { await queryClient.invalidateQueries({
+      queryKey: ['contractor-candidates', 'disappear', caseId],
+    }); });
+    await act(async () => { await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2)); });
+    await act(async () => { await vi.waitFor(() => expect(view.container.textContent).not.toContain('Подрядчик Б')); });
+    expect((view.container.querySelector('[name="contractor_id"]') as HTMLSelectElement).value).toBe('');
+    expect((view.container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true);
+    await send(view);
+    expect(submit).not.toHaveBeenCalled();
+  } finally { view.unmount(); }
 });
 
 test('selected, sent and accepted labels and rejected reason follow server projection', () => {
@@ -202,7 +231,9 @@ test('rework A to B keeps backend N+1, removes A actions and leaves B pending af
   const api: CaseReadTransport = { list: vi.fn(), snapshot: vi.fn()
     .mockResolvedValueOnce(remark).mockResolvedValueOnce(rework)
     .mockResolvedValueOnce(selected).mockResolvedValue(sent) };
-  const fetch = vi.fn().mockImplementation(async (path: string) => commandSuccess(path));
+  const fetch = vi.fn().mockImplementation(async (path: string) => path.endsWith('/contractor-candidates')
+    ? Response.json({ iteration_id: iterationId, items: [{ contractor_id: contractorId, display_name: 'Подрядчик Б' }] })
+    : commandSuccess(path));
   const view = renderReactTree(<UkWorkflowCaseView caseId={caseId} role="UK_EMPLOYEE"
     contextKey="rework" transport={api} authorizedFetch={fetch} />, { adapter });
   try {
@@ -212,7 +243,7 @@ test('rework A to B keeps backend N+1, removes A actions and leaves B pending af
     await vi.waitFor(() => expect(view.container.querySelector('[name="contractor_id"]')).not.toBeNull());
     expect(view.container.textContent).toContain('Итерация: 3');
     expect(view.container.textContent).not.toContain('Вернуть на доработку');
-    input(view, 'contractor_id', contractorId);
+    await selectCandidate(view);
     await send(view);
     await vi.waitFor(() => expect(view.container.textContent).toContain('Отправить назначение'));
     expect(view.container.textContent).toContain('Итерация: 3');
@@ -224,7 +255,7 @@ test('rework A to B keeps backend N+1, removes A actions and leaves B pending af
     expect(view.container.textContent).toContain('Ожидается принятие');
     expect(view.container.textContent).not.toContain('Принято подрядчиком: Б');
     expect(view.container.textContent).toContain('Итерация: 3');
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls.filter(([path]) => !String(path).endsWith('/contractor-candidates'))).toHaveLength(3);
   } finally { view.unmount(); }
 });
 
@@ -289,17 +320,20 @@ test('409 refetch removes stale form and never retries or retargets it', async (
   fresh.case.allowed_actions = [action('SELECT_CONTRACTOR', { iteration_id: id(9) })];
   const api: CaseReadTransport = { list: vi.fn(), snapshot: vi.fn()
     .mockResolvedValueOnce(old).mockResolvedValue(fresh) };
-  const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 409 }));
+  const fetch = vi.fn().mockImplementation(async (path: string) => path.endsWith('/contractor-candidates')
+    ? Response.json({ iteration_id: iterationId, items: [{ contractor_id: contractorId, display_name: 'Подрядчик Б' }] })
+    : new Response('{}', { status: 409 }));
   const view = renderReactTree(<UkWorkflowCaseView caseId={caseId} role="UK_EMPLOYEE"
     contextKey="stale" transport={api} authorizedFetch={fetch} />, { adapter });
   try {
     await vi.waitFor(() => expect(view.container.querySelector('[name="contractor_id"]')).not.toBeNull());
-    input(view, 'contractor_id', contractorId); await send(view);
+    await selectCandidate(view); await send(view);
     await vi.waitFor(() => expect(view.container.textContent).toContain('Случай изменился'));
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({ contractor_id: contractorId, iteration_id: iterationId });
+    const mutations = fetch.mock.calls.filter(([path]) => String(path).endsWith('/select-contractor'));
+    expect(mutations).toHaveLength(1);
+    expect(JSON.parse(mutations[0]![1].body)).toEqual({ contractor_id: contractorId, iteration_id: iterationId });
     expect(api.snapshot).toHaveBeenCalledTimes(2);
-    expect((view.container.querySelector('[name="contractor_id"]') as HTMLInputElement).value).toBe('');
+    expect((view.container.querySelector('[name="contractor_id"]') as HTMLSelectElement).value).toBe('');
     expect(view.container.textContent).toContain('Итерация: 3');
   } finally { view.unmount(); }
 });

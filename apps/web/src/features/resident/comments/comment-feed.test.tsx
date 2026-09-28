@@ -9,7 +9,7 @@ import { waitForUi } from '../test-helpers.js';
 import {
   IDS, addCommentSuccessFixture, residentSnapshot, withAllowedActions,
 } from '../fixtures.js';
-import { ResidentCommentFeed, type ClarificationTarget } from './comment-feed.js';
+import { ResidentCommentFeed } from './comment-feed.js';
 
 const adapter: PlatformAdapter = {
   name: 'test', isMiniAppContext: true, getRawInitData: () => null, subscribeForeground: () => () => {},
@@ -25,7 +25,7 @@ function transport(overrides: Partial<ResidentTransport> = {}): ResidentTranspor
   } as ResidentTransport;
 }
 
-const target: ClarificationTarget = { commentId: IDS.commentId, body: 'Уточните адрес', createdAt: '2026-09-25T00:00:00Z' };
+const target = { clarification_request_id: IDS.commentId, body: 'Уточните адрес', created_at: '2026-09-25T00:00:00Z' };
 
 /** React 19 tracks controlled values, so the native setter must be used to trigger onChange. */
 function setValue(element: HTMLTextAreaElement | HTMLSelectElement, value: string) {
@@ -108,9 +108,10 @@ test('remarks review without clarification targets offers no composer', () => {
 test('remarks review with targets sends the chosen clarification_request_id', async () => {
   const api = transport();
   const onMutated = vi.fn();
-  const snapshot = withAllowedActions(residentSnapshot({ state: 'REMARKS_REVIEW', feedbackType: 'REMARK', residentFeedback: true }), [addCommentAction]);
+  const snapshot = withAllowedActions(residentSnapshot({ state: 'REMARKS_REVIEW', feedbackType: 'REMARK', residentFeedback: true,
+    actionableClarifications: [target] }), [addCommentAction]);
   const view = renderReactTree(
-    <ResidentCommentFeed transport={api} snapshot={snapshot} clarificationTargets={[target]} onMutated={onMutated} />, { adapter });
+    <ResidentCommentFeed transport={api} snapshot={snapshot} onMutated={onMutated} />, { adapter });
   try {
     await type(view.container, 'Ответ на уточнение');
     await act(async () => {
@@ -123,6 +124,45 @@ test('remarks review with targets sends the chosen clarification_request_id', as
       files: [],
       idempotencyKey: expect.any(String),
     });
+  } finally { view.unmount(); }
+});
+
+test('multiple actionable requests address the exact selected clarification', async () => {
+  const second = { ...target, clarification_request_id: IDS.feedbackId, body: 'Какая комната?' };
+  const api = transport();
+  const snapshot = withAllowedActions(residentSnapshot({ state: 'REMARKS_REVIEW',
+    actionableClarifications: [target, second] }), [addCommentAction]);
+  const view = renderReactTree(<ResidentCommentFeed transport={api} snapshot={snapshot}
+    onMutated={() => {}} />, { adapter });
+  try {
+    expect((view.container.querySelector('[data-testid="clarification-select"]') as HTMLSelectElement).options).toHaveLength(3);
+    await type(view.container, 'Ответ для второго запроса');
+    await act(async () => { setValue(view.container.querySelector('[data-testid="clarification-select"]') as HTMLSelectElement,
+      IDS.feedbackId); });
+    await submit(view.container);
+    expect(api.addComment).toHaveBeenCalledWith(IDS.caseId, expect.objectContaining({
+      payload: { body: 'Ответ для второго запроса', clarification_request_id: IDS.feedbackId },
+    }));
+  } finally { view.unmount(); }
+});
+
+test('409 clarification context refetches and clears target without retargeting', async () => {
+  const api = transport({ addComment: vi.fn().mockRejectedValue(new ResidentHttpError(409,
+    'stale', 'CLARIFICATION_CONTEXT_REQUIRED')) });
+  const onMutated = vi.fn();
+  const snapshot = withAllowedActions(residentSnapshot({ state: 'REMARKS_REVIEW',
+    actionableClarifications: [target] }), [addCommentAction]);
+  const view = renderReactTree(<ResidentCommentFeed transport={api} snapshot={snapshot}
+    onMutated={onMutated} />, { adapter });
+  try {
+    await type(view.container, 'Ответ');
+    await act(async () => { setValue(view.container.querySelector('[data-testid="clarification-select"]') as HTMLSelectElement,
+      IDS.commentId); });
+    await submit(view.container);
+    await waitForUi(() => expect(onMutated).toHaveBeenCalledTimes(1));
+    expect(api.addComment).toHaveBeenCalledTimes(1);
+    expect((view.container.querySelector('[data-testid="clarification-select"]') as HTMLSelectElement).value).toBe('');
+    expect(view.container.textContent).toContain('Данные обновлены');
   } finally { view.unmount(); }
 });
 
@@ -160,12 +200,11 @@ test('selected comment attachments are sent with the canonical comment payload',
   } finally { view.unmount(); }
 });
 
-test('non-uuid clarification target is never offered or sent', async () => {
+test('answered clarification leaves no actionable composer', async () => {
   const api = transport();
   const snapshot = withAllowedActions(residentSnapshot({ state: 'REMARKS_REVIEW', feedbackType: 'REMARK', residentFeedback: true }), [addCommentAction]);
-  const unsafe = { ...target, commentId: 'not-a-uuid' };
   const view = renderReactTree(
-    <ResidentCommentFeed transport={api} snapshot={snapshot} clarificationTargets={[unsafe]} onMutated={() => {}} />, { adapter });
+    <ResidentCommentFeed transport={api} snapshot={snapshot} onMutated={() => {}} />, { adapter });
   try {
     expect(view.container.querySelector('[data-testid="clarification-required"]')).not.toBeNull();
     expect(view.container.querySelector('[data-testid="comment-submit"]')).toBeNull();
@@ -269,10 +308,11 @@ test('file input clears only after confirmed comment success', async () => {
     Object.defineProperty(input, 'value', { configurable: true, writable: true, value: 'C:\\fakepath\\proof.jpg' });
     await selectFile(view.container, new File(['one'], 'proof.jpg'));
     await submit(view.container);
+    await waitForUi(() => expect(view.container.textContent).toContain('Не удалось отправить сообщение'));
     expect(input.value).toContain('proof.jpg');
     expect(view.container.textContent).toContain('Выбрано файлов: 1');
     await submit(view.container);
-    expect(input.value).toBe('');
+    await waitForUi(() => expect(input.value).toBe(''));
     expect(view.container.textContent).not.toContain('Выбрано файлов: 1');
     expect(addComment.mock.calls[0]![1].idempotencyKey).toBe(addComment.mock.calls[1]![1].idempotencyKey);
   } finally { view.unmount(); }

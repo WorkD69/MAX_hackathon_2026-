@@ -39,6 +39,29 @@ export class AuthService {
     private readonly resolveDemoActor?: ServerDemoActorResolver,
   ) { this.policy = authorizationRepository ? new AuthorizationPolicy(authorizationRepository) : null; }
 
+  /** Issue the actor-null session inside the Start command transaction. */
+  async issueDemoStartSession(maxIdentityId: string, runId: string,
+    displayName: string): Promise<AuthMaxSuccessOutput> {
+    if (!this.config.DEMO_MODE) throw new SessionError('SESSION_EXPIRED');
+    const identity = await this.repository.findById(maxIdentityId);
+    const run = await this.repository.currentDemoRun(maxIdentityId);
+    if (!identity || !outboundReady(identity) || run?.demo_run_id !== runId ||
+      run.primary_case_id !== null) throw new SessionError('SESSION_EXPIRED');
+    const issued = issueSession({
+      max_identity_id: maxIdentityId, app_user_id: null, role_binding_id: null,
+      role: null, demo_mode: true, demo_run_id: runId, real_display_name: displayName,
+    }, this.config, this.nowSeconds());
+    return AuthMaxSuccessSchema.parse({
+      session_token: issued.token, expires_at: issued.expiresAt,
+      session: {
+        real_max_identity: { max_identity_id: identity.max_identity_id,
+          display_name: displayName, outbound_max_ready: true },
+        demo_mode: true, demo_run_id: runId, primary_case_id: null,
+        effective_actor: { app_user_id: null, role: null, display_name: '' },
+      },
+    });
+  }
+
   /** TG-013 supplies only a server-resolved actor candidate; TG-010 owns token issuance. */
   async selectDemoActorSession(token: string, roleView: Role): Promise<AuthMaxSuccessOutput> {
     const claims = verifySession(token, this.config, this.nowSeconds());

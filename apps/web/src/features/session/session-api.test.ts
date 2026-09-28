@@ -50,6 +50,8 @@ test('start DemoRun sends canonical scenario and idempotency header', async () =
     status: 'ACTIVE',
     primary_case_id: null,
     role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'],
+    session_token: 'new-token', expires_at: auth.expires_at,
+    session: { ...session, demo_run_id: '22222222-2222-4222-8222-222222222222' },
   };
   const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(run), { status: 201 }));
   vi.stubGlobal('fetch', fetch);

@@ -11,6 +11,7 @@ export async function discoverIntegrationSuites(root) {
     'tests/integration/**/*.test.{ts,tsx,js,mjs}',
     'packages/*/src/**/*.integration.test.{ts,js,mjs}',
     'apps/*/src/**/*.integration.test.{ts,js,mjs}',
+    'apps/*/src/**/*.pg.test.{ts,js,mjs}',
     'apps/*/test-integration/**/*.test.{ts,js,mjs}',
     'apps/*/tests/**/*.integration.test.{ts,js,mjs}',
   ], { cwd: root })) files.push(file.replaceAll('\\', '/'));

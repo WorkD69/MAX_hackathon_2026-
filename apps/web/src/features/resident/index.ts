@@ -1,7 +1,7 @@
 export { createHttpResidentTransport, isStaleResponse, ResidentHttpError } from './resident-transport.js';
 export type {
-  AddCommentRequest, AuthorizedFetch, CategoryOption, CreateCaseOptions, CreateCaseRequest,
-  PremiseOption, ReadResidentPremises, ResidentCommand, ResidentConfirmRequest,
+  AddCommentRequest, AuthorizedFetch, CreateCaseOptions, CreateCaseRequest,
+  ResidentCommand, ResidentConfirmRequest,
   ResidentRemarkRequest, ResidentTransport,
 } from './resident-transport.js';
 export {
@@ -10,7 +10,6 @@ export {
 export type { FingerprintedFile } from './idempotency.js';
 export { CreateCaseForm } from './create-case/create-case-form.js';
 export { ResidentCommentFeed, commentFeedEntries } from './comments/comment-feed.js';
-export type { ClarificationTarget } from './comments/comment-feed.js';
 export { ResidentResultView } from './result-view/result-view.js';
 export { deliverDownload, nativeDownloadBridge } from './result-view/download-capability.js';
 export type { NativeDownloadBridge } from './result-view/download-capability.js';

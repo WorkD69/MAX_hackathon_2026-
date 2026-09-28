@@ -37,8 +37,8 @@ let ownedTargetVerified = false;
 let schemaCreated = false;
 registerDemoModule(app, config, { database, nowSeconds: () => now });
 
-function launch(user: number) {
-  const unsigned = `auth_date=${now}&user=${encodeURIComponent(JSON.stringify({ id: user, first_name: 'Demo' }))}&chat=${encodeURIComponent(JSON.stringify({ id: user + 500000, type: 'DIALOG' }))}`;
+function launch(user: number, authDate = now) {
+  const unsigned = `auth_date=${authDate}&user=${encodeURIComponent(JSON.stringify({ id: user, first_name: 'Demo' }))}&chat=${encodeURIComponent(JSON.stringify({ id: user + 500000, type: 'DIALOG' }))}`;
   const secret = createHmac('sha256', 'WebAppData').update(config.MAX_BOT_TOKEN!).digest();
   const signature = createHmac('sha256', secret).update(canonicalizeMaxInitData(`${unsigned}&hash=${'0'.repeat(64)}`).launchParams).digest('hex');
   return `${unsigned}&hash=${signature}`;
@@ -52,14 +52,19 @@ async function command(path: string, token: string, body: Record<string, unknown
   return app.inject({ method: 'POST', url: path, headers: { authorization: `Bearer ${token}`, 'idempotency-key': key }, payload: body });
 }
 const start = (token: string, key?: string) => command('/api/v1/demo/runs', token, { scenario_key: 'primary-housing-demo' }, key);
+const startOn = (server: typeof app, token: string, key: string) => server.inject({
+  method: 'POST', url: '/api/v1/demo/runs',
+  headers: { authorization: `Bearer ${token}`, 'idempotency-key': key },
+  payload: { scenario_key: 'primary-housing-demo' },
+});
 const switchRole = (token: string, role: string, key?: string) => command('/api/v1/demo/session/actor', token, { role_view: role }, key);
 async function freshRun(user = 13001) {
   const before = await bootstrap(user);
   const response = await start(before.session_token);
   expect(response.statusCode).toBe(201);
-  const restored = await bootstrap(user);
-  return { token: restored.session_token as string, run: response.json().demo_run_id as string,
-    identity: restored.session.real_max_identity.max_identity_id as string };
+  const issued = response.json();
+  return { token: issued.session_token as string, run: issued.demo_run_id as string,
+    identity: issued.session.real_max_identity.max_identity_id as string };
 }
 async function insertCase(tx: DatabaseTransaction, run: string) {
   const id = randomUUID(), iteration = randomUUID();
@@ -101,21 +106,44 @@ afterAll(async () => {
 });
 
 describe('TG-013 real PostgreSQL demo commands and session seam', () => {
-  it('start creates five server actors and four views, no Case/token, explicit real notification recipient', async () => {
+  it('start issues an actor-null token for the new run and replays its exact body', async () => {
     const before = await bootstrap();
     const key = randomUUID();
     const response = await start(before.session_token, key);
     expect(response.statusCode).toBe(201);
-    expect(response.json()).toEqual({ demo_run_id: expect.any(String), status: 'ACTIVE', primary_case_id: null,
-      role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'] });
+    expect(response.json()).toMatchObject({ demo_run_id: expect.any(String), status: 'ACTIVE', primary_case_id: null,
+      role_views: ['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE'],
+      session_token: expect.any(String), expires_at: expect.any(String),
+      session: { real_max_identity: { max_identity_id: before.session.real_max_identity.max_identity_id },
+        effective_actor: { app_user_id: null, role: null }, primary_case_id: null } });
     const run = response.json().demo_run_id;
+    expect(verifySession(response.json().session_token, config, now)).toMatchObject({
+      max_identity_id: before.session.real_max_identity.max_identity_id, demo_run_id: run,
+      app_user_id: null, role_binding_id: null, role: null, iat: now,
+    });
+    expect(response.json().session_token).not.toBe(before.session_token);
     expect((await database.selectFrom('demo_run_actor').selectAll().where('demo_run_id', '=', run).execute()).length).toBe(5);
     expect(await database.selectFrom('case_table').select('case_id').where('demo_run_id', '=', run).execute()).toEqual([]);
     const row = await database.selectFrom('demo_run').selectAll().where('demo_run_id', '=', run).executeTakeFirstOrThrow();
     expect(row.notification_recipient_max_identity_id).toBe(before.session.real_max_identity.max_identity_id);
     expect(row.notification_recipient_max_identity_id).not.toBe('13001');
-    expect((await start(before.session_token, key)).json()).toEqual(response.json());
-    expect((await start(before.session_token, key)).headers['idempotency-replayed']).toBe('true');
+    const replay = await start(before.session_token, key);
+    expect(replay.statusCode).toBe(201);
+    expect(replay.body).toBe(response.body);
+    expect(replay.json().expires_at).toBe(response.json().expires_at);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+    expect((await switchRole(response.json().session_token, 'RESIDENT')).statusCode).toBe(200);
+  });
+  it('valid Bearer starts after original initData expires without MAX reauth', async () => {
+    const issued = await bootstrap(13009);
+    const expired = launch(13009, now - 86400);
+    expect((await app.inject({ method: 'POST', url: '/api/v1/auth/max',
+      payload: { init_data: expired } })).statusCode).toBe(401);
+    const response = await start(issued.session_token);
+    expect(response.statusCode).toBe(201);
+    expect(response.json().session.real_max_identity.max_identity_id)
+      .toBe(issued.session.real_max_identity.max_identity_id);
+    expect(response.json().session.effective_actor.role).toBeNull();
   });
   it('fresh bootstrap and GET restore run, explicit switch restores each exact selected binding', async () => {
     const { run, token } = await freshRun();
@@ -175,6 +203,9 @@ describe('TG-013 real PostgreSQL demo commands and session seam', () => {
     const history = await database.selectFrom('case_event').selectAll().where('case_id', '=', first).execute();
     expect(history).toHaveLength(1);
     const two = await freshRun();
+    expect((await app.inject({ method: 'GET', url: '/api/v1/session',
+      headers: { authorization: `Bearer ${one.token}` } })).statusCode).toBe(401);
+    expect((await switchRole(one.token, 'RESIDENT')).statusCode).toBe(401);
     const second = await database.transaction().execute(async tx => { const id = await insertCase(tx, two.run); await bindPrimaryCase(tx, two.identity, two.run, id); return id; });
     expect(first).not.toBe(second);
     expect(await database.selectFrom('case_table').selectAll().where('case_id', '=', first).executeTakeFirstOrThrow()).toEqual(snapshot);
@@ -267,11 +298,32 @@ describe('TG-013 real PostgreSQL demo commands and session seam', () => {
     const key = randomUUID();
     const same = await Promise.all([start(before.session_token, key), start(before.session_token, key)]);
     expect(same.map(x => x.statusCode)).toEqual([201, 201]); expect(same[0]!.json()).toEqual(same[1]!.json());
-    const next = await Promise.all([start(before.session_token), start(before.session_token)]);
-    expect(next.map(x => x.statusCode)).toEqual([201, 201]);
+    const next = await Promise.all([start(same[0]!.json().session_token), start(same[0]!.json().session_token)]);
+    expect(next.map(x => x.statusCode).sort()).toEqual([201, 401]);
     const active = await database.selectFrom('demo_run').selectAll().where('created_by_max_identity_id', '=', before.session.real_max_identity.max_identity_id).where('status', '=', 'ACTIVE').execute();
     expect(active).toHaveLength(1);
     const denied = await start(before.session_token, key); expect(denied.statusCode).toBe(401); expect(denied.body).not.toContain(same[0]!.json().demo_run_id);
+    expect((await start(before.session_token)).statusCode).toBe(401);
+  });
+  it('issuance failure rolls back archive, run, actors, and idempotency execution', async () => {
+    const { token, run, identity } = await freshRun(13010);
+    const key = randomUUID();
+    const failing = fastify({ loggerInstance: pino({ enabled: false }) });
+    registerDemoRoutes(failing, { ...config, APP_SESSION_TTL_SECONDS: Number.NaN },
+      { database, nowSeconds: () => now });
+    try {
+      const failed = await startOn(failing, token, key);
+      expect(failed.statusCode).toBe(500);
+      expect(failed.json()).not.toHaveProperty('session_token');
+      expect((await database.selectFrom('demo_run').select('status')
+        .where('demo_run_id', '=', run).executeTakeFirstOrThrow()).status).toBe('ACTIVE');
+      expect(await database.selectFrom('demo_run').select('demo_run_id')
+        .where('created_by_max_identity_id', '=', identity).execute()).toHaveLength(1);
+      expect(await database.selectFrom('command_execution').select('command_id')
+        .where('principal_type', '=', 'MAX_IDENTITY').where('max_identity_id', '=', identity)
+        .where('idempotency_key', '=', key).execute()).toEqual([]);
+      expect((await start(token, key)).statusCode).toBe(201);
+    } finally { await failing.close(); }
   });
   it('restore holds the current-run lock until its authoritative response, before concurrent Start archives it', async () => {
     const { token } = await freshRun();

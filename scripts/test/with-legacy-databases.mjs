@@ -6,6 +6,9 @@ const mode = process.argv[2];
 if (!['test', 'test:integration'].includes(mode)) throw new Error('EXPECTED_TEST_OR_INTEGRATION_COMMAND');
 const options = { adminUrl: process.env.TEST_POSTGRES_ADMIN_URL };
 const suites = LEGACY_TEST_TARGETS;
+// Each active owned target has a signal handler until the child test run exits.
+const previousMaxListeners = process.getMaxListeners();
+process.setMaxListeners(Math.max(previousMaxListeners, suites.length + 1));
 
 try {
   async function runWithTargets(index, env) {
@@ -15,6 +18,13 @@ try {
         ...env,
         [`${key}_TEST_DATABASE_URL`]: target.migrationUrl,
         [`${key}_TEST_DATABASE_RECEIPT`]: target.receiptPath,
+        ...(key === 'TG019' ? {
+          DATABASE_URL: target.migrationUrl,
+          DEMO_MODE: 'false', MAX_ADAPTER_MODE: 'fake',
+          APP_SESSION_SECRET: 'TG019_TEST_SESSION_SECRET_'.padEnd(32, 's'),
+          PUBLIC_APP_URL: 'http://localhost/', PUBLIC_API_BASE_URL: 'http://localhost/api/v1',
+          BUILD_SHA: 'a'.repeat(40),
+        } : {}),
       }));
     }
     // npm_execpath is the caller's pinned npm CLI; invoke without a shell.
@@ -33,4 +43,6 @@ try {
 } catch {
   console.error('OWNED_LEGACY_DB_RUN_FAILED; preserve receipt if cleanup was refused');
   process.exitCode = 1;
+} finally {
+  process.setMaxListeners(previousMaxListeners);
 }
