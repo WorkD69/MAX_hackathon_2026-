@@ -269,10 +269,11 @@ test('file input clears only after confirmed comment success', async () => {
     Object.defineProperty(input, 'value', { configurable: true, writable: true, value: 'C:\\fakepath\\proof.jpg' });
     await selectFile(view.container, new File(['one'], 'proof.jpg'));
     await submit(view.container);
+    await waitForUi(() => expect(view.container.textContent).toContain('Не удалось отправить сообщение'));
     expect(input.value).toContain('proof.jpg');
     expect(view.container.textContent).toContain('Выбрано файлов: 1');
     await submit(view.container);
-    expect(input.value).toBe('');
+    await waitForUi(() => expect(input.value).toBe(''));
     expect(view.container.textContent).not.toContain('Выбрано файлов: 1');
     expect(addComment.mock.calls[0]![1].idempotencyKey).toBe(addComment.mock.calls[1]![1].idempotencyKey);
   } finally { view.unmount(); }
