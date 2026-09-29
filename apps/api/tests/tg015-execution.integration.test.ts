@@ -3,12 +3,55 @@ import { describe, it, expect } from 'vitest';
 import { productFixture, ids } from './product-fixture.js';
 import { registerExecutionRoutes } from '../src/modules/cases/commands/execution/index.js';
 import { registerAttachmentRoutes } from '../src/modules/attachments/index.js';
+import { registerReadModelRoutes } from '../src/modules/read-models/index.js';
+import { validPng } from './image-fixtures.js';
 
 const f = await productFixture();
 let seconds = 0;
 registerExecutionRoutes(f.app, f.config, { database: f.db });
 registerAttachmentRoutes(f.app, f.config, { database: f.db, nowSeconds: () => Math.floor(Date.now()/1000)+seconds });
+registerReadModelRoutes(f.app, f.config, { database: f.db });
 describe('TG015 real PostgreSQL execution', () => {
+  it('hides pending assignment IDs and unsubmitted/excluded work material from Resident at every read boundary', async () => {
+    const c = await f.execute();
+    const snapshot = async (actor: string) => (await f.app.inject({url:`/api/v1/cases/${c.caseId}`,headers:f.headers(actor)})).json().case;
+    const direct = (actor: string, id: string) => f.app.inject({url:`/api/v1/attachments/${id}`,headers:f.headers(actor)});
+    const mint = (actor: string, id: string) => f.app.inject({method:'POST',url:`/api/v1/attachments/${id}/download-capability`,headers:f.headers(actor),payload:{}});
+    const upload = async () => {
+      const result = await f.multipart(`/api/v1/cases/${c.caseId}/result-materials`,'a',
+        {assignment_id:c.assignmentId,iteration_id:c.iterationId},[{field:'file',name:'proof.txt'}]);
+      expect(result.statusCode,result.body).toBe(200);
+      return result.json().created.attachment_id as string;
+    };
+    const included = await upload();
+    const excluded = await upload();
+    expect((await f.db.selectFrom('case_event').select('event_id').where('case_id','=',c.caseId).where('event_type','=','EVT_009').execute())).toHaveLength(2);
+    expect((await snapshot('resident')).activity.some((event: {semantic_code:string}) => event.semantic_code==='EVT_009')).toBe(false);
+    expect((await snapshot('uk')).activity.filter((event: {semantic_code:string}) => event.semantic_code==='EVT_009')).toHaveLength(2);
+    expect((await snapshot('admin')).activity.filter((event: {semantic_code:string}) => event.semantic_code==='EVT_009')).toHaveLength(2);
+    expect((await snapshot('a')).activity.filter((event: {semantic_code:string}) => event.semantic_code==='EVT_009')).toHaveLength(2);
+    for (const id of [included,excluded]) {
+      expect((await direct('resident',id)).statusCode).toBe(404);
+      expect((await mint('resident',id)).statusCode).toBe(404);
+      expect((await direct('uk',id)).statusCode).toBe(200);
+      expect((await direct('admin',id)).statusCode).toBe(200);
+      expect((await direct('a',id)).statusCode).toBe(200);
+    }
+    const submitted = await f.json(c.caseId,'submit-result','a',{
+      assignment_id:c.assignmentId,iteration_id:c.iterationId,description:'Готово',material_attachment_ids:[included]});
+    expect(submitted.statusCode,submitted.body).toBe(200);
+    const resident = await snapshot('resident');
+    expect(resident.current_result.attachments.map((item:{attachment_id:string})=>item.attachment_id)).toEqual([included]);
+    expect(resident.activity.filter((event:{semantic_code:string})=>event.semantic_code==='EVT_009')
+      .flatMap((event:{attachments:{attachment_id:string}[]})=>event.attachments.map(item=>item.attachment_id))).toEqual([included]);
+    expect((await direct('resident',included)).statusCode).toBe(200);
+    const capability = await mint('resident',included);
+    expect(capability.statusCode,capability.body).toBe(200);
+    expect((await f.app.inject({url:new URL(capability.json().download_url).pathname})).statusCode).toBe(200);
+    expect((await direct('resident',excluded)).statusCode).toBe(404);
+    expect((await mint('resident',excluded)).statusCode).toBe(404);
+    expect(JSON.stringify(resident)).not.toContain(excluded);
+  });
   it('stores comment/material once and atomically submits immutable Result, links, event, intent, revision and execution', async () => {
     const c = await f.execute(); const key = randomUUID();
     const comment = () => f.multipart(`/api/v1/cases/${c.caseId}/comments`, 'a', { body: 'Работаем', clarification_request_id: null }, [{ bytes: Buffer.from('comment') }], key);
@@ -79,7 +122,7 @@ describe('TG015 real PostgreSQL execution', () => {
     const body={assignment_id:photoCase.assignmentId,iteration_id:photoCase.iterationId,description:'Готово',material_attachment_ids:[]};
     expect((await f.json(photoCase.caseId,'submit-result','a',body)).statusCode).toBe(422);
     const photo=await f.multipart(`/api/v1/cases/${photoCase.caseId}/result-materials`,'a',
-      {assignment_id:photoCase.assignmentId,iteration_id:photoCase.iterationId},[{field:'file',mime:'image/png',name:'proof.png',bytes:Buffer.from('89504e470d0a1a0a','hex')}]);
+      {assignment_id:photoCase.assignmentId,iteration_id:photoCase.iterationId},[{field:'file',mime:'image/png',name:'proof.png',bytes:validPng}]);
     expect(photo.statusCode,photo.body).toBe(200);
     expect((await f.json(photoCase.caseId,'submit-result','a',{...body,material_attachment_ids:[photo.json().created.attachment_id]})).statusCode).toBe(200);
     const concurrent=await Promise.all([1,2].map(()=>f.json(c.caseId,'submit-result','a',{

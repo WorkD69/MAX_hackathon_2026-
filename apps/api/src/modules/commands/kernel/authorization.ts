@@ -135,7 +135,13 @@ export function createTransactionAuthorizationRepository(transaction: Pick<Datab
       if (initial) return { attachment_id: attachmentId, case_id: attachment.case_id, kind: 'INITIAL', assignment_id: null, iteration_id: null };
       const work = await transaction.selectFrom('work_material_attachment').select(['assignment_id', 'iteration_id'])
         .where('attachment_id', '=', attachmentId).executeTakeFirst();
-      if (work) return { attachment_id: attachmentId, case_id: attachment.case_id, kind: 'WORK_MATERIAL', assignment_id: work.assignment_id, iteration_id: work.iteration_id };
+      if (work) {
+        const linked = await transaction.selectFrom('result_attachment').select('result_id')
+          .where('attachment_id', '=', attachmentId).executeTakeFirst();
+        return { attachment_id: attachmentId, case_id: attachment.case_id, kind: 'WORK_MATERIAL',
+          assignment_id: work.assignment_id, iteration_id: work.iteration_id,
+          linked_result_id: linked?.result_id ?? null };
+      }
       const result = await transaction.selectFrom('result_attachment').innerJoin('result', 'result.result_id', 'result_attachment.result_id')
         .select(['result.assignment_id', 'result.iteration_id'])
         .where('result_attachment.attachment_id', '=', attachmentId).executeTakeFirst();

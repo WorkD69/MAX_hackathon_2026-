@@ -66,8 +66,9 @@ it('audits real A→B history, immutable Result links, same-A continuation and i
     expect(results.map((item: { iteration_no: number }) => item.iteration_no)).toEqual([1, 2]);
     expect(results.map((item: { domain: { result: { attachments: { attachment_id: string }[] } } }) => item.domain.result.attachments.map(a => a.attachment_id))).toEqual([[aId], [bId]]);
     expect(new Set(value.activity.map((item: { event_id: string }) => item.event_id)).size).toBe(value.activity.length);
-    expect(value.activity.some((item: { attachments: { attachment_id: string }[] }) => item.attachments.some(a => a.attachment_id === excluded.json().created.attachment_id))).toBe(true);
+    expect(value.activity.some((item: { attachments: { attachment_id: string }[] }) => item.attachments.some(a => a.attachment_id === excluded.json().created.attachment_id))).toBe(actor !== 'resident');
     expect((await f.app.inject({ url: `/api/v1/attachments/${aId}`, headers: f.headers(actor) })).statusCode).toBe(200);
+    expect((await f.app.inject({ url: `/api/v1/attachments/${excluded.json().created.attachment_id}`, headers: f.headers(actor) })).statusCode).toBe(actor === 'resident' ? 404 : 200);
   }
   const b = (await read('b')).json().case;
   expect(b.activity.filter((item: { domain: { result: unknown } }) => item.domain.result).map((item: { actor: { display_name: string } }) => item.actor.display_name)).toEqual(['Демо Мастер Подрядчика Б']);

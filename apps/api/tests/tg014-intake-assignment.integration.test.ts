@@ -11,6 +11,7 @@ import type { Database } from '@max-smart-city/db';
 import { loadConfig } from '../src/config/load-config.js';
 import { issueSession } from '../src/modules/auth/session-token.js';
 import { registerIntakeAssignmentRoutes } from '../src/modules/cases/commands/intake-assignment/index.js';
+import { validPng } from './image-fixtures.js';
 
 const { DEMO_IDS, seedDemoCatalog } = await import(new URL(
   '../../../packages/db/src/seed/index.ts', import.meta.url).href) as {
@@ -362,7 +363,7 @@ describe('TG-014 resident intake on real PostgreSQL', () => {
   });
   it('stores initial file bytes and replays exact CreateCase without another event', async () => {
     const key = randomUUID();
-    const file = { name: 'photo.png', content: Buffer.from([0, 1, 2, 255]), mime: 'image/png' };
+    const file = { name: 'photo.png', content: validPng, mime: 'image/png' };
     const first = await create('Файл', key, [file]);
     expect(first.statusCode).toBe(201);
     const caseId = first.json().case_id as string;

@@ -320,6 +320,19 @@ describe('TG-011 per-request authorization', () => {
     material.assignment_id = 'historical';
     await denied(f.policy.attachment(claim, 'material'));
   });
+  it('hides unsubmitted work material from Resident while preserving UK and current executor access', async () => {
+    const f = fixture();
+    await denied(f.policy.attachment(f.as(ids.resident, 'RESIDENT'), 'material'));
+    expect((await f.policy.attachment(f.as(ids.uk, 'UK_EMPLOYEE'), 'material')).access).toBe('UK');
+    expect((await f.policy.attachment(f.as(ids.admin, 'UK_ADMIN'), 'material')).access).toBe('UK');
+    expect((await f.policy.attachment(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'), 'material')).access).toBe('EXECUTOR');
+    const material = f.attachments.get('material')!;
+    if (material.kind !== 'WORK_MATERIAL') throw new Error('MATERIAL_FIXTURE_MISSING');
+    material.linked_result_id = 'result';
+    expect((await f.policy.attachment(f.as(ids.resident, 'RESIDENT'), 'material')).access).toBe('RESIDENT');
+    material.iteration_id = 'previous-iteration';
+    await denied(f.policy.attachment(f.as(ids.contractorA, 'CONTRACTOR_EMPLOYEE'), 'material'));
+  });
   it('feedback attachment follows parent feedback visibility and current rework source', async () => {
     const f = fixture();
     f.row.current_state = 'REWORK';
