@@ -88,7 +88,8 @@ export class CaseReadService {
     return this.db.transaction().setIsolationLevel('repeatable read').execute(tx=>this.project(tx,claims,caseId));
   }
   private async project(tx:DatabaseTransaction,claims:ReturnType<CaseReadService['claims']>,caseId:string) {
-    const policy=new AuthorizationPolicy(createTransactionAuthorizationRepository(tx));
+    const repository=createTransactionAuthorizationRepository(tx);
+    const policy=new AuthorizationPolicy(repository);
     const decision=await policy.case(claims,caseId);
     const row=await tx.selectFrom('case_table').selectAll().where('case_id','=',caseId).executeTakeFirstOrThrow();
     const domain=await executionSnapshot(tx,row);
@@ -132,6 +133,10 @@ export class CaseReadService {
     const activity=[];
     for(const event of events) {
       if(resident&&['EVT_003','EVT_015'].includes(event.event_type))continue;
+      if(resident&&event.event_type==='EVT_009') {
+        const material=event.attachment_id?await repository.attachmentById(event.attachment_id):null;
+        if(material?.kind!=='WORK_MATERIAL'||!material.linked_result_id)continue;
+      }
       if(pending&&(event.event_type!=='EVT_004'||event.assignment_id!==row.current_assignment_id))continue;
       if(executor&&!this.workEvent(event,row,currentIteration.source_feedback_id))continue;
       const comment=['EVT_007','EVT_012'].includes(event.event_type)?commentProjection(event.comment_id):null;
@@ -167,7 +172,7 @@ export class CaseReadService {
       current_iteration:{iteration_id:row.current_iteration_id,number:domain.iteration.number},
       responsibility:responsibility(row.current_state,Boolean(row.current_executor_contractor_id),domain.feedback?.type==='CONFIRMATION'||Boolean(domain.noFeedback)),
       initial_attachments:await metadata(initial.map(a=>a.attachment_id)),selection,
-      assignment:assignment?{assignment_id:assignment.assignment_id,contractor:await contractorRef(assignment.contractor_id),decision:assignment.decision_status,
+      assignment:assignment&&!(resident&&row.current_state==='SENT_TO_CONTRACTOR')?{assignment_id:assignment.assignment_id,contractor:await contractorRef(assignment.contractor_id),decision:assignment.decision_status,
         ...(uk&&assignment.reject_reason?{reject_reason:assignment.reject_reason}:{})}:null,
       current_executor:await contractorRef(row.current_executor_contractor_id),current_result:await resultProjection(row.current_result_id),
       resident_feedback:feedbackProjection(resident||uk?domain.feedback?.id??null:currentIteration.source_feedback_id),activity,

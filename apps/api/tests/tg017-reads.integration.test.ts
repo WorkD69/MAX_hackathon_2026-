@@ -113,6 +113,14 @@ it('Resident never receives rejection details, rejected contractor loses list/de
   const c=await f.create();await f.json(c.caseId,'accept','uk',{});
   const selected=await f.json(c.caseId,'select-contractor','uk',{iteration_id:c.iterationId,contractor_id:ids.contractorA});
   const sent=await f.json(c.caseId,'send-assignment','uk',{iteration_id:c.iterationId,selection_id:selected.json().created.selection_id});
+  const pendingResident=(await get(c.caseId,'resident')).json().case;
+  expect(pendingResident.state).toBe('SENT_TO_CONTRACTOR');
+  expect(pendingResident.assignment).toBeNull();
+  expect(JSON.stringify(pendingResident)).not.toContain(sent.json().created.assignment_id);
+  expect(JSON.stringify(pendingResident)).not.toContain(ids.contractorA);
+  expect((await get(c.caseId,'uk')).json().case.assignment.assignment_id).toBe(sent.json().created.assignment_id);
+  expect((await get(c.caseId,'admin')).json().case.assignment.assignment_id).toBe(sent.json().created.assignment_id);
+  expect((await get(c.caseId,'a')).json().case.assignment.assignment_id).toBe(sent.json().created.assignment_id);
   expect((await f.json(c.caseId,'reject-assignment','a',{assignment_id:sent.json().created.assignment_id,reason:'SECRET_INTERNAL_REJECTION'})).statusCode).toBe(200);
   expect((await get(c.caseId,'resident')).body).not.toContain('SECRET_INTERNAL_REJECTION');
   expect((await get(c.caseId,'uk')).body).toContain('SECRET_INTERNAL_REJECTION');

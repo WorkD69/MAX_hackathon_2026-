@@ -47,7 +47,8 @@ interface AttachmentBase {
   case_id: string;
 }
 export type AttachmentContext = AttachmentBase & (
-  { kind: 'INITIAL' | 'RESULT' | 'WORK_MATERIAL'; assignment_id: string | null; iteration_id: string | null }
+  { kind: 'INITIAL' | 'RESULT' | 'WORK_MATERIAL'; assignment_id: string | null; iteration_id: string | null;
+      linked_result_id?: string | null }
   | { kind: 'FEEDBACK'; feedback_id: string; feedback_type: 'CONFIRMATION' | 'REMARK';
       feedback_iteration_id: string; feedback_result_id: string }
   | { kind: 'COMMENT'; comment_id: string; comment_iteration_id: string;
@@ -263,6 +264,7 @@ export class AuthorizationPolicy {
     const attachment = await this.repository.attachmentById(attachmentId);
     if (!attachment) return hidden();
     const decision = await this.case(claims, attachment.case_id);
+    if (decision.access === 'RESIDENT' && attachment.kind === 'WORK_MATERIAL' && !attachment.linked_result_id) return hidden();
     if (decision.access === 'PENDING_CONTRACTOR' && attachment.kind !== 'INITIAL') return hidden();
     if (decision.access === 'EXECUTOR') {
       if ((attachment.kind === 'WORK_MATERIAL' || attachment.kind === 'RESULT') &&

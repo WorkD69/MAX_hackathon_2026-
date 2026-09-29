@@ -8,6 +8,7 @@ import { loadConfig } from '../src/config/load-config.js';
 import { createRuntimeLogger } from '../src/logging/logger.js';
 import { buildApp } from '../src/app/app.js';
 import { signSyntheticMaxInitData } from '../src/modules/auth/test-signing.fixture.js';
+import { validPng } from './image-fixtures.js';
 const seed=await import(new URL('../../../packages/db/src/seed/index.ts',import.meta.url).href);
 const target=await provisionPostgres({adminUrl:process.env.TEST_POSTGRES_ADMIN_URL!,suite:'tg026'});
 const pool=new Pool({connectionString:target.migrationUrl});
@@ -49,7 +50,7 @@ async function assign(c:{id:string;iteration:string},contractor:string){
 }
 async function submit(c:{id:string;iteration:string},assignment:string){
   const boundary=`photo-${randomUUID()}`;
-  const payload=Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="payload"\r\n\r\n${JSON.stringify({assignment_id:assignment,iteration_id:c.iteration})}\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="result.png"\r\nContent-Type: image/png\r\n\r\n`),Buffer.from('89504e470d0a1a0a','hex'),Buffer.from(`\r\n--${boundary}--\r\n`)]);
+  const payload=Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="payload"\r\n\r\n${JSON.stringify({assignment_id:assignment,iteration_id:c.iteration})}\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="result.png"\r\nContent-Type: image/png\r\n\r\n`),validPng,Buffer.from(`\r\n--${boundary}--\r\n`)]);
   const material=await app.inject({method:'POST',url:`/api/v1/cases/${c.id}/result-materials`,headers:{authorization:`Bearer ${token}`,'idempotency-key':randomUUID(),'content-type':`multipart/form-data; boundary=${boundary}`},payload});
   expect(material.statusCode,material.body).toBe(200);
   return command(c.id,'submit-result',{assignment_id:assignment,iteration_id:c.iteration,description:'Отопление восстановлено',material_attachment_ids:[material.json().created.attachment_id]});
