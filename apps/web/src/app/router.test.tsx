@@ -22,7 +22,7 @@ test('TG-004 memory router renders home and contributed route', async () => {
   const router = createMemoryRouter(routes);
   const view = renderReactTree(<RouterProvider router={router} />);
   try {
-    expect(view.container.textContent).toContain('Начните демо');
+    expect(view.container.textContent).toContain('Начните проверку');
     await act(async () => {
       await router.navigate('/module');
     });

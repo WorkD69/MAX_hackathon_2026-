@@ -45,9 +45,9 @@ test('loads the resident snapshot and composes result, feedback and comments', a
   try {
     await waitForContent(view.container);
     expect(read.snapshot).toHaveBeenCalledWith(IDS.caseId, 'RESIDENT');
-    expect(view.container.textContent).toContain('Обращение C-1001');
+    expect(view.container.textContent).toContain('Обращение №1001');
     expect(view.container.querySelector('[data-testid="result-description"]')).not.toBeNull();
-    expect(view.container.querySelector('[data-testid="feedback-absent"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-testid="feedback-absent"]')).toBeNull();
     expect(view.container.textContent).toContain('Уточните адрес');
   } finally { view.unmount(); }
 });

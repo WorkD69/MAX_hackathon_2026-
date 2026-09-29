@@ -94,7 +94,7 @@ function HouseForm({ house, api }: { readonly house?: House; readonly api: Api }
 function Houses({ houses, api }: { readonly houses: House[]; readonly api: Api }) {
   return <section className="config-card" aria-labelledby="config-houses">
     <h2 id="config-houses">Дома</h2>
-    <p className="config-note">Деактивация дома влияет на новые действия; существующие случаи и их история сохраняются.</p>
+    <p className="config-note">Деактивация дома влияет на новые действия; существующие обращения и их история сохраняются.</p>
     <HouseForm api={api} />
     <ul className="config-list">{houses.map((house) => <li key={house.house_id}>
       <h3>{house.address}</h3><HouseForm key={`${house.house_id}:${house.address}:${house.active}`} house={house} api={api} />
@@ -141,7 +141,7 @@ function CategoryForm({ category, contractors, api }: { readonly category?: Cate
 function Categories({ categories, contractors, api }: { readonly categories: Category[]; readonly contractors: Contractor[]; readonly api: Api }) {
   return <section className="config-card" aria-labelledby="config-categories">
     <h2 id="config-categories">Категории и маршрутизация</h2>
-    <p className="config-note">Изменения действуют для новых случаев и будущих действий по правилам процесса. Деактивированную категорию нельзя выбрать для нового случая; существующие случаи продолжают жизненный цикл. Существующие случаи и история не переписываются.</p>
+    <p className="config-note">Изменения действуют для новых обращений и будущих действий по правилам процесса. Деактивированную категорию нельзя выбрать для нового обращения; существующие обращения продолжают жизненный цикл. Существующие обращения и история не переписываются.</p>
     <CategoryForm api={api} contractors={contractors} />
     <ul className="config-list">{categories.map((category) => <li key={category.category_id}>
       <h3>{displayName(category.name)}</h3><CategoryForm key={`${category.category_id}:${JSON.stringify(category)}`} category={category} contractors={contractors} api={api} />
@@ -177,7 +177,7 @@ function Contractors({ contractors, users, api }: { readonly contractors: Contra
   const create = useSave(api.contractorCreate);
   return <section className="config-card" aria-labelledby="config-contractors">
     <h2 id="config-contractors">Подрядчики</h2>
-    <p className="config-note">Деактивация связи ограничивает будущий выбор подрядчика. Исторические назначения и результаты остаются в прежних случаях.</p>
+    <p className="config-note">Деактивация связи ограничивает будущий выбор подрядчика. Исторические назначения и результаты остаются в прежних обращениях.</p>
     <form className="config-form" data-testid="contractor-create-form" onSubmit={(event) => submit(event, (form) => create.mutate({ display_name: value(form, 'display_name') }))}>
       <label>Название <input name="display_name" required /></label>
       <Submit pending={create.isPending} label="Добавить подрядчика" /><Feedback action={create} />

@@ -69,11 +69,11 @@ test('list handles loading, server-only items, empty, error and manual refresh',
     expect(view.container.textContent).toContain('Загрузка');
     await act(async () => { resolveFirst(item); });
     await flush();
-    expect(view.container.textContent).toContain('C-1');
+    expect(view.container.textContent).toContain('Обращение №1');
     expect(view.container.querySelectorAll('[data-case-id]')).toHaveLength(1);
     await act(async () => { (view.container.querySelector('[data-testid="case-list-refresh"]') as HTMLButtonElement).click(); });
     await flush();
-    expect(view.container.textContent).toContain('Случаев пока нет');
+    expect(view.container.textContent).toContain('Обращений пока нет');
     await act(async () => { (view.container.querySelector('[data-testid="case-list-refresh"]') as HTMLButtonElement).click(); });
     await flush();
     expect(view.container.textContent).toContain('Не удалось загрузить');
@@ -131,12 +131,12 @@ test('allowed action registry renders only server actions and 409 refetches with
       expect(view.container.querySelectorAll('[data-testid="accept-action"]')).toHaveLength(1));
     await act(async () => { (view.container.querySelector('[data-testid="accept-action"]') as HTMLButtonElement).click(); });
     await vi.waitFor(() => {
-      expect(view.container.textContent).toContain('Случай изменился с момента открытия. Данные обновлены.');
+      expect(view.container.textContent).toContain('Обращение изменилось с момента открытия. Данные обновлены.');
       expect(api.snapshot).toHaveBeenCalledTimes(2);
     });
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute).toHaveBeenCalledWith(action, payload);
-    expect(view.container.textContent).toContain('Исполнение');
+    expect(view.container.textContent).toContain('Подрядчик выполняет работу');
   } finally { view.unmount(); }
 });
 
@@ -194,12 +194,12 @@ test('command success leaves business state unchanged until authoritative refetc
     await vi.waitFor(() =>
       expect(view.container.querySelector('[data-testid="accept-case"]')).not.toBeNull());
     await act(async () => { (view.container.querySelector('[data-testid="accept-case"]') as HTMLButtonElement).click(); });
-    expect(view.container.querySelector('[data-testid="case-status"]')?.textContent).toBe('Создано');
+    expect(view.container.querySelector('[data-testid="case-status"]')?.textContent).toBe('Обращение отправлено');
     expect(view.container.textContent).toContain('Выполняется действие');
     expect(api.snapshot).toHaveBeenCalledTimes(1);
     await act(async () => { finish(); });
     await vi.waitFor(() => {
-      expect(view.container.querySelector('[data-testid="case-status"]')?.textContent).toBe('Принято УК');
+      expect(view.container.querySelector('[data-testid="case-status"]')?.textContent).toBe('УК приняла обращение');
       expect(api.snapshot).toHaveBeenCalledTimes(2);
     });
     expect(execute).toHaveBeenCalledTimes(1);

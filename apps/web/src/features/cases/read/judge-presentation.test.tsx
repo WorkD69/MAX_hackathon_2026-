@@ -74,7 +74,7 @@ test('Moscow time and stage/reference labels are deterministic presentation only
   expect(presentation.stageLabel(1)).toBe('Первичное выполнение');
   expect(presentation.stageLabel(3)).toBe('Доработка №2');
   expect(presentation.caseReference('2bd09410-0000-4000-8000-000000000000')).toBe('№2BD09410');
-  expect(presentation.caseReference('C-1001')).toBe('C-1001');
+  expect(presentation.caseReference('C-1001')).toBe('№1001');
   expect(presentation.caseReference('C-2bd09410-0000-4000-8000-000000000000')).toBe('№2BD09410');
 });
 

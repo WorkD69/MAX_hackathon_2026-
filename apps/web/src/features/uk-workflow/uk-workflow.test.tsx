@@ -153,7 +153,7 @@ test.each(['COMPLETED', 'EXECUTION'] as const)('%s without ADD_COMMENT has no co
     contextKey={state} transport={api} authorizedFetch={vi.fn()} />, { adapter });
   try {
     await vi.waitFor(() => expect(view.container.textContent)
-      .toContain(state === 'COMPLETED' ? 'Завершено' : 'Исполнение'));
+      .toContain(state === 'COMPLETED' ? 'Обращение закрыто' : 'Подрядчик выполняет работу'));
     expect(view.container.querySelector('[name="body"]')).toBeNull();
   } finally { view.unmount(); }
 });
@@ -247,17 +247,49 @@ test('rework A to B keeps backend N+1, removes A actions and leaves B pending af
     expect(view.container.textContent).not.toContain('Вернуть на доработку');
     await selectCandidate(view);
     await send(view);
-    await vi.waitFor(() => expect(view.container.textContent).toContain('Направить: Б'));
-    expect(view.container.textContent).toContain('Этап работ: Доработка №2');
-    expect(view.container.textContent).toContain('Выбран: Б');
-    expect(view.container.textContent).not.toContain('Текущий исполнитель: А');
-    expect(view.container.textContent).not.toContain('Направлено: Б');
-    await send(view);
     await vi.waitFor(() => expect(view.container.textContent).toContain('Направлено: Б'));
+    expect(view.container.textContent).toContain('Задание отправлено');
+    expect(view.container.textContent).toContain('Этап работ: Доработка №2');
+    expect(view.container.textContent).not.toContain('Текущий исполнитель: А');
     expect(view.container.textContent).toContain('Ожидается принятие');
     expect(view.container.textContent).not.toContain('Принято подрядчиком: Б');
     expect(view.container.textContent).toContain('Этап работ: Доработка №2');
     expect(fetch.mock.calls.filter(([path]) => !String(path).endsWith('/contractor-candidates'))).toHaveLength(3);
+  } finally { view.unmount(); }
+});
+
+test('send failure after selection leaves a retry action and preserves both canonical requests', async () => {
+  const before = snapshot('ACCEPTED_BY_UK');
+  before.case.allowed_actions = [action('SELECT_CONTRACTOR', { iteration_id: iterationId })];
+  const selected = snapshot('ACCEPTED_BY_UK');
+  selected.case.selection = { selection_id: selectionId, contractor: { contractor_id: contractorId, name: 'Подрядчик Б' } };
+  selected.case.allowed_actions = [action('SEND_ASSIGNMENT', { selection_id: selectionId, iteration_id: iterationId })];
+  const sent = snapshot('SENT_TO_CONTRACTOR');
+  sent.case.selection = selected.case.selection;
+  sent.case.assignment = { assignment_id: id(8), contractor: { contractor_id: contractorId, name: 'Подрядчик Б' }, decision: 'PENDING' };
+  const api: CaseReadTransport = { list: vi.fn(), snapshot: vi.fn().mockResolvedValueOnce(before)
+    .mockResolvedValueOnce(selected).mockResolvedValueOnce(selected).mockResolvedValue(sent) };
+  let sendAttempts = 0;
+  const writes: Array<{ path: string; key: string | null }> = [];
+  const fetch = vi.fn().mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path.endsWith('/contractor-candidates')) return Response.json({ iteration_id: iterationId,
+      items: [{ contractor_id: contractorId, display_name: 'Подрядчик Б' }] });
+    writes.push({ path, key: new Headers(init?.headers).get('Idempotency-Key') });
+    if (path.endsWith('/send-assignment') && ++sendAttempts === 1) return new Response('{}', { status: 500 });
+    return commandSuccess(path);
+  });
+  const view = renderReactTree(<UkWorkflowCaseView caseId={caseId} role="UK_EMPLOYEE" contextKey="partial"
+    transport={api} authorizedFetch={fetch} />, { adapter });
+  try {
+    await selectCandidate(view);
+    await send(view);
+    await vi.waitFor(() => expect(view.container.textContent).toContain('выбран, но задание ещё не отправлено'));
+    expect(view.container.textContent).toContain('Повторить отправку');
+    expect(writes.map(write => write.path.split('/').at(-1))).toEqual(['select-contractor', 'send-assignment']);
+    expect(writes[0]?.key).not.toBe(writes[1]?.key);
+    await send(view);
+    await vi.waitFor(() => expect(view.container.textContent).toContain('Ожидаем принятия'));
+    expect(writes.map(write => write.path.split('/').at(-1))).toEqual(['select-contractor', 'send-assignment', 'send-assignment']);
   } finally { view.unmount(); }
 });
 
@@ -270,10 +302,10 @@ test('semantic rejection is visible and does not change business state', async (
   const view = renderReactTree(<UkWorkflowCaseView caseId={caseId} role="UK_EMPLOYEE"
     contextKey="semantic" transport={api} authorizedFetch={fetch} />, { adapter });
   try {
-    await vi.waitFor(() => expect(view.container.textContent).toContain('Принять случай'));
+    await vi.waitFor(() => expect(view.container.textContent).toContain('Принять обращение'));
     await send(view);
     await vi.waitFor(() => expect(view.container.textContent).toContain('Действие больше недоступно'));
-    expect(view.container.textContent).toContain('Создано');
+    expect(view.container.textContent).toContain('Обращение отправлено');
     expect(api.snapshot).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledTimes(1);
   } finally { view.unmount(); }
@@ -330,7 +362,7 @@ test('409 refetch removes stale form and never retries or retargets it', async (
   try {
     await vi.waitFor(() => expect(view.container.querySelector('[name="contractor_id"]')).not.toBeNull());
     await selectCandidate(view); await send(view);
-    await vi.waitFor(() => expect(view.container.textContent).toContain('Случай изменился'));
+    await vi.waitFor(() => expect(view.container.textContent).toContain('Обращение изменилось'));
     const mutations = fetch.mock.calls.filter(([path]) => String(path).endsWith('/select-contractor'));
     expect(mutations).toHaveLength(1);
     expect(JSON.parse(mutations[0]![1].body)).toEqual({ contractor_id: contractorId, iteration_id: iterationId });

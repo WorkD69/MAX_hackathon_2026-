@@ -33,7 +33,7 @@ function change(element: HTMLInputElement | HTMLTextAreaElement, value: string) 
   element.dispatchEvent(new Event('input', { bubbles: true }));
   element.dispatchEvent(new Event('change', { bubbles: true }));
 }
-afterEach(() => queryClient.clear());
+afterEach(() => { queryClient.clear(); sessionStorage.clear(); });
 
 test('local file can be removed before upload and uploaded draft uses explicit inclusion actions', async () => {
   const cmd = commands();
@@ -59,6 +59,45 @@ test('local file can be removed before upload and uploaded draft uses explicit i
     expect(view.container.textContent).toContain('Не включён в результат');
     expect(view.container.textContent).toContain('Загруженный материал');
     expect(cmd.upload).toHaveBeenCalledTimes(1);
+  } finally { view.unmount(); }
+});
+
+test('PHOTO rejects text and 11 MiB files before upload with an actionable reason', async () => {
+  const cmd = commands();
+  const view = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="photo-validation"
+    read={read(executor())} commands={cmd} />);
+  try {
+    await flush();
+    const input = view.container.querySelector('[name=resultFile]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['not a photo'], 'proof.txt', { type: 'text/plain' })] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { (view.container.querySelector('[data-testid=upload-material]') as HTMLButtonElement).click(); });
+    expect(view.container.textContent).toContain('Добавьте фотографию JPG или PNG.');
+    expect(cmd.upload).not.toHaveBeenCalled();
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File([new Uint8Array(11 * 1024 * 1024)], 'huge.jpg', { type: 'image/jpeg' })] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { (view.container.querySelector('[data-testid=upload-material]') as HTMLButtonElement).click(); });
+    expect(view.container.textContent).toContain('не больше 10 МиБ');
+    expect(cmd.upload).not.toHaveBeenCalled();
+  } finally { view.unmount(); }
+});
+
+test('one result action uploads a selected local photo and then submits its persisted id', async () => {
+  const cmd = commands();
+  const view = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="single-result-action"
+    read={read(executor())} commands={cmd} />);
+  try {
+    await flush();
+    const input = view.container.querySelector('[name=resultFile]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['photo'], 'proof.jpg', { type: 'image/jpeg' })] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { change(view.container.querySelector('[name=resultDescription]') as HTMLTextAreaElement, 'Работа выполнена'); });
+    await act(async () => { (view.container.querySelector('[data-testid=submit-result]') as HTMLButtonElement).click(); });
+    await flush();
+    expect(cmd.upload).toHaveBeenCalledTimes(1);
+    expect(cmd.submit).toHaveBeenCalledWith(ids.case, expect.objectContaining({
+      description: 'Работа выполнена', material_attachment_ids: [ids.case],
+    }));
   } finally { view.unmount(); }
 });
 
@@ -103,6 +142,27 @@ test('previously uploaded current-stage material is restored from allowed activi
   } finally { view.unmount(); }
 });
 
+test('excluded persisted material stays excluded after reopening and is absent from SubmitResult', async () => {
+  const value = executor({ activity: [{ activity_id: ids.case, event_id: ids.case, event_seq: 1,
+    semantic_code: 'EVT_009', occurred_at: date, iteration_no: 1,
+    actor: { role: 'CONTRACTOR_EMPLOYEE', display_name: 'Мастер A' }, text: 'Добавлен материал работы',
+    state_transition: null, domain: { result: null, comment: null, feedback: null },
+    attachments: [{ attachment_id: ids.case, file_name: 'restored.jpg', mime_type: 'image/jpeg', byte_size: 1024 }] }] });
+  const cmd = commands();
+  const first = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="exclusion" read={read(value)} commands={cmd} />);
+  await flush();
+  await act(async () => { (first.container.querySelector('[data-testid=toggle-draft-material]') as HTMLButtonElement).click(); });
+  first.unmount();
+  const reopened = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="exclusion" read={read(value)} commands={cmd} />);
+  try {
+    await flush();
+    expect(reopened.container.textContent).toContain('Не включён в результат');
+    await act(async () => { change(reopened.container.querySelector('[name=resultDescription]') as HTMLTextAreaElement, 'Готово'); });
+    await act(async () => { (reopened.container.querySelector('[data-testid=submit-result]') as HTMLButtonElement).click(); });
+    expect(cmd.submit).not.toHaveBeenCalled();
+  } finally { reopened.unmount(); }
+});
+
 test('selected-only list and detail show no LIVE Case', async () => {
   const api = read();
   api.list = vi.fn().mockResolvedValue({ items: [], next_cursor: null });
@@ -111,9 +171,9 @@ test('selected-only list and detail show no LIVE Case', async () => {
   const detail = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="selected-detail" read={api} commands={commands()} />);
   try {
     await flush();
-    await vi.waitFor(() => expect(detail.container.textContent).toContain('Случай недоступен'));
+    await vi.waitFor(() => expect(detail.container.textContent).toContain('Обращение недоступно'));
     expect(list.container.querySelectorAll('[data-case-id]')).toHaveLength(0);
-    expect(detail.container.textContent).toContain('Случай недоступен');
+    expect(detail.container.textContent).toContain('Обращение недоступно');
     expect(detail.container.textContent).not.toContain('Протечка');
   } finally { list.unmount(); detail.unmount(); }
 });
@@ -193,7 +253,7 @@ test('upload does not complete Case; SubmitResult uses exact target once and say
       iteration_id: ids.iteration, description: 'Устранено', material_attachment_ids: [ids.case] });
     await act(async () => { finish({ state: 'AWAITING_RESULT_CHECK', notification: { status: 'QUEUED' } }); });
     await flush();
-    expect(view.container.textContent).toContain('Результат отправлен на проверку');
+    expect(view.container.textContent).toContain('Результат отправлен. Житель сможет его проверить.');
     expect(view.container.querySelector('input[type=checkbox], [data-testid=toggle-draft-material]')).toBeNull();
     expect(view.container.textContent).not.toContain('доставлено');
     expect(view.container.textContent).not.toContain('Случай завершён');
@@ -216,7 +276,7 @@ test('409 refetch removes old A surface without retry or retarget', async () => 
     await flush();
     expect(cmd.comment).toHaveBeenCalledTimes(1);
     expect(api.snapshot).toHaveBeenCalledTimes(2);
-    expect(view.container.textContent).toContain('Случай недоступен');
+    expect(view.container.textContent).toContain('Обращение недоступно');
     expect(view.container.querySelector('[name=resultDescription]')).toBeNull();
   } finally { view.unmount(); }
 });
@@ -233,9 +293,9 @@ test('same contractor rework offers N+1 work without another acceptance', async 
 });
 
 test.each([
-  ['NONE', 'Дополнительные материалы не обязательны'],
-  ['PHOTO', 'Нужна фотография результата'],
-  ['FILE', 'Нужен файл результата'],
+  ['NONE', 'Фото или файл необязательны'],
+  ['PHOTO', 'хотя бы одну фотографию JPG или PNG'],
+  ['FILE', 'добавьте файл: PDF'],
 ] as const)('authoritative %s requirement is rendered', async (requirement, label) => {
   const value = executor({ category: { name: 'Вода', result_requirement: requirement } });
   const view = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey={`requirement-${requirement}`}
@@ -261,7 +321,7 @@ test('semantic SubmitResult error never announces success', async () => {
     expect(cmd.submit).toHaveBeenCalledTimes(1);
     expect(view.container.textContent).toContain('Не удалось выполнить действие');
     expect(view.container.textContent).not.toContain('Материал не подходит');
-    expect(view.container.textContent).not.toContain('Результат отправлен на проверку');
+    expect(view.container.textContent).not.toContain('Результат отправлен. Житель сможет его проверить.');
   } finally { view.unmount(); }
 });
 

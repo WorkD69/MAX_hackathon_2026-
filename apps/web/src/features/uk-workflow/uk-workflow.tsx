@@ -6,15 +6,15 @@ import type { CaseReadTransport } from '../cases/read/read-transport.js';
 import { createUkActionExecutor, readContractorCandidates, UkCommandError } from './uk-transport.js';
 import './uk-workflow.css';
 import { displayName } from '../cases/read/presentation.js';
-import type { MaterialTransport } from '../cases/read/materials.js';
+import { AttachmentList, type MaterialTransport } from '../cases/read/materials.js';
 
 type Submit = (payload: ActionPayload) => Promise<void>;
 
 function semanticErrorText(error: UkCommandError): string {
   switch (error.code) {
-    case 'INVALID_STATE': return 'Действие больше недоступно. Обновите случай.';
+    case 'INVALID_STATE': return 'Действие больше недоступно. Обновите обращение.';
     case 'CONTRACTOR_NOT_AVAILABLE': return 'Подрядчик сейчас недоступен. Выберите другого.';
-    case 'TERMINAL_CASE': return 'Случай уже завершён.';
+    case 'TERMINAL_CASE': return 'Обращение уже закрыто.';
     case 'FORBIDDEN': return 'Недостаточно прав для этого действия.';
     case 'VALIDATION_FAILED': return 'Проверьте введённые данные.';
     default: return 'Действие недоступно. Обновите обращение и проверьте данные.';
@@ -46,10 +46,11 @@ export function UkWorkflowFacts({ snapshot }: { snapshot: CaseSnapshotOutput }) 
   </section>;
 }
 
-export function UkActionControl({ action, submit: execute, snapshot, caseId, contextKey, authorizedFetch }: {
+export function UkActionControl({ action, submit: execute, snapshot, caseId, contextKey, authorizedFetch, materialTransport }: {
   action: AllowedActionOutput; submit: Submit; snapshot?: CaseSnapshotOutput | undefined;
   caseId?: string; contextKey?: string;
   authorizedFetch?: (path: string, init?: RequestInit) => Promise<Response>;
+  materialTransport?: MaterialTransport | undefined;
 }) {
   const [contractorId, setContractorId] = useState('');
   const optionalReplacement = snapshot?.case.state === 'REWORK' && Boolean(snapshot.case.current_executor);
@@ -163,11 +164,11 @@ export function UkActionControl({ action, submit: execute, snapshot, caseId, con
       </select>
     </label>}
     {action.code === 'SELECT_CONTRACTOR' && candidates.isError &&
-      <p role="alert">Не удалось загрузить подрядчиков. Обновите случай.</p>}
+      <p role="alert">Не удалось загрузить подрядчиков. Обновите обращение.</p>}
     {action.code === 'SELECT_CONTRACTOR' && candidatesCurrent && availableCandidates.length === 0 &&
       <p>Других доступных подрядчиков нет.{currentSelection ? ' Направьте задание уже выбранному подрядчику.' : ''}</p>}
     {action.code === 'ADD_COMMENT' && <>
-      <label>Комментарий<textarea name="body" value={body} onChange={(event) => setBody(event.target.value)} /></label>
+      <label>Сообщение участникам обращения<textarea name="body" value={body} onChange={(event) => setBody(event.target.value)} /></label>
       <label>Вложение (необязательно)<input name="files" type="file" multiple
         onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /></label>
     </>}
@@ -183,6 +184,11 @@ export function UkActionControl({ action, submit: execute, snapshot, caseId, con
       <label className="uk-workflow__check"><input name="basis_confirmed" type="checkbox" checked={confirmed}
         onChange={(event) => setConfirmed(event.target.checked)} />Подтверждаю основание вручную</label>
     </>}
+    {(action.code === 'COMPLETE_CASE' || action.code === 'COMPLETE_WITH_EXPLANATION') && snapshot?.case.current_result && <div className="uk-workflow__current-result">
+      <h3>Результат для решения УК</h3>
+      <p>{snapshot.case.current_result.description}</p>
+      {snapshot.case.current_result.attachments.length > 0 && <AttachmentList attachments={snapshot.case.current_result.attachments} transport={materialTransport} contextKey={contextKey} />}
+    </div>}
     {action.code === 'COMPLETE_CASE' && snapshot?.case.resident_feedback?.type !== 'CONFIRMATION' && <>
       <p>Факт отсутствия ответа уже зафиксирован. Завершение — отдельное решение УК.</p>
       <label>Ссылка на процесс УК<input name="process_reference" required value={processReference}
@@ -198,8 +204,8 @@ export function UkActionControl({ action, submit: execute, snapshot, caseId, con
       <textarea name="explanation" required value={explanation} onChange={(event) => setExplanation(event.target.value)} />
     </label>}
     <button type="submit" disabled={action.code === 'SELECT_CONTRACTOR' && !selectedCandidate}>{{
-      ACCEPT_CASE: 'Принять случай', SELECT_CONTRACTOR: 'Выбрать подрядчика',
-      SEND_ASSIGNMENT: snapshot?.case.selection ? `Направить: ${displayName(snapshot.case.selection.contractor.name)}` : 'Направить задание', ADD_COMMENT: 'Добавить комментарий',
+      ACCEPT_CASE: 'Принять обращение', SELECT_CONTRACTOR: selectedCandidate ? `Назначить ${displayName(selectedCandidate.display_name)}` : 'Назначить подрядчика',
+      SEND_ASSIGNMENT: 'Повторить отправку', ADD_COMMENT: 'Отправить сообщение',
       REQUEST_CLARIFICATION: 'Запросить уточнение', RETURN_TO_REWORK: 'Вернуть на доработку',
       RECORD_NO_RESIDENT_FEEDBACK: 'Зафиксировать отсутствие ответа',
       COMPLETE_CASE: 'Завершить обращение', COMPLETE_WITH_EXPLANATION: 'Завершить с объяснением',
@@ -212,11 +218,12 @@ export function UkActionControl({ action, submit: execute, snapshot, caseId, con
 }
 
 function renderers(snapshot: CaseSnapshotOutput | undefined, caseId: string, contextKey: string,
-  authorizedFetch: (path: string, init?: RequestInit) => Promise<Response>, selectionEpoch: number): ActionRenderers {
+  authorizedFetch: (path: string, init?: RequestInit) => Promise<Response>, selectionEpoch: number,
+  materialTransport?: MaterialTransport): ActionRenderers {
   const render = (action: AllowedActionOutput, submit: Submit) =>
     <UkActionControl key={`${snapshot?.case.case_id}:${snapshot?.case.revision}:${selectionEpoch}:${action.code}:${JSON.stringify(action.target)}`}
       action={action} submit={submit} snapshot={snapshot} caseId={caseId} contextKey={contextKey}
-      authorizedFetch={authorizedFetch} />;
+      authorizedFetch={authorizedFetch} materialTransport={materialTransport} />;
   return {
     ACCEPT_CASE: (action, submit) => render(action, submit as Submit),
     SELECT_CONTRACTOR: (action, submit) => render(action, submit as Submit),
@@ -240,22 +247,38 @@ export function UkWorkflowCaseView({ caseId, role, contextKey, transport, author
   const query = useQuery({ queryKey: ['case-read', 'snapshot', contextKey, caseId, role],
     queryFn: () => transport.snapshot(caseId, role), retry: false, staleTime: 0,
     refetchOnMount: 'always', refetchOnWindowFocus: false });
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState('');
   const [semanticError, setSemanticError] = useState<string | null>(null);
   const [selectionEpoch, setSelectionEpoch] = useState(0);
   const execute = useRef(createUkActionExecutor());
   return <div className="uk-workflow">
-    {success && <p role="status">Команда принята. Обновляем данные случая.</p>}
+    {success && <p role="status">{success}</p>}
     {semanticError && <p role="alert">{semanticError}</p>}
     <CaseDetailsView caseId={caseId} role={role} contextKey={contextKey} transport={transport}
       materialTransport={materialTransport}
       summaryExtra={query.data && <UkWorkflowFacts snapshot={query.data} />}
-      actionRenderers={renderers(query.data, caseId, contextKey, authorizedFetch, selectionEpoch)} executeAction={async (action, payload) => {
-        setSuccess(false);
+      actionRenderers={renderers(query.data, caseId, contextKey, authorizedFetch, selectionEpoch, materialTransport)} executeAction={async (action, payload) => {
+        setSuccess('');
         setSemanticError(null);
         try {
           await execute.current(action, payload, { caseId, authorizedFetch, contextKey });
-          setSuccess(true);
+          if (action.code === 'SELECT_CONTRACTOR') {
+            let selectedName = 'Подрядчик';
+            try {
+              const fresh = await transport.snapshot(caseId, role);
+              selectedName = displayName(fresh.case.selection?.contractor.name ?? selectedName);
+              const send = fresh.case.allowed_actions.find(item => item.code === 'SEND_ASSIGNMENT');
+              if (!send || !fresh.case.selection) { setSuccess(`${selectedName} выбран, но задание ещё не отправлено.`); return; }
+              await execute.current(send, { selection_id: send.target.selection_id, iteration_id: send.target.iteration_id },
+                { caseId, authorizedFetch, contextKey });
+              setSuccess(`Задание отправлено ${selectedName}. Ожидаем принятия.`);
+            } catch { setSuccess(`${selectedName} выбран, но задание ещё не отправлено.`); }
+            return;
+          }
+          if (action.code === 'SEND_ASSIGNMENT') setSuccess(`Задание отправлено ${displayName(query.data?.case.selection?.contractor.name ?? 'подрядчику')}. Ожидаем принятия.`);
+          else if (action.code === 'COMPLETE_CASE' || action.code === 'COMPLETE_WITH_EXPLANATION') setSuccess('Обращение закрыто.');
+          else if (action.code === 'ADD_COMMENT') setSuccess('Сообщение отправлено участникам обращения.');
+          else setSuccess('Действие выполнено. Данные обращения обновлены.');
         } catch (error) {
           if (error instanceof UkCommandError && error.status === 409 && action.code === 'SELECT_CONTRACTOR') {
             setSelectionEpoch((value) => value + 1);

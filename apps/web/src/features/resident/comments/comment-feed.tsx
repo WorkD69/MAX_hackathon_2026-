@@ -6,8 +6,8 @@ import { isStaleResponse, type ResidentTransport } from '../resident-transport.j
 import './comment-feed.css';
 import { displayName, formatMoscowTime, stageLabel } from '../../cases/read/presentation.js';
 
-const STALE_MESSAGE = 'Случай изменился с момента открытия. Данные обновлены.';
-const SEMANTIC_ERROR = 'Не удалось отправить сообщение. Обновите случай и повторите.';
+const STALE_MESSAGE = 'Обращение изменилось с момента открытия. Данные обновлены.';
+const SEMANTIC_ERROR = 'Не удалось отправить сообщение. Обновите обращение и повторите.';
 
 export interface ResidentCommentFeedProps {
   readonly transport: ResidentTransport;
@@ -92,7 +92,7 @@ export function ResidentCommentFeed({ transport, snapshot, onMutated, contextKey
         intent.current.close();
         setTargetId('');
         setStale(true);
-        setError(STALE_MESSAGE);
+        setError(null);
         await onMutated();
       } else if (mutationError(cause).code === 'IDEMPOTENCY_KEY_REUSE') {
         intent.current.close();
@@ -104,6 +104,7 @@ export function ResidentCommentFeed({ transport, snapshot, onMutated, contextKey
     }
   }
 
+  if (composerOnly && !composerOpen && !targetRequired) return null;
   return <section className="resident-comments" aria-label="Комментарии по обращению">
     <h2>Комментарии</h2>
     {stale && <p role="alert" className="resident-comments__stale">{STALE_MESSAGE}</p>}
@@ -129,9 +130,10 @@ export function ResidentCommentFeed({ transport, snapshot, onMutated, contextKey
         </select>
       </div>}
       <div className="resident-comments__field">
-        <label htmlFor="resident-comment">Сообщение</label>
+        <label htmlFor="resident-comment">Сообщение по обращению</label>
         <textarea id="resident-comment" data-testid="comment-input" rows={3} value={body} disabled={addComment.isPending}
           onChange={(event) => setBody(event.target.value)} />
+        <small>Сообщение увидят УК и назначенный подрядчик.</small>
       </div>
       <div className="resident-comments__field">
         <label htmlFor="resident-comment-files">Файлы к сообщению</label>

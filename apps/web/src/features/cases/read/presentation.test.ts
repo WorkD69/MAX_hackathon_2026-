@@ -4,14 +4,14 @@ import { statusLabel, responsibilityLabel } from './presentation.js';
 
 describe('TG-021 eight-state presentation', () => {
   const labels: Record<CaseStateOutput, string> = {
-    CREATED: 'Создано',
-    ACCEPTED_BY_UK: 'Принято УК',
-    SENT_TO_CONTRACTOR: 'Передано подрядчику',
-    EXECUTION: 'Исполнение',
-    AWAITING_RESULT_CHECK: 'Ожидается проверка результата',
-    REMARKS_REVIEW: 'Замечания рассматриваются',
-    REWORK: 'Доработка',
-    COMPLETED: 'Завершено',
+    CREATED: 'Обращение отправлено',
+    ACCEPTED_BY_UK: 'УК приняла обращение',
+    SENT_TO_CONTRACTOR: 'Задание отправлено подрядчику',
+    EXECUTION: 'Подрядчик выполняет работу',
+    AWAITING_RESULT_CHECK: 'Житель проверяет результат',
+    REMARKS_REVIEW: 'УК рассматривает замечание',
+    REWORK: 'Нужна повторная работа',
+    COMPLETED: 'Обращение закрыто',
   };
 
   it.each(ROLES)('shows all eight states for %s without role-derived transitions', (role: RoleOutput) => {
