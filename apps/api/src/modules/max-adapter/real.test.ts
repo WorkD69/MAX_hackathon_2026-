@@ -104,7 +104,8 @@ describe('RealMaxAdapter request contract', () => {
     const fetcher = vi.fn(async (_url: string | URL, _init?: RequestInit) => new Response(JSON.stringify({
       message: { body: { mid: 'mid.123', seq: 1, text: 'ok', attachments: null } },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-    const adapter = new RealMaxAdapter(config(), new PerChatSendCoordinator(), fetcher);
+    const runtime = config({ PUBLIC_APP_URL: 'https://157-22-231-21.sslip.io/' });
+    const adapter = new RealMaxAdapter(runtime, new PerChatSendCoordinator(), fetcher);
     await expect(adapter.sendMessage('-70801090403050', {
       text: 'Проверка', openAppAction: { type: 'open_app', text: 'Открыть приложение' },
     })).resolves.toEqual({ providerMessageId: 'mid.123' });
@@ -119,10 +120,22 @@ describe('RealMaxAdapter request contract', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       text: 'Проверка',
       attachments: [{ type: 'inline_keyboard', payload: { buttons: [[{
-        type: 'open_app', text: 'Открыть приложение',
+        type: 'open_app', text: 'Открыть приложение', web_app: runtime.PUBLIC_APP_URL,
       }]] } }],
     });
     expect(String(init.body)).not.toContain(token);
+    expect(String(init.body)).not.toContain(runtime.APP_SESSION_SECRET);
+    expect(String(init.body)).not.toContain(runtime.MAX_WEBHOOK_SECRET);
+  });
+
+  it.each([undefined, null, ''])('does not send an open_app button with absent URL %s', async url => {
+    const fetcher = vi.fn(async () => new Response('{}', { status: 200 }));
+    const adapter = new RealMaxAdapter(config({ PUBLIC_APP_URL: url as unknown as string }),
+      new PerChatSendCoordinator(), fetcher);
+    await expect(adapter.sendMessage('42', {
+      text: 'Проверка', openAppAction: { type: 'open_app', text: 'Открыть приложение' },
+    })).rejects.toMatchObject({ safeCode: 'MAX_OPEN_APP_URL_INVALID' });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it.each([

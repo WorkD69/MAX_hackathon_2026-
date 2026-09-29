@@ -67,12 +67,15 @@ function safeChatId(value: string): string {
   return value;
 }
 
-function messageBody(message: MaxOutgoingMessage): Record<string, unknown> {
+function messageBody(message: MaxOutgoingMessage, publicAppUrl: string): Record<string, unknown> {
   const body: Record<string, unknown> = { text: message.text };
   if (message.openAppAction) {
+    if (typeof publicAppUrl !== 'string' || !publicAppUrl.trim()) {
+      throw new MaxAdapterError('permanent', 'MAX_OPEN_APP_URL_INVALID');
+    }
     body.attachments = [{
       type: 'inline_keyboard',
-      payload: { buttons: [[{ type: 'open_app', text: 'Открыть приложение' }]] },
+      payload: { buttons: [[{ type: 'open_app', text: 'Открыть приложение', web_app: publicAppUrl }]] },
     }];
   }
   return body;
@@ -82,6 +85,7 @@ export class RealMaxAdapter implements MaxAdapter {
   private readonly token: string;
   private readonly fetcher: MaxFetch;
   private readonly timeoutMs: number;
+  private readonly publicAppUrl: string;
   private readonly sendCoordinator: PerChatSendCoordinator;
 
   constructor(config: RuntimeConfig, sendCoordinator: PerChatSendCoordinator, fetcher: MaxFetch = fetch) {
@@ -93,6 +97,7 @@ export class RealMaxAdapter implements MaxAdapter {
     }
     this.token = config.MAX_BOT_TOKEN;
     this.timeoutMs = config.MAX_REQUEST_TIMEOUT_MS;
+    this.publicAppUrl = config.PUBLIC_APP_URL;
     this.fetcher = fetcher;
     this.sendCoordinator = sendCoordinator;
   }
@@ -104,7 +109,7 @@ export class RealMaxAdapter implements MaxAdapter {
     url.searchParams.set('chat_id', chatId);
     const response = await this.request(url, {
       method: 'POST',
-      body: JSON.stringify(messageBody(message)),
+      body: JSON.stringify(messageBody(message, this.publicAppUrl)),
     });
     if (response.status !== 200) throw classifyHttpFailure(response.status);
     const parsed = sendResponse.safeParse(await this.safeJson(response));
