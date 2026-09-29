@@ -68,6 +68,7 @@ test('PHOTO rejects text and 11 MiB files before upload with an actionable reaso
     read={read(executor())} commands={cmd} />);
   try {
     await flush();
+    await vi.waitFor(() => expect(view.container.querySelector('[name=resultFile]')).not.toBeNull());
     const input = view.container.querySelector('[name=resultFile]') as HTMLInputElement;
     Object.defineProperty(input, 'files', { configurable: true, value: [new File(['not a photo'], 'proof.txt', { type: 'text/plain' })] });
     await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
@@ -98,6 +99,79 @@ test('one result action uploads a selected local photo and then submits its pers
     expect(cmd.submit).toHaveBeenCalledWith(ids.case, expect.objectContaining({
       description: 'Работа выполнена', material_attachment_ids: [ids.case],
     }));
+  } finally { view.unmount(); }
+});
+
+test('failed photo upload explains that the selected file was not saved or submitted', async () => {
+  const cmd = commands();
+  cmd.upload = vi.fn().mockRejectedValue(Object.assign(new Error('invalid image'),
+    { status: 422, code: 'VALIDATION_FAILED' }));
+  const view = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="upload-failure"
+    read={read(executor())} commands={cmd} />);
+  try {
+    await flush();
+    await vi.waitFor(() => expect(view.container.querySelector('[name=resultFile]')).not.toBeNull());
+    const input = view.container.querySelector('[name=resultFile]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { configurable: true,
+      value: [new File(['fake'], 'fake.png', { type: 'image/png' })] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { change(view.container.querySelector('[name=resultDescription]') as HTMLTextAreaElement, 'Готово'); });
+    await act(async () => { (view.container.querySelector('[data-testid=submit-result]') as HTMLButtonElement).click(); });
+    await flush();
+    expect(cmd.upload).toHaveBeenCalledTimes(1);
+    expect(cmd.submit).not.toHaveBeenCalled();
+    expect(view.container.textContent).toContain('Фото не загружено');
+    expect(view.container.textContent).toContain('Результат не отправлен');
+    expect(view.container.textContent).not.toContain('Загруженные материалы · 1');
+  } finally { view.unmount(); }
+});
+
+test('submit failure after upload says photo is saved and retries without another upload', async () => {
+  const cmd = commands();
+  cmd.submit = vi.fn().mockRejectedValueOnce(Object.assign(new Error('recipient unavailable'),
+    { status: 422, code: 'RESULT_RECIPIENT_UNAVAILABLE' })).mockResolvedValueOnce({
+      command_id: ids.case, case_id: ids.case, state: 'AWAITING_RESULT_CHECK', revision: 4,
+      event_ids: [ids.case], created: { result_id: ids.case, notification_intent_id: ids.assignment },
+      notification: { status: 'QUEUED' },
+    });
+  const view = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="submit-failure"
+    read={read(executor())} commands={cmd} />);
+  try {
+    await flush();
+    await vi.waitFor(() => expect(view.container.querySelector('[name=resultFile]')).not.toBeNull());
+    const input = view.container.querySelector('[name=resultFile]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { configurable: true,
+      value: [new File(['photo'], 'saved.jpg', { type: 'image/jpeg' })] });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { change(view.container.querySelector('[name=resultDescription]') as HTMLTextAreaElement, 'Готово'); });
+    await act(async () => { (view.container.querySelector('[data-testid=submit-result]') as HTMLButtonElement).click(); });
+    await flush();
+    expect(view.container.textContent).toContain('Фото загружено и сохранено');
+    expect(view.container.textContent).toContain('Результат не отправлен');
+    await act(async () => { (view.container.querySelector('[data-testid=submit-result]') as HTMLButtonElement).click(); });
+    await flush();
+    expect(cmd.upload).toHaveBeenCalledTimes(1);
+    expect(cmd.submit).toHaveBeenCalledTimes(2);
+  } finally { view.unmount(); }
+});
+
+test('successful rejection leaves case without refetching inaccessible detail', async () => {
+  const api = read();
+  api.snapshot = vi.fn().mockResolvedValueOnce(snapshot()).mockRejectedValue({ status: 404 });
+  const cmd = commands();
+  const onRejected = vi.fn();
+  const view = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="reject-redirect"
+    read={api} commands={cmd} onRejected={onRejected} />);
+  try {
+    await flush();
+    await act(async () => { change(view.container.querySelector('[name=rejectReason]') as HTMLTextAreaElement, 'Нет специалистов'); });
+    await act(async () => { (view.container.querySelector('[data-testid=reject-assignment]') as HTMLButtonElement).click(); });
+    await flush();
+    expect(cmd.reject).toHaveBeenCalledTimes(1);
+    expect(api.snapshot).toHaveBeenCalledTimes(1);
+    expect(onRejected).toHaveBeenCalledTimes(1);
+    expect(view.container.textContent).not.toContain('Действие выполнено, но не удалось обновить');
+    expect(view.container.textContent).not.toContain('Обращение недоступно');
   } finally { view.unmount(); }
 });
 
@@ -151,6 +225,7 @@ test('excluded persisted material stays excluded after reopening and is absent f
   const cmd = commands();
   const first = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="exclusion" read={read(value)} commands={cmd} />);
   await flush();
+  await vi.waitFor(() => expect(first.container.querySelector('[data-testid=toggle-draft-material]')).not.toBeNull());
   await act(async () => { (first.container.querySelector('[data-testid=toggle-draft-material]') as HTMLButtonElement).click(); });
   first.unmount();
   const reopened = renderReactTree(<ContractorCaseView caseId={ids.case} contextKey="exclusion" read={read(value)} commands={cmd} />);
@@ -196,9 +271,8 @@ test('pending shows limited context, accept, and validated rejection reason', as
     await act(async () => { (view.container.querySelector('[data-testid=reject-assignment]') as HTMLButtonElement).click(); });
     await flush();
     expect(cmd.reject).toHaveBeenCalledWith(ids.case, ids.assignment, 'Нет специалистов');
-    await act(async () => { (view.container.querySelector('[data-testid=accept-assignment]') as HTMLButtonElement).click(); });
-    await flush();
-    expect(cmd.accept).toHaveBeenCalledWith(ids.case, ids.assignment);
+    expect(view.container.querySelector('[data-testid=accept-assignment]')).toBeNull();
+    expect(view.container.textContent).toContain('Отказ отправлен. Обращение возвращено в УК.');
   } finally { view.unmount(); }
 });
 
@@ -319,7 +393,7 @@ test('semantic SubmitResult error never announces success', async () => {
     await act(async () => { (view.container.querySelector('[data-testid=submit-result]') as HTMLButtonElement).click(); });
     await flush();
     expect(cmd.submit).toHaveBeenCalledTimes(1);
-    expect(view.container.textContent).toContain('Не удалось выполнить действие');
+    expect(view.container.textContent).toContain('Результат не отправлен');
     expect(view.container.textContent).not.toContain('Материал не подходит');
     expect(view.container.textContent).not.toContain('Результат отправлен. Житель сможет его проверить.');
   } finally { view.unmount(); }

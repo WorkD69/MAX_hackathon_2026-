@@ -63,17 +63,25 @@ export function ProductNavigation() {
 function ListRoute() {
   const { read, key, role } = useProductContext();
   const navigate = useNavigate();
+  const location = useLocation();
   if (!role) return <p>Выберите роль.</p>;
-  return <CaseListView transport={read} contextKey={key} onOpen={id => { void navigate(`/cases/${id}`); }} />;
+  const notice = location.state && typeof location.state === 'object' && 'notice' in location.state
+    && typeof location.state.notice === 'string' ? location.state.notice : null;
+  return <>{role === 'CONTRACTOR_EMPLOYEE' && notice && <p role="status">{notice}</p>}
+    <CaseListView transport={read} contextKey={key} onOpen={id => { void navigate(`/cases/${id}`); }} /></>;
 }
 
 function DetailsRoute() {
   const { read, resident, key, role, session } = useProductContext();
   const commands = useContractorCommands();
+  const navigate = useNavigate();
   const { caseId } = useParams();
   if (!role || !caseId) return <p>Выберите роль для просмотра обращения.</p>;
   if (role === 'RESIDENT') return <ResidentCaseView caseId={caseId} readTransport={read} residentTransport={resident} contextKey={key} />;
-  if (role === 'CONTRACTOR_EMPLOYEE') return <ContractorCaseView caseId={caseId} read={read} commands={commands} contextKey={key} materialTransport={resident} />;
+  if (role === 'CONTRACTOR_EMPLOYEE') return <ContractorCaseView caseId={caseId} read={read} commands={commands} contextKey={key}
+    materialTransport={resident} onRejected={() => {
+      void navigate('/cases', { replace: true, state: { notice: 'Отказ отправлен. Обращение возвращено в УК.' } });
+    }} />;
   return <UkWorkflowCaseView caseId={caseId} role={role} transport={read} contextKey={key} authorizedFetch={session.authorizedFetch} materialTransport={resident} />;
 }
 

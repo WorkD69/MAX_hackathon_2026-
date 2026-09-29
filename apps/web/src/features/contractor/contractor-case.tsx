@@ -14,7 +14,7 @@ import './contractor-case.css';
 type Case = ContractorCaseSnapshotOutput['case'];
 type Operation = 'accept' | 'reject' | 'comment' | 'upload' | 'submit';
 const messages: Record<Operation, string> = {
-  accept: 'Назначение принято.', reject: 'Отказ отправлен.',
+  accept: 'Назначение принято.', reject: 'Отказ отправлен. Обращение возвращено в УК.',
   comment: 'Комментарий добавлен.',
   upload: 'Файл загружен. Работа ещё не отправлена на проверку.',
   submit: 'Результат отправлен. Житель сможет его проверить.',
@@ -23,6 +23,16 @@ const messages: Record<Operation, string> = {
 function isHttpStatus(error: unknown, status: number): boolean {
   return typeof error === 'object' && error !== null && 'status' in error && error.status === status;
 }
+
+function isCommandCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
+}
+
+function accessOrStale(error: unknown): boolean {
+  return [403, 404, 409].some(status => isHttpStatus(error, status));
+}
+
+class ResultFlowError extends Error {}
 
 function Details({ value, materialTransport, contextKey }: { value: Case; materialTransport?: MaterialTransport | undefined; contextKey: string }) {
   return <section className="contractor-case__details" aria-label="Контекст назначения">
@@ -53,8 +63,8 @@ function requirement(value: Case['category']['result_requirement']): string {
   }
 }
 
-export function ContractorCaseList({ contextKey, read, onOpen }: {
-  contextKey: string; read: CaseReadTransport; onOpen: (caseId: string) => void;
+export function ContractorCaseList({ contextKey, read, onOpen, notice }: {
+  contextKey: string; read: CaseReadTransport; onOpen: (caseId: string) => void; notice?: string;
 }) {
   const platform = usePlatform();
   const query = useQuery({ queryKey: ['case-read', 'list', contextKey], queryFn: () => read.list(),
@@ -63,6 +73,7 @@ export function ContractorCaseList({ contextKey, read, onOpen }: {
   useEffect(() => platform.subscribeForeground(refresh), [platform, refresh]);
   return <section className="contractor-case contractor-case__list" aria-label="Назначения подрядчика">
     <header><h1>Назначения</h1><button type="button" onClick={refresh}>Обновить</button></header>
+    {notice && <p role="status">{notice}</p>}
     {query.isPending ? <p role="status">Загрузка назначений…</p>
       : query.isError ? <p role="alert">Не удалось загрузить назначения.</p>
         : query.data.items.length === 0 ? <p>Назначений пока нет.</p>
@@ -131,6 +142,24 @@ function WorkPanel({ surface, commands, caseId, run, busy }: {
   const hasRequiredMaterial = requirementValue === 'NONE' || selected.some((item) =>
     requirementValue === 'FILE' || item.mime === 'image/jpeg' || item.mime === 'image/png')
     || Boolean(file && (requirementValue === 'FILE' || file.type === 'image/jpeg' || file.type === 'image/png'));
+  const uploadSelected = async (selectedFile: File): Promise<string> => {
+    let result;
+    try {
+      result = await commands.upload(caseId, assignmentId, iterationId, selectedFile);
+    } catch (cause) {
+      if (accessOrStale(cause)) throw cause;
+      const invalidPhoto = requirementValue === 'PHOTO' && isCommandCode(cause, 'VALIDATION_FAILED');
+      throw new ResultFlowError(invalidPhoto
+        ? 'Не удалось выполнить действие. Фото не загружено. Проверьте, что файл содержит настоящее изображение JPG или PNG. Результат не отправлен.'
+        : 'Не удалось выполнить действие. Материал не загружен и остаётся выбранным локально. Результат не отправлен; повторите загрузку.');
+    }
+    setMaterials(current => [...current, {
+      id: result.created.attachment_id, name: selectedFile.name, mime: selectedFile.type, selected: true,
+    }]);
+    setFile(null);
+    if (fileInput.current) fileInput.current.value = '';
+    return result.created.attachment_id;
+  };
   useEffect(() => {
     setMaterials(current => {
       const missing = fromActivity().filter(file => !current.some(item => item.id === file.id));
@@ -175,14 +204,8 @@ function WorkPanel({ surface, commands, caseId, run, busy }: {
           if (requirementValue === 'PHOTO' && !['image/jpeg', 'image/png'].includes(file.type)) {
             setValidation('Добавьте фотографию JPG или PNG.'); return;
           }
-          setValidation(''); void run('upload', async () => {
-          const result = await commands.upload(caseId, assignmentId, iterationId, file);
-          setMaterials((current) => [...current, {
-            id: result.created.attachment_id, name: file.name, mime: file.type, selected: true,
-          }]);
-          setFile(null);
-          if (fileInput.current) fileInput.current.value = '';
-        }); }}>Загрузить материал</button>
+          setValidation(''); void run('upload', async () => { await uploadSelected(file); });
+        }}>Загрузить материал</button>
     </div>}
     {draftOpen && materials.length > 0 && <details className="contractor-case__uploaded" aria-label="Загруженные материалы">
       <summary>Загруженные материалы · {materials.length}</summary>
@@ -199,7 +222,9 @@ function WorkPanel({ surface, commands, caseId, run, busy }: {
       </div>)}
     </details>}
     {draftOpen && <div className="contractor-case__field">
-      <p>Файл можно загрузить заранее. Работа поступит на проверку после отправки результата.</p>
+      <p>{file ? 'Выбранный файл пока не сохранён. При отправке результата он сначала загрузится.'
+        : materials.length ? 'Загруженные материалы сохранены. При отправке результата будут использованы включённые файлы.'
+          : 'Материал можно загрузить заранее. Работа поступит на проверку после отправки результата.'}</p>
       {validation && <p role="alert" id="contractor-result-error">{validation}</p>}
       <button type="button" data-testid="submit-result" disabled={busy}
         onClick={() => {
@@ -212,24 +237,31 @@ function WorkPanel({ surface, commands, caseId, run, busy }: {
           void run('submit', async () => {
             const materialIds = selected.map(item => item.id);
             if (file) {
-              const created = await commands.upload(caseId, assignmentId, iterationId, file);
-              materialIds.push(created.created.attachment_id);
-              setMaterials(current => [...current, { id: created.created.attachment_id, name: file.name, mime: file.type, selected: true }]);
-              setFile(null);
-              if (fileInput.current) fileInput.current.value = '';
+              materialIds.push(await uploadSelected(file));
             }
-            await commands.submit(caseId, {
-            assignment_id: assignmentId, iteration_id: iterationId,
-            description: description.trim(), material_attachment_ids: materialIds,
-          }); setSubmitted(true); });
+            try {
+              await commands.submit(caseId, {
+                assignment_id: assignmentId, iteration_id: iterationId,
+                description: description.trim(), material_attachment_ids: materialIds,
+              });
+            } catch (cause) {
+              if (accessOrStale(cause)) throw cause;
+              const saved = materialIds.length > 0
+                ? `${requirementValue === 'PHOTO' ? 'Фото' : 'Материал'} загружено и сохранено. ` : '';
+              throw new ResultFlowError(isHttpStatus(cause, 422)
+                ? `Не удалось выполнить действие. ${saved}Результат не отправлен; проверьте данные и повторите отправку.`
+                : `Не удалось выполнить действие. ${saved}Не удалось подтвердить отправку результата. Обновите обращение перед повтором.`);
+            }
+            setSubmitted(true);
+          });
         }}>Отправить результат</button>
     </div>}
   </section>;
 }
 
-export function ContractorCaseView({ caseId, contextKey, read, commands, materialTransport }: {
+export function ContractorCaseView({ caseId, contextKey, read, commands, materialTransport, onRejected }: {
   caseId: string; contextKey: string; read: CaseReadTransport; commands: ContractorCommandTransport;
-  materialTransport?: MaterialTransport | undefined;
+  materialTransport?: MaterialTransport | undefined; onRejected?: () => void;
 }) {
   const platform = usePlatform();
   const queryClient = useQueryClient();
@@ -240,6 +272,7 @@ export function ContractorCaseView({ caseId, contextKey, read, commands, materia
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
+  const [rejected, setRejected] = useState(false);
   const active = useRef(false);
   const refresh = useCallback(() => { void query.refetch(); }, [query.refetch]);
   useEffect(() => platform.subscribeForeground(refresh), [platform, refresh]);
@@ -252,6 +285,11 @@ export function ContractorCaseView({ caseId, contextKey, read, commands, materia
       await command();
       setNotice(messages[kind]);
       await queryClient.invalidateQueries({ queryKey: ['case-read', 'list', contextKey] });
+      if (kind === 'reject') {
+        setRejected(true);
+        onRejected?.();
+        return;
+      }
       const fresh = await query.refetch();
       if (fresh.isError) setError('Действие выполнено, но не удалось обновить данные обращения. Обновите страницу.');
     } catch (cause) {
@@ -264,7 +302,7 @@ export function ContractorCaseView({ caseId, contextKey, read, commands, materia
         await query.refetch();
         setError('Обращение недоступно.');
       } else {
-        setError(cause instanceof ContractorCommandError
+        setError(cause instanceof ResultFlowError ? cause.message : cause instanceof ContractorCommandError
           ? safeMutationErrorText(cause.code, cause.requestId) : 'Не удалось выполнить действие. Обновите обращение.');
       }
     } finally {
@@ -280,7 +318,7 @@ export function ContractorCaseView({ caseId, contextKey, read, commands, materia
     {stale && <p role="alert">Обращение изменилось. Данные обновлены; выберите действие заново.</p>}
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
-    {query.isPending ? <p role="status">Загрузка обращения…</p>
+    {rejected ? null : query.isPending ? <p role="status">Загрузка обращения…</p>
       : query.isError || !surface || surface.kind === 'hidden'
         ? <p role="alert">Обращение недоступно.</p>
         : <>
