@@ -1,14 +1,14 @@
 import type { CaseStateOutput, RoleOutput } from '@max-smart-city/contracts';
 
 const STATUS_LABELS: Record<CaseStateOutput, string> = {
-  CREATED: 'Создано',
-  ACCEPTED_BY_UK: 'Принято УК',
-  SENT_TO_CONTRACTOR: 'Передано подрядчику',
-  EXECUTION: 'Исполнение',
-  AWAITING_RESULT_CHECK: 'Ожидается проверка результата',
-  REMARKS_REVIEW: 'Замечания рассматриваются',
-  REWORK: 'Доработка',
-  COMPLETED: 'Завершено',
+  CREATED: 'Обращение отправлено',
+  ACCEPTED_BY_UK: 'УК приняла обращение',
+  SENT_TO_CONTRACTOR: 'Задание отправлено подрядчику',
+  EXECUTION: 'Подрядчик выполняет работу',
+  AWAITING_RESULT_CHECK: 'Житель проверяет результат',
+  REMARKS_REVIEW: 'УК рассматривает замечание',
+  REWORK: 'Нужна повторная работа',
+  COMPLETED: 'Обращение закрыто',
 };
 
 export function statusLabel(state: CaseStateOutput): string {
@@ -35,7 +35,9 @@ export function stageLabel(number: number): string {
 
 export function caseReference(number: string): string {
   const match = /^(?:C-)?([0-9a-f]{8})-[0-9a-f-]{27}$/i.exec(number);
-  return match ? `№${match[1]!.toUpperCase()}` : number;
+  if (match) return `№${match[1]!.toUpperCase()}`;
+  const short = /^C-(\d+)$/i.exec(number);
+  return short ? `№${short[1]}` : number;
 }
 
 export function displayName(name: string): string {

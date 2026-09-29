@@ -1,21 +1,22 @@
 .app-shell--session {
   width: min(100%, 1024px);
   min-height: 100dvh;
+  background: var(--background);
 }
 
 .app-shell--session .app-shell__header {
-  border-bottom: 1px solid #d5dce0;
+  border-bottom: 1px solid var(--border);
   font-size: 1.1rem;
   font-weight: 700;
 }
 
 .app-shell--session button {
-  min-height: 44px;
-  border: 1px solid #365766;
-  border-radius: 8px;
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   padding: 8px 14px;
-  background: #fff;
-  color: #173743;
+  background: var(--surface);
+  color: var(--text);
   font: inherit;
   cursor: pointer;
 }
@@ -32,10 +33,10 @@
 
 .session-state,
 .demo-controls {
-  border: 1px solid #d5dce0;
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
   padding: 16px;
-  background: #f6f9fa;
+  background: var(--surface);
 }
 
 .session-state h1,
@@ -58,8 +59,14 @@
 }
 
 .demo-controls {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
+.demo-controls__intro { margin-bottom: 16px; }
+.demo-controls__intro p:first-child { font-size: 1.1rem; line-height: 1.35; font-weight: 700; color: var(--text); }
+.demo-controls__intro p { margin: 8px 0; }
+.demo-controls__intro small { color: var(--muted); }
+.demo-controls__details > summary { min-height: 44px; display: flex; align-items: center; color: var(--accent); font-weight: 700; cursor: pointer; }
+.demo-controls__details[open] > summary { margin-bottom: 12px; }
 
 .demo-controls__heading {
   display: flex;
@@ -123,7 +130,7 @@
   }
 }
 .product-navigation { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; padding: 12px 0; border-bottom: 1px solid #d9dde3; }
-.product-navigation a { padding: 8px 12px; color: #173743; border-radius: 6px; background: #eef5f6; text-decoration: none; font-weight: 600; }
+.product-navigation a { min-height: 44px; display: inline-flex; align-items: center; padding: 8px 12px; color: var(--accent); border-radius: 12px; background: #EAF2F4; text-decoration: none; font-weight: 600; }
 .app-shell--session button[type='submit'], .app-shell--session button[data-testid='accept-assignment'],
 .app-shell--session button[data-testid='submit-result'], .app-shell--session button[data-testid='confirm-submit'] {
   background: #173743; color: #fff; border-color: #173743;

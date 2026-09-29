@@ -49,7 +49,7 @@ test('demo clearly discloses synthetic data and admin meaning without raw run/ca
   try {
     expect(view.container.textContent).toContain('Демонстрационные данные');
     expect(view.container.textContent).toContain('Администратор УК · настройки');
-    expect(view.container.textContent).toContain('Начать новый демо-прогон');
+    expect(view.container.textContent).toContain('Начать новую проверку');
     expect(view.container.textContent).not.toContain('DemoRun');
     expect(view.container.textContent).not.toContain(session.primary_case_id);
     expect(view.container.querySelectorAll('[data-role-view]')).toHaveLength(4);

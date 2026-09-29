@@ -63,10 +63,11 @@ export function CaseActivity({ activity, ...materialProps }: MaterialProps & {
   activity: readonly ActivityItemOutput[];
 }) {
   const facts = orderedFacts(activity);
-  return <section aria-label="История случая" className="case-activity"><h2>История</h2>
-    {facts.length === 0 ? <p>Событий пока нет.</p> : <ol>{facts.map(item =>
-      <li key={item.event_id} data-event-id={item.event_id}>
-        <ActivityCard item={item} {...materialProps} />
-      </li>)}</ol>}
+  return <section aria-label="История обращения" className="case-activity"><h2>История</h2>
+    {facts.length === 0 ? <p>Событий пока нет.</p> : <ol>{facts.map((item, index) => <li key={item.event_id} data-event-id={item.event_id}>
+      {(index === 0 || facts[index - 1]?.iteration_no !== item.iteration_no) &&
+        <h3 className="case-activity__group">{stageLabel(item.iteration_no)}</h3>}
+      <ActivityCard item={item} {...materialProps} />
+    </li>)}</ol>}
   </section>;
 }

@@ -42,10 +42,10 @@ export type ActionRenderers = Partial<{ [K in ActionCode]: (
   submit: (payload: ActionPayloadByCode[K]) => Promise<void>,
 ) => ReactNode }>;
 
-const STALE_MESSAGE = 'Случай изменился с момента открытия. Данные обновлены.';
+const STALE_MESSAGE = 'Обращение изменилось с момента открытия. Данные обновлены.';
 const LIST_KEY = ['case-read', 'list'] as const;
 const ACTION_LABELS: Record<AllowedActionOutput['code'], string> = {
-  ACCEPT_CASE: 'Принять случай',
+  ACCEPT_CASE: 'Принять обращение',
   SELECT_CONTRACTOR: 'Выбрать подрядчика',
   SEND_ASSIGNMENT: 'Передать подрядчику',
   ACCEPT_ASSIGNMENT: 'Принять назначение',
@@ -57,7 +57,7 @@ const ACTION_LABELS: Record<AllowedActionOutput['code'], string> = {
   RECORD_NO_RESIDENT_FEEDBACK: 'Зафиксировать отсутствие ответа',
   REQUEST_CLARIFICATION: 'Запросить уточнение',
   RETURN_TO_REWORK: 'Вернуть на доработку',
-  COMPLETE_CASE: 'Завершить случай',
+  COMPLETE_CASE: 'Завершить обращение',
   COMPLETE_WITH_EXPLANATION: 'Завершить с объяснением',
   ADD_COMMENT: 'Добавить комментарий',
 };
@@ -78,12 +78,12 @@ export function CaseListView({ transport, contextKey, onOpen }: CaseListViewProp
     retry: false, staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: false });
   const refresh = useCallback(() => { void query.refetch(); }, [query.refetch]);
   useForegroundRefresh(refresh);
-  return <section className="case-read case-list" aria-label="Список случаев">
-    <header className="case-read__header"><h1>Случаи</h1>
+  return <section className="case-read case-list" aria-label="Список обращений">
+    <header className="case-read__header"><h1>Обращения</h1>
       <button type="button" data-testid="case-list-refresh" onClick={refresh}>Обновить</button></header>
-    {query.isPending ? <p role="status">Загрузка случаев…</p>
-      : query.isError ? <p role="alert">Не удалось загрузить случаи. Обновите список.</p>
-        : query.data.items.length === 0 ? <p>Случаев пока нет.</p>
+    {query.isPending ? <p role="status">Загрузка обращений…</p>
+      : query.isError ? <p role="alert">Не удалось загрузить обращения. Обновите список.</p>
+        : query.data.items.length === 0 ? <p>Обращений пока нет.</p>
           : <ul className="case-list__items">{query.data.items.map((item) =>
             <li key={item.case_id} data-case-id={item.case_id} className="case-list__item">
               <button type="button" className="case-list__open" onClick={() => onOpen(item.case_id)}>
@@ -136,21 +136,21 @@ export function CaseDetailsView({ caseId, role, transport, contextKey, executeAc
         await queryClient.invalidateQueries({ queryKey: LIST_KEY, refetchType: 'none' });
         await queryClient.invalidateQueries({ queryKey, refetchType: 'none' });
         await query.refetch();
-      } else setCommandError('Не удалось выполнить действие. Обновите случай и повторите вручную.');
+      } else setCommandError('Не удалось выполнить действие. Обновите обращение и повторите вручную.');
     } finally {
       active.current = false;
       setPending(false);
     }
   }, [executeAction, queryClient, query.refetch, contextKey, caseId, role]);
 
-  return <article className="case-read case-details" aria-label="Карточка случая">
+  return <article className="case-read case-details" aria-label="Карточка обращения">
     <header className="case-read__header"><h1>Обращение {caseReference(query.data?.case.display_number ?? '')}</h1>
       <button type="button" data-testid="case-details-refresh" onClick={refresh}>Обновить</button></header>
     {stale && <p role="alert" className="case-read__stale">{STALE_MESSAGE}</p>}
     {commandError && <p role="alert">{commandError}</p>}
     {pending && <p role="status">Выполняется действие…</p>}
-    {query.isPending ? <p role="status">Загрузка случая…</p>
-      : query.isError ? <p role="alert">Не удалось загрузить случай. Обновите данные.</p>
+    {query.isPending ? <p role="status">Загрузка обращения…</p>
+      : query.isError ? <p role="alert">Не удалось загрузить обращение. Обновите данные.</p>
         : <CaseDetailsContent snapshot={query.data} executeAction={executeAction}
           actionRenderers={actionRenderers} run={run} materialTransport={materialTransport} contextKey={contextKey} summaryExtra={summaryExtra} />}
   </article>;
@@ -167,26 +167,31 @@ function CaseDetailsContent({ snapshot, executeAction, actionRenderers, run, mat
 }) {
   const value = snapshot.case;
   const next = responsibilityLabel(value.responsibility);
+  const actions = value.allowed_actions.filter(action => !(value.resident_feedback?.type === 'CONFIRMATION'
+    && value.resident_feedback.result_id === value.current_result?.result_id && action.code === 'ADD_COMMENT'));
+  const primary = actions.find(action => action.code === 'SEND_ASSIGNMENT')
+    ?? actions.find(action => action.code !== 'ADD_COMMENT') ?? actions[0];
   return <>
     <section className="case-details__summary">
       <p><span className="status-badge" data-testid="case-status">{statusLabel(value.state)}</span></p>
-      <p className="next-action"><strong>Следующий шаг:</strong> {next}</p>
-      {summaryExtra}
       <p><strong>Адрес:</strong> {value.location.house}, {value.location.premises}</p>
       <p><strong>Категория:</strong> {displayName(value.category.name)}</p>
+      <p><strong>Сейчас отвечает:</strong> {next}</p>
+      <p><strong>Что происходит:</strong> {statusLabel(value.state)}</p>
+      {summaryExtra}
       <p><strong>Описание:</strong> {value.description}</p>
       <p><strong>Этап работ:</strong> {stageLabel(value.current_iteration.number)}</p>
     </section>
     {value.initial_attachments.length > 0 && <section aria-label="Исходные материалы">
       <h2>Исходные материалы</h2><AttachmentList attachments={value.initial_attachments} transport={materialTransport} contextKey={contextKey} />
     </section>}
-    <section aria-label="Доступные действия" className="case-actions"><h2>Доступные действия</h2>
-      {value.allowed_actions.length === 0 ? <p>Сейчас действий нет.</p>
-        : <ul>{value.allowed_actions.filter(action => !(value.resident_feedback?.type === 'CONFIRMATION'
-          && value.resident_feedback.result_id === value.current_result?.result_id && action.code === 'ADD_COMMENT')).map((action, index) => {
+    <section aria-label="Доступные действия" className="case-actions next-action"><h2>Ваш следующий шаг</h2>
+      <p>{next}</p>
+      {actions.length === 0 ? <p>Сейчас действий нет.</p>
+        : <ul>{actions.map((action, index) => {
           const renderer = actionRenderers[action.code] as
             ((value: AllowedActionOutput, submit: (payload: ActionPayload) => Promise<void>) => ReactNode) | undefined;
-          return <li key={`${action.code}-${index}`}>
+          return <li key={`${action.code}-${index}`} className={action === primary ? 'case-action--primary' : 'case-action--secondary'}>
             {renderer && executeAction ? renderer(action, (payload) => run(action, payload))
               : <span>{ACTION_LABELS[action.code]}</span>}
           </li>;

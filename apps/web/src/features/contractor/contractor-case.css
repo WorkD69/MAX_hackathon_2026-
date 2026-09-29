@@ -42,6 +42,9 @@
 .contractor-case__details dt { font-size: 0.8rem; opacity: 0.7; }
 .contractor-case__details dd { margin: 0.2rem 0 0; }
 .contractor-case__field { display: grid; gap: 0.55rem; margin-block: 1rem; }
+.contractor-case__comment, .contractor-case__uploaded { margin-block: 12px; border-top: 1px solid var(--border); }
+.contractor-case__comment summary, .contractor-case__uploaded summary { min-height: 44px; display: flex; align-items: center; color: var(--accent); font-weight: 650; cursor: pointer; }
+.contractor-case__field .file-picker { width: 100%; }
 .contractor-case__field textarea { min-height: 6rem; width: 100%; box-sizing: border-box; resize: vertical; }
 .contractor-case__field input[type="file"] { max-width: 100%; }
 .contractor-case button { min-height: 2.75rem; cursor: pointer; }

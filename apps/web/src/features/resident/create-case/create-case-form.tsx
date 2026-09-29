@@ -3,9 +3,11 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import type { CreateCasePayloadOutput, CreateCaseSuccessOutput } from '@max-smart-city/contracts';
 import { MutationIntent } from '../../../app/intent/mutation-intent.js';
 import { isStaleResponse, ResidentHttpError, type CreateCaseOptions, type ResidentTransport } from '../resident-transport.js';
+import { fileSize } from '../../cases/read/presentation.js';
+import { useDirtyForm } from '../../../app/dirty-form.js';
 import './create-case-form.css';
 
-const STALE_MESSAGE = 'Случай изменился с момента открытия. Данные обновлены.';
+const STALE_MESSAGE = 'Обращение изменилось с момента открытия. Данные обновлены.';
 const SEMANTIC_ERROR = 'Не удалось создать обращение. Проверьте данные и повторите.';
 const REQUIREMENT_LABELS = { NONE: 'Материалы не требуются', PHOTO: 'Нужна фотография', FILE: 'Нужен файл' } as const;
 
@@ -18,6 +20,7 @@ export interface CreateCaseFormProps {
 
 export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, contextKey = '' }: CreateCaseFormProps) {
   const [premisesId, setPremisesId] = useState('');
+  const [addressTouched, setAddressTouched] = useState(false);
   const initialOptions = useQuery({
     queryKey: ['resident', 'create-case-options', contextKey, 'initial'],
     queryFn: () => transport.createCaseOptions(),
@@ -37,6 +40,17 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
   const [invalidatedContext, setInvalidatedContext] = useState<string | null>(null);
   const intent = useRef(new MutationIntent());
   const fileInput = useRef<HTMLInputElement>(null);
+  const activeCreate = useRef(false);
+  const autoSelected = useRef(false);
+  const { setDirty } = useDirtyForm();
+  const dirty = Boolean(addressTouched || categoryId || description.trim() || files.length);
+
+  useEffect(() => { setDirty(dirty); return () => setDirty(false); }, [dirty, setDirty]);
+  useEffect(() => {
+    if (!initialOptions.isSuccess || initialOptions.isFetching || autoSelected.current) return;
+    autoSelected.current = true;
+    if (initialOptions.data.premises.length === 1) setPremisesId(initialOptions.data.premises[0]!.premises_id);
+  }, [initialOptions.data, initialOptions.isFetching, initialOptions.isSuccess]);
 
   const optionsInvalidated = invalidatedContext === contextKey;
   const currentOptions = !optionsInvalidated && options.isSuccess && !options.isFetching
@@ -69,6 +83,7 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
     if (!currentOptions.premises.some((premise) => premise.premises_id === premisesId)) {
       setInvalidatedContext(contextKey);
       setPremisesId('');
+      setAddressTouched(false);
       setCategoryId('');
     } else if (categoryId && !currentOptions.categories.some((category) => category.category_id === categoryId)) {
       setCategoryId('');
@@ -102,9 +117,16 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!canSubmit || create.isPending) return;
+    if (!canSubmit || activeCreate.current) return;
+    activeCreate.current = true;
     setError(null);
     setStale(false);
+    if (files.some(file => file.size > 10 * 1024 * 1024)) {
+      setError('Размер каждого файла — не больше 10 МиБ.');
+      fileInput.current?.focus();
+      activeCreate.current = false;
+      return;
+    }
     try {
       const created = await create.mutateAsync({
         premises_id: premisesId, category_id: categoryId, description: description.trim(),
@@ -112,6 +134,7 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
       intent.current.close();
       setCategoryId('');
       setPremisesId('');
+      setAddressTouched(false);
       setDescription('');
       setFiles([]);
       if (fileInput.current) fileInput.current.value = '';
@@ -120,16 +143,19 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
       if (cause instanceof ResidentHttpError && cause.status === 409 && cause.code === 'DEMO_PRIMARY_CASE_EXISTS') {
         intent.current.close();
         if (onPrimaryCaseExists) await onPrimaryCaseExists();
-        setStale(true);
-        setError(STALE_MESSAGE);
+        setStale(!onPrimaryCaseExists);
+        setError(onPrimaryCaseExists ? null : STALE_MESSAGE);
       } else if (isStaleResponse(cause)) {
         intent.current.close();
         setStale(true);
-        setError(STALE_MESSAGE);
+        setError(null);
         await options.refetch();
       } else {
-        setError(SEMANTIC_ERROR);
+        setError(files.some(file => file.size > 10 * 1024 * 1024)
+          ? 'Размер каждого файла — не больше 10 МиБ.' : SEMANTIC_ERROR);
       }
+    } finally {
+      activeCreate.current = false;
     }
   }
 
@@ -150,22 +176,10 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
     {categories.length === 0 && premisesId && options.isSuccess && <p role="alert">Сейчас нет доступных категорий для обращения.</p>}
     <form onSubmit={(event) => { void submit(event); }}>
       <div className="resident-create-case__field">
-        <label htmlFor="resident-category">Категория</label>
-        <select id="resident-category" data-testid="category-select" value={categoryId}
-          disabled={categories.length === 0}
-          onChange={(event) => setCategoryId(event.target.value)}>
-          <option value="">Выберите категорию</option>
-          {categories.map((category) => <option key={category.category_id} value={category.category_id}>
-            {category.name}
-          </option>)}
-        </select>
-        {requirement && <p data-testid="category-requirement">{requirement}</p>}
-      </div>
-      <div className="resident-create-case__field">
         <label htmlFor="resident-premises">Адрес</label>
         <select id="resident-premises" data-testid="premise-select" value={premisesId}
           disabled={premises.length === 0}
-          onChange={(event) => { setPremisesId(event.target.value); setCategoryId(''); }}>
+          onChange={(event) => { setAddressTouched(true); setPremisesId(event.target.value); setCategoryId(''); }}>
           <option value="">Выберите адрес</option>
           {premises.map((premise) => <option key={premise.premises_id} value={premise.premises_id}>
             {premise.house_address} · {premise.premises_label}
@@ -173,16 +187,34 @@ export function CreateCaseForm({ transport, onCreated, onPrimaryCaseExists, cont
         </select>
       </div>
       <div className="resident-create-case__field">
+        <label htmlFor="resident-category">Категория</label>
+        <select id="resident-category" data-testid="category-select" value={categoryId}
+          disabled={!premisesId || categories.length === 0} aria-describedby="category-help"
+          onChange={(event) => setCategoryId(event.target.value)}>
+          <option value="">Выберите категорию</option>
+          {categories.map((category) => <option key={category.category_id} value={category.category_id}>
+            {category.name}
+          </option>)}
+        </select>
+        <small id="category-help">{!premisesId ? 'Сначала выберите адрес' : 'Категории доступны для выбранного адреса'}</small>
+        {requirement && <p data-testid="category-requirement">{requirement}</p>}
+      </div>
+      <div className="resident-create-case__field">
         <label htmlFor="resident-description">Описание проблемы</label>
-        <textarea id="resident-description" data-testid="description-input" rows={4} value={description}
+        <textarea id="resident-description" data-testid="description-input" rows={4} value={description} required
           onChange={(event) => setDescription(event.target.value)} />
       </div>
       <div className="resident-create-case__field">
-        <label htmlFor="resident-files">Фотографии и файлы</label>
+        <label htmlFor="resident-files">Фото и файлы</label>
         <input id="resident-files" data-testid="files-input" type="file" multiple ref={fileInput} disabled={create.isPending}
+          aria-invalid={Boolean(error && files.some(file => file.size > 10 * 1024 * 1024))} aria-describedby="resident-files-help"
           onChange={(event) => setFiles([...(event.target.files ?? [])])} />
-        {files.length > 0 && <p data-testid="files-selected">Выбрано файлов: {files.length}</p>}
-        <small>Загрузка файлов не завершает обращение — обращение создаётся после отправки формы.</small>
+        <label htmlFor="resident-files" className="file-picker">Добавить фото или файл</label>
+        {files.length > 0 && <div data-testid="files-selected">{files.map((file, index) => <div className="material-row" key={`${file.name}-${index}`}>
+          <span>{file.name}<small>{file.type || 'Тип не указан'} · {fileSize(file.size)}</small></span>
+          <button type="button" className="button-secondary" onClick={() => { setFiles(current => current.filter((_, at) => at !== index)); if (fileInput.current) fileInput.current.value = ''; }}>Убрать</button>
+        </div>)}</div>}
+        <small id="resident-files-help">Каждый файл — до 10 МиБ. Обращение создаётся после отправки формы.</small>
       </div>
       {error && <p role="alert" className="resident-create-case__error">{error}</p>}
       <button type="submit" data-testid="create-case-submit" disabled={!canSubmit || create.isPending}>

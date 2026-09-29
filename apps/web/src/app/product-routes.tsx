@@ -11,6 +11,7 @@ import { UkWorkflowCaseView } from '../features/uk-workflow/uk-workflow.js';
 import { ContractorCaseView } from '../features/contractor/contractor-case.js';
 import { useContractorCommands } from '../features/contractor/contractor-command-provider.js';
 import { configurationRouteModule } from '../features/configuration/configuration-route.js';
+import { useDirtyForm } from './dirty-form.js';
 
 function useProductContext() {
   const session = useSession();
@@ -23,15 +24,16 @@ function useProductContext() {
 
 export function ProductHome() {
   const { session } = useSession();
-  if (!session?.effective_actor.role) return <p>Начните демо и выберите роль для работы со случаем.</p>;
+  if (!session?.effective_actor.role) return <p>Начните проверку и выберите роль для работы с обращением.</p>;
   return <section><h1>Обращения по дому</h1><p>Создавайте обращения, отслеживайте работу и проверяйте результат.</p>
-    <Link to="/cases">Открыть список случаев</Link></section>;
+    <Link to="/cases">Открыть список обращений</Link></section>;
 }
 
 export function ProductNavigation() {
   const { session, status, busy } = useSession();
   const role = session?.effective_actor.role;
   const navigate = useNavigate();
+  const { guard } = useDirtyForm();
   const location = useLocation();
   const previous = useRef({ runId: session?.demo_run_id, role });
   useEffect(() => {
@@ -47,11 +49,14 @@ export function ProductNavigation() {
     }
   }, [session?.demo_run_id, session?.primary_case_id, role, status, busy, navigate, location.pathname]);
   if (status !== 'ready' || busy || !role) return null;
+  const guardedLink = (path: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault(); guard(() => { void navigate(path); });
+  };
   return <nav aria-label="Разделы приложения" className="product-navigation">
-    <Link to="/cases">Случаи</Link>
-    {session?.demo_mode && session.primary_case_id && <Link to={`/cases/${session.primary_case_id}`}>Текущее обращение</Link>}
-    {role === 'RESIDENT' && (!session?.demo_mode || !session.primary_case_id) && <Link to="/resident/cases/new">Создать обращение</Link>}
-    {role === 'UK_ADMIN' && <Link to="/configuration">Настройки</Link>}
+    <Link to="/cases" onClick={guardedLink('/cases')}>Обращения</Link>
+    {session?.demo_mode && session.primary_case_id && <Link to={`/cases/${session.primary_case_id}`} onClick={guardedLink(`/cases/${session.primary_case_id}`)}>Текущее обращение</Link>}
+    {role === 'RESIDENT' && (!session?.demo_mode || !session.primary_case_id) && <Link to="/resident/cases/new" onClick={guardedLink('/resident/cases/new')}>Создать обращение</Link>}
+    {role === 'UK_ADMIN' && <Link to="/configuration" onClick={guardedLink('/configuration')}>Настройки</Link>}
   </nav>;
 }
 
@@ -66,7 +71,7 @@ function DetailsRoute() {
   const { read, resident, key, role, session } = useProductContext();
   const commands = useContractorCommands();
   const { caseId } = useParams();
-  if (!role || !caseId) return <p>Выберите роль для просмотра случая.</p>;
+  if (!role || !caseId) return <p>Выберите роль для просмотра обращения.</p>;
   if (role === 'RESIDENT') return <ResidentCaseView caseId={caseId} readTransport={read} residentTransport={resident} contextKey={key} />;
   if (role === 'CONTRACTOR_EMPLOYEE') return <ContractorCaseView caseId={caseId} read={read} commands={commands} contextKey={key} materialTransport={resident} />;
   return <UkWorkflowCaseView caseId={caseId} role={role} transport={read} contextKey={key} authorizedFetch={session.authorizedFetch} materialTransport={resident} />;

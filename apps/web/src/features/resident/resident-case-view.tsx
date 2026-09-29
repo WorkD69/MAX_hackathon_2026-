@@ -65,16 +65,23 @@ function ResidentCaseContent({ snapshot, residentTransport, contextKey,
   return <>
     <section className="resident-case__summary" aria-label="Сводка обращения">
       <p><span className="status-badge" data-testid="resident-case-status">{statusLabel(snapshot.case.state)}</span></p>
-      <p className="next-action"><strong>Следующий шаг:</strong> {responsibilityLabel(snapshot.case.responsibility)}</p>
       <p><strong>Адрес:</strong> {snapshot.case.location.house}, {snapshot.case.location.premises}</p>
+      <p><strong>Категория:</strong> {displayName(snapshot.case.category.name)}</p>
+      <p><strong>Сейчас отвечает:</strong> {responsibilityLabel(snapshot.case.responsibility)}</p>
+      <p><strong>Что происходит:</strong> {statusLabel(snapshot.case.state)}</p>
       <p><strong>Этап работ:</strong> {stageLabel(snapshot.case.current_iteration.number)}</p>
       {snapshot.case.current_executor && <p><strong>Текущий исполнитель:</strong> {displayName(snapshot.case.current_executor.name)}</p>}
       {snapshot.case.assignment?.decision === 'PENDING' && <p>Задание направлено {displayName(snapshot.case.assignment.contractor.name)}. Ожидается принятие.</p>}
       <p><strong>Описание:</strong> {snapshot.case.description}</p>
     </section>
-    <ResidentResultView showHistory={false} transport={residentTransport} snapshot={snapshot} contextKey={contextKey} onStale={refresh}
-      {...(downloadBridge === undefined ? {} : { downloadBridge })} />
-    <ResidentFeedback key={snapshot.case.current_iteration.iteration_id} transport={residentTransport} snapshot={snapshot} onMutated={refresh} contextKey={contextKey} />
+    <section className="next-action resident-case__next" aria-label="Ваш следующий шаг"><h2>Ваш следующий шаг</h2>
+      <p>{responsibilityLabel(snapshot.case.responsibility)}</p>
+      {(snapshot.case.current_result || snapshot.case.initial_attachments.length > 0) &&
+        <ResidentResultView showHistory={false} transport={residentTransport} snapshot={snapshot} contextKey={contextKey} onStale={refresh}
+          {...(downloadBridge === undefined ? {} : { downloadBridge })} />}
+      {(snapshot.case.resident_feedback || snapshot.case.allowed_actions.some(action => action.code === 'RESIDENT_CONFIRM' || action.code === 'RESIDENT_REMARK')) &&
+        <ResidentFeedback key={snapshot.case.current_iteration.iteration_id} transport={residentTransport} snapshot={snapshot} onMutated={refresh} contextKey={contextKey} />}
+    </section>
     <ResidentCommentFeed key={snapshot.case.current_iteration.iteration_id} composerOnly transport={residentTransport} snapshot={snapshot} onMutated={refresh} contextKey={contextKey} />
     <CaseActivity activity={snapshot.case.activity.filter(item => item.domain.result?.result_id !== snapshot.case.current_result?.result_id || !item.domain.result)}
       transport={residentTransport} contextKey={contextKey} downloadBridge={downloadBridge} onStale={refresh} />

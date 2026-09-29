@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import type {
   AllowedActionOutput, ResidentCaseSnapshotOutput, ResidentConfirmationSuccessOutput,
@@ -8,7 +8,7 @@ import { MutationIntent, mutationError } from '../../../app/intent/mutation-inte
 import { isStaleResponse, type ResidentTransport } from '../resident-transport.js';
 import './feedback-forms.css';
 
-const STALE_MESSAGE = 'Случай изменился с момента открытия. Данные обновлены.';
+const STALE_MESSAGE = 'Обращение изменилось с момента открытия. Данные обновлены.';
 const CONFIRMED_TEXT = 'Результат подтверждён. Ожидается решение УК';
 const REMARK_SENT_TEXT = 'Ваше замечание передано в УК';
 const CONFIRM_ERROR = 'Не удалось подтвердить результат. Обновите данные и повторите.';
@@ -54,6 +54,7 @@ export function ResidentFeedback({ transport, snapshot, onMutated, contextKey = 
   const remarked = currentFeedback && feedback.type === 'REMARK';
   const confirmTargeted = !currentFeedback && confirmAction !== null && isCurrentTarget(snapshot, confirmAction);
   const remarkTargeted = !currentFeedback && remarkAction !== null && isCurrentTarget(snapshot, remarkAction);
+  useEffect(() => { if (currentFeedback) { setStale(false); setError(null); } }, [currentFeedback]);
 
   const confirm = useMutation<ResidentConfirmationSuccessOutput, unknown, void>({
     mutationFn: async () => {
@@ -92,7 +93,7 @@ export function ResidentFeedback({ transport, snapshot, onMutated, contextKey = 
       if (isStaleResponse(cause)) {
         confirmIntent.current.close();
         setStale(true);
-        setError(STALE_MESSAGE);
+        setError(null);
         await onMutated();
       } else if (mutationError(cause).code === 'IDEMPOTENCY_KEY_REUSE') {
         confirmIntent.current.close();
@@ -125,7 +126,7 @@ export function ResidentFeedback({ transport, snapshot, onMutated, contextKey = 
       if (isStaleResponse(cause)) {
         remarkIntent.current.close();
         setStale(true);
-        setError(STALE_MESSAGE);
+        setError(null);
         await onMutated();
       } else if (mutationError(cause).code === 'IDEMPOTENCY_KEY_REUSE') {
         remarkIntent.current.close();
@@ -164,7 +165,8 @@ export function ResidentFeedback({ transport, snapshot, onMutated, contextKey = 
       <input id="resident-remark-files" data-testid="remark-files" type="file" multiple ref={remarkFileInput}
         disabled={pending !== null} onChange={(event) => setRemarkFiles([...(event.target.files ?? [])])} />
       {remarkFiles.length > 0 && <small>Выбрано файлов: {remarkFiles.length}</small>}
-      <button type="submit" data-testid="remark-submit" disabled={pending !== null || remarkText.trim() === ''}>
+      <button type="submit" data-testid="remark-submit" className={confirmTargeted ? 'button-secondary' : undefined}
+        disabled={pending !== null || remarkText.trim() === ''}>
         {pending === 'remark' ? 'Отправка…' : 'Оставить замечание'}
       </button>
       {pending === 'remark' && <p role="status">Отправка замечания…</p>}

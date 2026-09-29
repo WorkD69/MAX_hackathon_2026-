@@ -219,7 +219,22 @@ test('premises from multiple organizations have no tenant selector or default co
       'Выберите адрес', 'Дом 1 · Кв. 2', 'Дом 9 · Кв. 9',
     ]);
     expect(view.container.querySelector('[name="organization_id"]')).toBeNull();
+    expect((view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement).disabled).toBe(true);
+    expect(view.container.textContent).toContain('Сначала выберите адрес');
     expect(view.container.textContent).not.toContain('Подрядчик');
+  } finally { view.unmount(); }
+});
+
+test('the sole authoritative address is selected and its categories are loaded', async () => {
+  const api = transport();
+  const view = renderReactTree(<CreateCaseForm transport={api} onCreated={() => {}} />, { adapter });
+  try {
+    await waitForForm(view.container);
+    await waitForUi(() => expect((view.container.querySelector('[data-testid="premise-select"]') as HTMLSelectElement).value).toBe(IDS.premisesId));
+    await waitForUi(() => expect((view.container.querySelector('[data-testid="category-select"]') as HTMLSelectElement).options.length).toBe(2));
+    expect(api.createCaseOptions).toHaveBeenCalledWith(IDS.premisesId);
+    const fields = [...view.container.querySelectorAll('form > .resident-create-case__field label')].map(label => label.textContent);
+    expect(fields.slice(0, 4)).toEqual(['Адрес', 'Категория', 'Описание проблемы', 'Фото и файлы']);
   } finally { view.unmount(); }
 });
 
@@ -281,6 +296,24 @@ test('successful create calls onCreated with the authoritative case id', async (
     await act(async () => { (view.container.querySelector('[data-testid="create-case-submit"]') as HTMLButtonElement).click(); });
     await waitForUi(() => expect(onCreated).toHaveBeenCalledWith(createCaseSuccessFixture.case_id));
     expect(api.createCase).toHaveBeenCalledTimes(1);
+  } finally { view.unmount(); }
+});
+
+test('rapid submits start only one active CreateCase request', async () => {
+  let finish!: (value: typeof createCaseSuccessFixture) => void;
+  const createCase = vi.fn(() => new Promise<typeof createCaseSuccessFixture>((resolve) => { finish = resolve; }));
+  const view = renderReactTree(<CreateCaseForm transport={transport({ createCase })} onCreated={() => {}} />, { adapter });
+  try {
+    await waitForForm(view.container);
+    await fillForm(view.container);
+    const form = view.container.querySelector('form')!;
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(createCase).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(createCaseSuccessFixture); });
   } finally { view.unmount(); }
 });
 

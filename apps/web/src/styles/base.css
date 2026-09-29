@@ -2,6 +2,15 @@
   box-sizing: border-box;
 }
 
+:root {
+  --background: #F2F5F7;
+  --surface: #FFFFFF;
+  --text: #172F3B;
+  --muted: #617581;
+  --accent: #275D70;
+  --border: #DCE5E9;
+}
+
 html,
 body,
 #root {
@@ -11,8 +20,8 @@ body,
 
 body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  color: #173743;
-  background: #f3f6f7;
+  color: var(--text);
+  background: var(--background);
   line-height: 1.5;
   font-size: 15px;
 }
@@ -21,7 +30,7 @@ body {
   max-width: 640px;
   margin: 0 auto;
   padding: 0 16px;
-  background: #fff;
+  background: var(--background);
 }
 
 h1 { font-size: clamp(1.4rem, 4vw, 2rem); line-height: 1.2; letter-spacing: -0.025em; text-wrap: balance; }
@@ -30,8 +39,8 @@ h3 { font-size: 1rem; line-height: 1.4; }
 p { text-wrap: pretty; }
 button, input, select, textarea { font: inherit; }
 input:not([type='checkbox']):not([type='file']), select, textarea {
-  max-width: 100%; min-height: 44px; padding: 10px 12px;
-  color: #173743; background: #fff; border: 1px solid #a9bac2; border-radius: 8px;
+  max-width: 100%; min-height: 48px; padding: 11px 12px;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
 }
 textarea { width: 100%; resize: vertical; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
@@ -45,16 +54,26 @@ button[type='submit']:hover:not(:disabled), button[data-testid='accept-assignmen
 button[data-testid='submit-result']:hover:not(:disabled), button[data-testid='confirm-submit']:hover:not(:disabled) {
   background: #285968;
 }
-.status-badge, .role-badge { display: inline-block; padding: 5px 10px; background: #eaf3f4; color: #173743; border-radius: 6px; font-size: .85rem; font-weight: 600; }
-.next-action { border-left: 3px solid #387384; background: #eef5f6; padding: 12px 14px; border-radius: 0 8px 8px 0; }
+.status-badge, .role-badge { display: inline-block; padding: 5px 10px; background: #E5F0F2; color: #275D70; border-radius: 999px; font-size: .82rem; font-weight: 700; }
+.next-action { background: #EAF2F4; padding: 16px; border: 1px solid #C8DBE1; border-radius: 16px; margin-bottom: 16px; }
+.next-action h2 { margin: 0 0 8px; }
 .material-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px; background: #f6f9fa; border: 1px solid #d5dce0; border-radius: 8px; overflow-wrap: anywhere; }
 .material-row > span { min-width: 0; flex: 1 1 12rem; }
 .material-row small { display: block; color: #45616c; }
 .material-row > button { flex-shrink: 0; }
 .material-row > p { flex-basis: 100%; }
 .app-shell__header > span { color: #45616c; font-weight: 500; font-size: .85rem; margin-left: 8px; }
-[role='alert'] { color: #813d14; }
-@media (max-width: 600px) { .app-shell { padding-inline: 14px; } }
+[role='alert'] { color: #874722; }
+.file-picker { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 16px; border: 1px dashed var(--accent); border-radius: 12px; color: var(--accent); background: #F6FAFB; font-weight: 650; cursor: pointer; }
+input[type='file']:has(+ .file-picker) { position: absolute; width: 1px !important; height: 1px !important; min-height: 0 !important; padding: 0 !important; opacity: 0; overflow: hidden; }
+input[type='file']:focus-visible + .file-picker { outline: 3px solid var(--accent); outline-offset: 2px; }
+.app-dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: #172F3BAA; }
+.app-dialog { width: min(100%, 420px); padding: 24px; border-radius: 16px; background: var(--surface); box-shadow: 0 20px 60px #172F3B33; }
+.app-dialog h2 { margin-top: 0; }
+.app-dialog__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.app-dialog__actions button { min-height: 48px; padding: 10px 16px; border-radius: 12px; border: 1px solid var(--accent); }
+.app-dialog__actions button:last-child { background: var(--accent); color: white; }
+@media (max-width: 600px) { .app-shell { padding-inline: 16px; } }
 
 .app-shell__header {
   padding: 16px 0;

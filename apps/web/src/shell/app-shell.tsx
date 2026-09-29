@@ -4,6 +4,7 @@ import { SessionGate } from '../features/session/session-gate.js';
 import { ContractorCommandProvider } from '../features/contractor/contractor-command-provider.js';
 import './session-demo.css';
 import { ProductNavigation } from '../app/product-routes.js';
+import { DirtyFormProvider } from '../app/dirty-form.js';
 
 function SessionOutlet() {
   const { status, busy, revision } = useSession();
@@ -16,14 +17,14 @@ function SessionOutlet() {
 export function AppShell() {
   return (
     <SessionProvider>
-      <div className="app-shell app-shell--session">
+      <DirtyFormProvider><div className="app-shell app-shell--session">
         <header className="app-shell__header">Обращения по дому <span>в MAX</span></header>
         <main className="app-shell__main">
           <SessionGate />
           <ProductNavigation />
           <ContractorCommandProvider><SessionOutlet /></ContractorCommandProvider>
         </main>
-      </div>
+      </div></DirtyFormProvider>
     </SessionProvider>
   );
 }

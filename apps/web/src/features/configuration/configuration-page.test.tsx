@@ -36,7 +36,7 @@ test('UK_ADMIN sees approved sections, four roles and three result requirements'
     for (const label of ['Организация', 'Дома', 'Категории', 'Подрядчики', 'Пользователи и роли']) expect(view.container.textContent).toContain(label);
     expect([...view.container.querySelectorAll('[data-role-option]')].map((x) => x.getAttribute('value'))).toEqual(['RESIDENT', 'UK_EMPLOYEE', 'UK_ADMIN', 'CONTRACTOR_EMPLOYEE']);
     expect([...view.container.querySelectorAll('[data-requirement-option]')].slice(0, 3).map((x) => x.getAttribute('value'))).toEqual(['NONE', 'PHOTO', 'FILE']);
-    expect(view.container.textContent).toContain('Существующие случаи и история не переписываются');
+    expect(view.container.textContent).toContain('Существующие обращения и история не переписываются');
     expect(view.container.textContent).not.toMatch(/пригласить|пароль|увольнение|CRM|HR|редактировать случай/i);
   } finally { view.unmount(); }
 });

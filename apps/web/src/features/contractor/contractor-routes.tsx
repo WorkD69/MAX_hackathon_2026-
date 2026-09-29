@@ -29,7 +29,7 @@ export function createContractorRouteModule(): AppRouteModule {
     const commands = useContractorCommands();
     if (session.status !== 'ready') return <p role="status">Ожидание сессии…</p>;
     if (session.session?.effective_actor.role !== 'CONTRACTOR_EMPLOYEE' || !caseId) {
-      return <p role="alert">Случай недоступен.</p>;
+      return <p role="alert">Обращение недоступно.</p>;
     }
     return <ContractorCaseView caseId={caseId} contextKey={contextKey(session)}
       read={createHttpCaseReadTransport(session.authorizedFetch)}
