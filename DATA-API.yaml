@@ -1,0 +1,1450 @@
+config_version: "1.0"
+solution_id: max-smart-city
+base_url: https://157-22-231-21.sslip.io
+openapi: openapi.yaml
+FINAL_SYNC_REQUIRED: NO
+contract_source_sha: 332ac4aee174a8743324b82b38853b3a3751d2e9
+final_tg029_sha: 332ac4aee174a8743324b82b38853b3a3751d2e9
+route_parity: VERIFIED
+missing_merged_schemas: []
+availability: Runtime onRoute registry и canonical Zod schemas; live MAX evidence проверяется отдельно.
+test_access:
+  DEMO_MODE: true
+  role_views: &a1
+    - RESIDENT
+    - UK_EMPLOYEE
+    - UK_ADMIN
+    - CONTRACTOR_EMPLOYEE
+  login: MAX Bot → Mini App → signed initData → новый DemoRun → role switch
+  passwords: Не применяются для synthetic roles; рабочие secrets предоставляются командой вне Git.
+variables:
+  caseId: current case_id
+  houseId: current house_id
+  categoryId: current category_id
+  contractorId: current contractor_id
+  appUserId: current eligible app_user_id
+  attachmentId: current attachment_id
+  capability: opaque segment of DownloadCapability.download_url
+  premises_id: CreateOptions.selected_premises_id
+  category_id: CreateOptions.categories[].category_id
+  contractor_id: ContractorCandidates.items[].contractor_id
+  iteration_id: Case.current_iteration.iteration_id
+  selection_id: SelectContractor.created.selection_id
+  assignment_id: SendAssignment.created.assignment_id
+  attachment_id: AddResultMaterial.created.attachment_id
+  result_id: SubmitResult.created.result_id
+  feedback_id: ResidentConfirmation/Remark.created.feedback_id
+mandatory_checks:
+  - id: HealthLive
+    method: GET
+    path: /health/live
+    purpose: Процесс запущен
+    required_roles:
+      - PUBLIC
+    auth: none
+    parameters: []
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/LiveResponse_output"
+      response_shape: LiveResponse
+    negative:
+      status: NETWORK_ERROR
+      condition: Остановленный app не отвечает
+    final_sync_required: false
+  - id: HealthReady
+    method: GET
+    path: /health/ready
+    purpose: DB + migrations + runtime готовы
+    required_roles:
+      - PUBLIC
+    auth: none
+    parameters: []
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/ReadyResponse_output"
+      response_shape: ReadyResponse
+    negative:
+      status: 503
+      condition: Зависимость недоступна; status=not_ready
+    final_sync_required: false
+  - id: SystemInfo
+    method: GET
+    path: /api/v1/system/info
+    purpose: Сопоставить immutable build_sha с submission SHA
+    required_roles:
+      - PUBLIC
+    auth: none
+    parameters: []
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/SystemInfoResponseSchema_output"
+      response_shape: SystemInfoResponseSchema
+    negative:
+      status: 200
+      condition: Несовпадение build_sha означает FAIL submission identity
+    final_sync_required: false
+  - id: AuthMax
+    method: POST
+    path: /api/v1/auth/max
+    purpose: Bootstrap через настоящий signed raw MAX initData
+    required_roles:
+      - PUBLIC
+    auth: none
+    parameters: []
+    headers: {}
+    query: {}
+    body:
+      init_data: "{{raw_signed_max_init_data}}"
+    content_type: application/json
+    request_schema: "#/components/schemas/AuthMaxRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/AuthMaxSuccessSchema_output"
+      response_shape: AuthMaxSuccessSchema
+    negative:
+      status: 401
+      code: MAX_INIT_DATA_INVALID_SIGNATURE
+      condition: Подменённая подпись init_data
+    final_sync_required: false
+  - id: Session
+    method: GET
+    path: /api/v1/session
+    purpose: Прочитать актуальную real/effective session
+    required_roles: *a1
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/SessionReadResponseSchema_output"
+      response_shape: SessionReadResponseSchema
+    negative:
+      status: 401
+      code: UNAUTHENTICATED
+      condition: Запрос без действующей application session
+    final_sync_required: false
+  - id: StartDemoRun
+    method: POST
+    path: /api/v1/demo/runs
+    purpose: Новый SYNTHETIC run без удаления истории старого
+    required_roles:
+      - MAX_IDENTITY
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      scenario_key: primary-housing-demo
+    content_type: application/json
+    request_schema: "#/components/schemas/DemoRunStartRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 201
+      response_schema: "#/components/schemas/DemoRunStartResponseSchema_output"
+      response_shape: DemoRunStartResponseSchema
+    negative:
+      status: 403
+      code: DEMO_MODE_DISABLED
+      condition: DEMO_MODE=false
+    final_sync_required: false
+  - id: SwitchActor
+    method: POST
+    path: /api/v1/demo/session/actor
+    purpose: Переключить одну из четырёх role views; принять новый token
+    required_roles:
+      - MAX_IDENTITY
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      role_view: RESIDENT
+    content_type: application/json
+    request_schema: "#/components/schemas/ActorSwitchRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/ActorSwitchSuccessSchema_output"
+      response_shape: ActorSwitchSuccessSchema
+    negative:
+      status: 403
+      code: DEMO_MODE_DISABLED
+      condition: DEMO_MODE=false
+    final_sync_required: false
+  - id: CreateOptions
+    method: GET
+    path: /api/v1/cases/create-options
+    purpose: Получить доступные premises/categories для Resident
+    required_roles:
+      - RESIDENT
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers: {}
+    query:
+      premises_id: "{{premises_id}}"
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/ResidentCreateCaseOptionsResponseSchema_output"
+      response_shape: ResidentCreateCaseOptionsResponseSchema
+    negative:
+      status: 404
+      code: RESOURCE_NOT_FOUND
+      condition: Чужое/недоступное premises_id
+    final_sync_required: false
+  - id: CaseList
+    method: GET
+    path: /api/v1/cases
+    purpose: Role/run-filtered список
+    required_roles: *a1
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers: {}
+    query:
+      limit: "10"
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/CaseListResponseSchema_output"
+      response_shape: CaseListResponseSchema
+    negative:
+      status: 401
+      code: UNAUTHENTICATED
+      condition: Запрос без действующей application session
+    final_sync_required: false
+  - id: CaseRead
+    method: GET
+    path: /api/v1/cases/{caseId}
+    purpose: Role-filtered Case, allowed_actions и одна activity
+    required_roles: *a1
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: &a3
+      - name: caseId
+        value: "{{caseId}}"
+    headers: &a4 {}
+    query: &a5 {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data: &a6
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/CaseSnapshotSchema_output"
+      response_shape: CaseSnapshotSchema
+    negative: &a7
+      status: 404
+      code: RESOURCE_NOT_FOUND
+      condition: Case другого tenant/run или утрачен текущий доступ
+    final_sync_required: false
+  - id: CreateCase
+    method: POST
+    path: /api/v1/cases
+    purpose: Создать primary Case текущего run
+    required_roles:
+      - RESIDENT
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      premises_id: "{{premises_id}}"
+      category_id: "{{category_id}}"
+      description: "[SYNTHETIC] Неаварийная неисправность отопления / стояка; нужен доступ в квартиру."
+    content_type: multipart/form-data; payload JSON part; files[] binary parts
+    request_schema: "#/components/schemas/CreateCasePayloadSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files:
+        - optional synthetic file
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 201
+      response_schema: "#/components/schemas/CreateCaseSuccessSchema_output"
+      response_shape: CreateCaseSuccessSchema
+    negative:
+      status: 409
+      code: DEMO_PRIMARY_CASE_EXISTS
+      condition: Второй CreateCase в том же run с новым key
+    final_sync_required: false
+  - id: AcceptCase
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/accept
+    purpose: УК принимает Case
+    required_roles: &a2
+      - UK_EMPLOYEE
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body: {}
+    content_type: application/json
+    request_schema: "#/components/schemas/AcceptCaseRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/AcceptCaseSuccessSchema_output"
+      response_shape: AcceptCaseSuccessSchema
+    negative:
+      status: 401
+      code: UNAUTHENTICATED
+      condition: Запрос без действующей application session
+    final_sync_required: false
+  - id: ContractorCandidates
+    method: GET
+    path: /api/v1/cases/{caseId}/contractor-candidates
+    purpose: Операционный список для выбора, без admin config
+    required_roles: *a2
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/ContractorCandidatesResponseSchema_output"
+      response_shape: ContractorCandidatesResponseSchema
+    negative:
+      status: 401
+      code: UNAUTHENTICATED
+      condition: Запрос без действующей application session
+    final_sync_required: false
+  - id: SelectContractor
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/select-contractor
+    purpose: Выбор ещё не даёт contractor LIVE authority
+    required_roles: *a2
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      contractor_id: "{{contractor_id}}"
+      iteration_id: "{{iteration_id}}"
+    content_type: application/json
+    request_schema: "#/components/schemas/SelectContractorRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/SelectContractorSuccessSchema_output"
+      response_shape: SelectContractorSuccessSchema
+    negative:
+      status: 409
+      code: STALE_ITERATION
+      condition: iteration_id из старого snapshot
+    final_sync_required: false
+  - id: SendAssignment
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/send-assignment
+    purpose: Отправить exact current Selection
+    required_roles: *a2
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      selection_id: "{{selection_id}}"
+      iteration_id: "{{iteration_id}}"
+    content_type: application/json
+    request_schema: "#/components/schemas/SendAssignmentRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/SendAssignmentSuccessSchema_output"
+      response_shape: SendAssignmentSuccessSchema
+    negative:
+      status: 409
+      code: STALE_SELECTION
+      condition: Устаревший selection_id
+    final_sync_required: false
+  - id: AcceptAssignment
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/accept-assignment
+    purpose: Contractor явно принимает поручение
+    required_roles:
+      - CONTRACTOR_EMPLOYEE
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      assignment_id: "{{assignment_id}}"
+    content_type: application/json
+    request_schema: "#/components/schemas/AcceptAssignmentRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/AcceptAssignmentSuccessSchema_output"
+      response_shape: AcceptAssignmentSuccessSchema
+    negative:
+      status: 409
+      code: STALE_ASSIGNMENT
+      condition: Устаревшее поручение
+    final_sync_required: false
+  - id: RejectAssignment
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/reject-assignment
+    purpose: Отклонить с причиной и вернуть управление УК
+    required_roles:
+      - CONTRACTOR_EMPLOYEE
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      assignment_id: "{{assignment_id}}"
+      reason: "[SYNTHETIC] Нет возможности выполнить работы."
+    content_type: application/json
+    request_schema: "#/components/schemas/RejectAssignmentRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/RejectAssignmentSuccessSchema_output"
+      response_shape: RejectAssignmentSuccessSchema
+    negative:
+      status: 422
+      code: REJECT_REASON_REQUIRED
+      condition: Пустая причина; уточнить actual transport 400/422 при final sync
+    final_sync_required: false
+  - id: AddComment
+    method: POST
+    path: /api/v1/cases/{caseId}/comments
+    purpose: Комментарий в разрешённом текущем контексте
+    required_roles: *a1
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      body: "[SYNTHETIC] Доступ в квартиру согласован."
+      clarification_request_id: null
+    content_type: multipart/form-data; payload JSON part; files[] binary parts
+    request_schema: "#/components/schemas/AddCommentPayloadSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files:
+        - optional synthetic file
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/AddCommentSuccessSchema_output"
+      response_shape: AddCommentSuccessSchema
+    negative:
+      status: 409
+      code: CLARIFICATION_CONTEXT_REQUIRED
+      condition: Resident в REMARKS_REVIEW без exact clarification target
+    final_sync_required: false
+  - id: AddResultMaterial
+    method: POST
+    path: /api/v1/cases/{caseId}/result-materials
+    purpose: Один synthetic файл текущего исполнения
+    required_roles:
+      - CONTRACTOR_EMPLOYEE
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      assignment_id: "{{assignment_id}}"
+      iteration_id: "{{iteration_id}}"
+    content_type: multipart/form-data; payload JSON part; files[] binary parts
+    request_schema: "#/components/schemas/AddResultMaterialPayloadSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files:
+        - synthetic-result.png; ровно один file part
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/AddResultMaterialSuccessSchema_output"
+      response_shape: AddResultMaterialSuccessSchema
+    negative:
+      status: 422
+      code: VALIDATION_FAILED
+      condition: Не ровно один файл в files[]
+    final_sync_required: false
+  - id: SubmitResult
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/submit-result
+    purpose: Результат и один NotificationIntent; затем refetch
+    required_roles:
+      - CONTRACTOR_EMPLOYEE
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      assignment_id: "{{assignment_id}}"
+      iteration_id: "{{iteration_id}}"
+      description: "[SYNTHETIC] Работы выполнены."
+      material_attachment_ids:
+        - "{{attachment_id}}"
+    content_type: application/json
+    request_schema: "#/components/schemas/SubmitResultRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/SubmitResultSuccessSchema_output"
+      response_shape: SubmitResultSuccessSchema
+    negative:
+      status: 422
+      code: RESULT_MATERIAL_REQUIRED
+      condition: PHOTO/FILE category без обязательного материала
+    final_sync_required: false
+  - id: ResidentConfirmation
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/resident-confirmation
+    purpose: Подтвердить Result; Case ещё не завершён
+    required_roles:
+      - RESIDENT
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      result_id: "{{result_id}}"
+      iteration_id: "{{iteration_id}}"
+    content_type: application/json
+    request_schema: "#/components/schemas/ResidentConfirmationRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/ResidentConfirmationSuccessSchema_output"
+      response_shape: ResidentConfirmationSuccessSchema
+    negative:
+      status: 409
+      code: STALE_RESULT
+      condition: Старый result_id
+    final_sync_required: false
+  - id: ResidentRemark
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/resident-remark
+    purpose: Формальное замечание текущему Result
+    required_roles:
+      - RESIDENT
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      result_id: "{{result_id}}"
+      iteration_id: "{{iteration_id}}"
+      remark_text: "[SYNTHETIC] Неисправность остаётся."
+    content_type: multipart/form-data; payload JSON part; files[] binary parts
+    request_schema: "#/components/schemas/ResidentRemarkPayloadSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files:
+        - optional synthetic file
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/ResidentRemarkSuccessSchema_output"
+      response_shape: ResidentRemarkSuccessSchema
+    negative:
+      status: 409
+      code: FEEDBACK_ALREADY_SUBMITTED
+      condition: Второе формальное feedback с новым key
+    final_sync_required: false
+  - id: RequestClarification
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/request-clarification
+    purpose: УК запрашивает уточнение замечания
+    required_roles: *a2
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      result_id: "{{result_id}}"
+      feedback_id: "{{feedback_id}}"
+      message: "[SYNTHETIC] Уточните проявление проблемы."
+    content_type: application/json
+    request_schema: "#/components/schemas/RequestClarificationRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/RequestClarificationSuccessSchema_output"
+      response_shape: RequestClarificationSuccessSchema
+    negative:
+      status: 401
+      code: UNAUTHENTICATED
+      condition: Запрос без действующей application session
+    final_sync_required: false
+  - id: RecordNoResidentFeedback
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/record-no-resident-feedback
+    purpose: Явно записать отсутствие feedback; это не auto-close
+    required_roles: *a2
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      result_id: "{{result_id}}"
+      iteration_id: "{{iteration_id}}"
+      basis_confirmed: true
+      basis_note: "[SYNTHETIC] Проверяем отдельную ветку отсутствия ответа."
+    content_type: application/json
+    request_schema: "#/components/schemas/RecordNoResidentFeedbackRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/RecordNoResidentFeedbackSuccessSchema_output"
+      response_shape: RecordNoResidentFeedbackSuccessSchema
+    negative:
+      status: 401
+      code: UNAUTHENTICATED
+      condition: Запрос без действующей application session
+    final_sync_required: false
+  - id: ReturnToRework
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/return-to-rework
+    purpose: Тот же Case, ровно N+1, прежний accepted Assignment сохраняется
+    required_roles: *a2
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      result_id: "{{result_id}}"
+      feedback_id: "{{feedback_id}}"
+    content_type: application/json
+    request_schema: "#/components/schemas/ReturnToReworkRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/ReturnToReworkSuccessSchema_output"
+      response_shape: ReturnToReworkSuccessSchema
+    negative:
+      status: 409
+      code: STALE_RESULT
+      condition: Старый Result/feedback
+    final_sync_required: false
+  - id: CompleteCase
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/complete
+    purpose: УК завершает по явному основанию
+    required_roles: *a2
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      result_id: "{{result_id}}"
+      basis:
+        type: RESIDENT_CONFIRMATION
+        feedback_id: "{{feedback_id}}"
+    content_type: application/json
+    request_schema: "#/components/schemas/CompleteCaseRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/CompleteCaseSuccessSchema_output"
+      response_shape: CompleteCaseSuccessSchema
+    negative:
+      status: 409
+      code: COMPLETION_BASIS_INVALID
+      condition: NO_RESIDENT_FEEDBACK без отдельного process_reference
+    final_sync_required: false
+  - id: CompleteWithExplanation
+    method: POST
+    path: /api/v1/cases/{caseId}/commands/complete-with-explanation
+    purpose: УК завершает спорный случай с объяснением
+    required_roles: *a2
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: caseId
+        value: "{{caseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      result_id: "{{result_id}}"
+      feedback_id: "{{feedback_id}}"
+      explanation: "[SYNTHETIC] Объяснение решения УК."
+    content_type: application/json
+    request_schema: "#/components/schemas/CompleteWithExplanationRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/CompleteWithExplanationSuccessSchema_output"
+      response_shape: CompleteWithExplanationSuccessSchema
+    negative:
+      status: 401
+      code: UNAUTHENTICATED
+      condition: Запрос без действующей application session
+    final_sync_required: false
+  - id: ConfigRead_organization
+    method: GET
+    path: /api/v1/config/organization
+    purpose: Настройки только своей УК
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/OrganizationReadResponseSchema_output"
+      response_shape: OrganizationReadResponseSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: UK_EMPLOYEE обращается к admin config
+    final_sync_required: false
+  - id: ConfigRead_houses
+    method: GET
+    path: /api/v1/config/houses
+    purpose: Настройки только своей УК
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/HousesReadResponseSchema_output"
+      response_shape: HousesReadResponseSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: UK_EMPLOYEE обращается к admin config
+    final_sync_required: false
+  - id: ConfigRead_categories
+    method: GET
+    path: /api/v1/config/categories
+    purpose: Настройки только своей УК
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/CategoriesReadResponseSchema_output"
+      response_shape: CategoriesReadResponseSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: UK_EMPLOYEE обращается к admin config
+    final_sync_required: false
+  - id: ConfigRead_contractors
+    method: GET
+    path: /api/v1/config/contractors
+    purpose: Настройки только своей УК
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/ContractorsReadResponseSchema_output"
+      response_shape: ContractorsReadResponseSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: UK_EMPLOYEE обращается к admin config
+    final_sync_required: false
+  - id: ConfigRead_users
+    method: GET
+    path: /api/v1/config/users
+    purpose: Настройки только своей УК
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers: {}
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/UsersReadResponseSchema_output"
+      response_shape: UsersReadResponseSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: UK_EMPLOYEE обращается к admin config
+    final_sync_required: false
+  - id: OrganizationPatch
+    method: PATCH
+    path: /api/v1/config/organization
+    purpose: Изменение своей конфигурации с audit и idempotency
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      name: "[SYNTHETIC] Demo УК «Городская»"
+    content_type: application/json
+    request_schema: "#/components/schemas/OrganizationPatchRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/OrganizationReadResponseSchema_output"
+      response_shape: OrganizationReadResponseSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: Роль UK_EMPLOYEE вместо UK_ADMIN
+    final_sync_required: false
+  - id: HouseCreate
+    method: POST
+    path: /api/v1/config/houses
+    purpose: Изменение своей конфигурации с audit и idempotency
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      address: "[SYNTHETIC] Тестовая улица, дом 2"
+      display_label: SYNTHETIC
+      active: true
+    content_type: application/json
+    request_schema: "#/components/schemas/HouseCreateRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 201
+      response_schema: "#/components/schemas/HouseReadSchema_output"
+      response_shape: HouseReadSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: Роль UK_EMPLOYEE вместо UK_ADMIN
+    final_sync_required: false
+  - id: HousePatch
+    method: PATCH
+    path: /api/v1/config/houses/{houseId}
+    purpose: Изменение своей конфигурации с audit и idempotency
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: houseId
+        value: "{{houseId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      display_label: SYNTHETIC
+    content_type: application/json
+    request_schema: "#/components/schemas/HousePatchRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/HouseReadSchema_output"
+      response_shape: HouseReadSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: Роль UK_EMPLOYEE вместо UK_ADMIN
+    final_sync_required: false
+  - id: CategoryCreate
+    method: POST
+    path: /api/v1/config/categories
+    purpose: Изменение своей конфигурации с audit и idempotency
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      name: "[SYNTHETIC] Отопление / стояк"
+      description: Неаварийный demo
+      default_contractor_id: "{{contractor_id}}"
+      requires_premises_access: true
+      result_requirement: PHOTO
+      active: true
+    content_type: application/json
+    request_schema: "#/components/schemas/CategoryCreateRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 201
+      response_schema: "#/components/schemas/CategoryReadSchema_output"
+      response_shape: CategoryReadSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: Роль UK_EMPLOYEE вместо UK_ADMIN
+    final_sync_required: false
+  - id: CategoryPatch
+    method: PATCH
+    path: /api/v1/config/categories/{categoryId}
+    purpose: Изменение своей конфигурации с audit и idempotency
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: categoryId
+        value: "{{categoryId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      description: "[SYNTHETIC] Проверка конфигурации."
+    content_type: application/json
+    request_schema: "#/components/schemas/CategoryPatchRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/CategoryReadSchema_output"
+      response_shape: CategoryReadSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: Роль UK_EMPLOYEE вместо UK_ADMIN
+    final_sync_required: false
+  - id: ContractorCreate
+    method: POST
+    path: /api/v1/config/contractors
+    purpose: Изменение своей конфигурации с audit и idempotency
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: []
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      display_name: "[SYNTHETIC] Тестовый подрядчик"
+    content_type: application/json
+    request_schema: "#/components/schemas/ContractorCreateRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 201
+      response_schema: "#/components/schemas/ContractorReadSchema_output"
+      response_shape: ContractorReadSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: Роль UK_EMPLOYEE вместо UK_ADMIN
+    final_sync_required: false
+  - id: ContractorBinding
+    method: PUT
+    path: /api/v1/config/contractors/{contractorId}/binding
+    purpose: Изменение своей конфигурации с audit и idempotency
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: contractorId
+        value: "{{contractorId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      active: true
+    content_type: application/json
+    request_schema: "#/components/schemas/ContractorBindingPutRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/ContractorReadSchema_output"
+      response_shape: ContractorReadSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: Роль UK_EMPLOYEE вместо UK_ADMIN
+    final_sync_required: false
+  - id: UserRoleBinding
+    method: PUT
+    path: /api/v1/config/users/{appUserId}/role-binding
+    purpose: Изменение своей конфигурации с audit и idempotency
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: appUserId
+        value: "{{appUserId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      role: UK_EMPLOYEE
+      contractor_id: null
+      house_ids:
+        - "{{house_id}}"
+      active: true
+    content_type: application/json
+    request_schema: "#/components/schemas/UserRoleBindingPutRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/UserReadSchema_output"
+      response_shape: UserReadSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: Роль UK_EMPLOYEE вместо UK_ADMIN
+    final_sync_required: false
+  - id: ContractorEmployee
+    method: PUT
+    path: /api/v1/config/contractors/{contractorId}/employees/{appUserId}
+    purpose: Изменение своей конфигурации с audit и idempotency
+    required_roles:
+      - UK_ADMIN
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: contractorId
+        value: "{{contractorId}}"
+      - name: appUserId
+        value: "{{appUserId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body:
+      active: true
+    content_type: application/json
+    request_schema: "#/components/schemas/ContractorEmployeePutRequestSchema_input"
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/UserReadSchema_output"
+      response_shape: UserReadSchema
+    negative:
+      status: 403
+      code: FORBIDDEN
+      condition: Роль UK_EMPLOYEE вместо UK_ADMIN
+    final_sync_required: false
+  - id: AttachmentRead
+    method: GET
+    path: /api/v1/attachments/{attachmentId}
+    purpose: Авторизованная загрузка исходного файла
+    required_roles: *a1
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: attachmentId
+        value: "{{attachmentId}}"
+    headers: {}
+    query: {}
+    body: null
+    content_type: none
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: null
+      response_shape: "Binary file; Content-Type, Content-Disposition, Content-Length, Cache-Control: no-store"
+    negative:
+      status: 404
+      code: RESOURCE_NOT_FOUND
+      condition: Чужой attachment
+    final_sync_required: false
+  - id: DownloadCapability
+    method: POST
+    path: /api/v1/attachments/{attachmentId}/download-capability
+    purpose: Короткоживущий authorized HTTPS download URL
+    required_roles: *a1
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters:
+      - name: attachmentId
+        value: "{{attachmentId}}"
+    headers:
+      Idempotency-Key: "{{new_uuid_per_intent}}"
+    query: {}
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/DownloadCapabilityResponseSchema_output"
+      response_shape: DownloadCapabilityResponseSchema
+    negative:
+      status: 404
+      code: RESOURCE_NOT_FOUND
+      condition: Чужой attachment
+    final_sync_required: false
+  - id: CapabilityDownload
+    method: GET
+    path: /downloads/{capability}
+    purpose: Загрузка файла по краткоживущему opaque URL
+    required_roles:
+      - CAPABILITY
+    auth: opaque capability в URL; выдаётся POST /api/v1/attachments/{attachmentId}/download-capability
+    parameters:
+      - name: capability
+        value: "{{capability}}"
+    headers: {}
+    query: {}
+    body: null
+    content_type: none
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: null
+      response_shape: "Binary file; Content-Type, Content-Disposition, Content-Length, Cache-Control: no-store"
+    negative:
+      status: 404
+      code: RESOURCE_NOT_FOUND
+      condition: Недействительный, просроченный или утративший доступ URL
+    final_sync_required: false
+  - id: MaxWebhook
+    method: POST
+    path: /integrations/max/webhook
+    purpose: MAX webhook; секрет известен только серверу и MAX
+    required_roles:
+      - MAX_WEBHOOK
+    auth: X-Max-Bot-Api-Secret; получить вне Git
+    parameters: []
+    headers: {}
+    query: {}
+    body:
+      update_type: bot_started
+    content_type: application/json
+    request_schema: null
+    test_data:
+      classification: SYNTHETIC
+      source: docs/submission/SYNTHETIC_DATA.md
+      files: []
+      prerequisite: Следовать docs/submission/VERIFICATION.md; IDs брать из current options/snapshot/command result,
+        без reuse старых targets.
+    expected:
+      success_code: 200
+      response_schema: null
+      response_shape: Пустой HTTP response body
+    negative:
+      status: 401
+      code: UNAUTHENTICATED
+      condition: Неверный X-Max-Bot-Api-Secret
+    final_sync_required: false
+  - id: Activity
+    method: GET
+    path: /api/v1/cases/{caseId}
+    purpose: Одна activity запись на event_id, строго event_seq, сохранение N/N+1
+    required_roles: *a1
+    auth: Bearer application_session_token; новый token после switch/start
+    parameters: *a3
+    headers: *a4
+    query: *a5
+    body: null
+    content_type: application/json
+    request_schema: null
+    test_data: *a6
+    expected:
+      success_code: 200
+      response_schema: "#/components/schemas/CaseSnapshotSchema_output"
+      response_shape: case.activity[]; activity_id=event_id; event_seq строго возрастают
+    negative: *a7
+    final_sync_required: false

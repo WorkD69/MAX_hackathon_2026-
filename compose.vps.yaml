@@ -1,0 +1,12 @@
+# Использовать совместно с compose.yaml на подготовленном VPS.
+services:
+  app:
+    environment:
+      NODE_EXTRA_CA_CERTS: /etc/ssl/custom/max-root-ca.pem
+    volumes:
+      - type: bind
+        source: /etc/max-smart-city/russian-trusted-root-ca.pem
+        target: /etc/ssl/custom/max-root-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false
