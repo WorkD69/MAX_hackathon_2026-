@@ -7,10 +7,12 @@
 Замечание и доработка сохраняют тот же `case_id`, результаты и историю.
 
 **Application source of truth:** `332ac4aee174a8743324b82b38853b3a3751d2e9`
-(`origin/codex/final-microfix`). Этот application SHA уже развёрнут в production; final smoke
-проводит пользователь. Данный пакет добавляет delivery-документы и Docker-конфигурацию поверх него.
-Итоговый SHA submission commit фиксируется после проверки и не встраивается в сам commit.
-Статусы ещё не выполненных проверок указаны в
+(`origin/codex/final-microfix`). **Проверенный submission source commit:**
+`4f719b0d9d2f40cee8ab16c61b86b40b63ca7d72`. Последующий cleanup commit меняет только
+документацию и презентацию; его SHA нужно брать из `git rev-parse HEAD` ветки
+`codex/final-submission-freeze`. Application code остаётся byte-identical исходному SHA.
+Production с application SHA проходит отдельный final smoke пользователя.
+Статусы проверки пакета и действия для живой демонстрации — в
 [checklist](docs/submission/SUBMISSION_CHECKLIST.md).
 
 ## Доступ и фиксированная версия
@@ -22,8 +24,9 @@
 | API base | [157-22-231-21.sslip.io/api/v1](https://157-22-231-21.sslip.io/api/v1) |
 | Репозиторий | [MAX_hackathon_2026-](https://github.com/WorkD69/MAX_hackathon_2026-) |
 | Production application SHA | `332ac4aee174a8743324b82b38853b3a3751d2e9` |
-| Submission commit SHA | Указан в Git tag `submission-final-2026-09-30` после закрытия проверок |
-| PDF | [Место для финальной презентации](docs/submission/README.md); файл пока не найден |
+| FINAL_SUBMISSION_SHA исходного проверенного пакета | `4f719b0d9d2f40cee8ab16c61b86b40b63ca7d72` |
+| Upload cleanup commit | Текущий HEAD `codex/final-submission-freeze`; точное значение сообщается вместе с ZIP |
+| PDF | [Хакатон MAX — Умный город — Two pizza.pdf](<Хакатон MAX — Умный город — Two pizza.pdf>), 13 слайдов |
 
 Production endpoint `GET /api/v1/system/info` проверяет SHA фактически запущенного образа.
 При пересборке из итогового submission commit значение `BUILD_SHA` должно быть равно именно ему;
@@ -175,7 +178,8 @@ Case, history, attachments, DemoRun и notification intents сохраняютс
 Полный [VERIFICATION runbook](docs/submission/VERIFICATION.md) задаёт последовательность действий,
 ожидаемые состояния, отрицательные проверки, повтор DemoRun, restart persistence и SHA comparison.
 [DATA-API.yaml](DATA-API.yaml) содержит method/path, role, request/schema/test fixtures, success и negative checks;
-[openapi.yaml](openapi.yaml) — OpenAPI 3.1. Статус route/schema parity указан в checklist.
+[openapi.yaml](openapi.yaml) — OpenAPI 3.1. Route parity: **PASS, 45 runtime routes**;
+DATA-API содержит 46 checks. Подтверждение — в [журнале](docs/submission/VALIDATION.md).
 
 Путь: MAX → новый DemoRun → Resident создаёт Case → УК принимает/выбирает/отправляет → Contractor
 принимает → файл и Result → реальное MAX уведомление → Resident оставляет замечание → УК возвращает
@@ -196,8 +200,10 @@ Backend/DB workflow — собственная реализация. SYNTHETIC �
 ГИС ЖКХ, расписаниям мастеров и платёжным системам нет; официальная регистрация обращения не заявляется.
 Границы MVP и текущие delivery gaps — в [KNOWN_LIMITATIONS](docs/submission/KNOWN_LIMITATIONS.md).
 
-[SUBMISSION_CHECKLIST](docs/submission/SUBMISSION_CHECKLIST.md) содержит обязательные gates, включая
-build ≤ 5 min, presentation PDF, технический первый слайд, route parity и online availability.
+[SUBMISSION_CHECKLIST](docs/submission/SUBMISSION_CHECKLIST.md) фиксирует выполненные gates:
+Docker build **PASS, 30.1 s** без initial pulls; persistence DB volume **PASS** после `down`/`up`;
+route parity **PASS, 45 routes**; ZIP secret scan **PASS, 0 secrets**; remote SHA match исходного
+submission commit **PASS**. Финальный PDF приложен, а live MAX smoke остаётся отдельной проверкой команды.
 Валидаторы — в [scripts/delivery/README](scripts/delivery/README.md).
 Действующие нормативные документы: [Product Freeze](docs/01_PRODUCT_FREEZE.md),
 [Product Spec](docs/02_PRODUCT_SPEC.md), [Interface Contracts](docs/05_INTERFACE_CONTRACTS.md).

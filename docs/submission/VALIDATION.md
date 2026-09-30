@@ -1,65 +1,51 @@
-# Журнал проверки финального submission candidate
+# Журнал проверки upload package
 
 Application base: `332ac4aee174a8743324b82b38853b3a3751d2e9`.
-Ветка: `codex/final-submission-freeze`. Production с application SHA проходит отдельный
-final smoke пользователя. Финальная проверка clean checkout итогового commit выполняется после commit.
+FINAL_SUBMISSION_SHA проверенного source package: `4f719b0d9d2f40cee8ab16c61b86b40b63ca7d72`.
+Upload cleanup поверх него меняет только документацию и PDF; его новый commit SHA и SHA-256 ZIP
+передаются рядом с архивом. Самоссылка ZIP checksum или SHA собственного commit внутри него невозможна.
 
-## Структура и API
+## Source и API
 
-| Проверка | Результат / evidence |
+| Проверка | Evidence |
 | --- | --- |
-| Application tree byte-for-byte против base SHA | `PASS`: `git diff --name-only HEAD -- apps packages package.json package-lock.json scripts/test tests` → пусто |
-| `git diff --check` | `PASS`, exit 0 |
-| Root manifest/lockfile, migrations, seed | `PASS`: файлы унаследованы без изменений от application base; Docker runtime мигрировал и выполнил seed |
-| `.env.example` canonical parity и отсутствие рабочих значений | `PASS`: `validate.mjs`, 25 canonical + 5 delivery keys; отдельный secret scan ZIP ниже ещё требуется |
-| Dockerfile, Compose topology, `.dockerignore` | `PASS`: structural validation и `docker compose config --quiet` |
-| OpenAPI 3.1 schema/semantic validation | `PASS`: official OAS 3.1 schema + semantic validator, exit 0 |
-| DATA-API schema/request fixtures | `PASS`: 45 operations, 46 checks, exit 0 |
-| Actual runtime onRoute method/path parity | `PASS`: `check-registry.mjs`, 45/45; schema/auth/body сверены с canonical Zod и runtime declarations в generator/validators, live authenticated behavior отдельно |
+| Application code | `PASS`: `git diff --name-only` source commit против application base для `apps/**`, `packages/**`, manifests/lockfile и migrations — пусто; cleanup diff по тем же путям также пуст |
+| OpenAPI | `PASS`: official OpenAPI 3.1 schema и semantic validator, exit 0 |
+| DATA-API | `PASS`: 45 operations, 46 checks и JSON Schema fixtures |
+| Route parity | `PASS`: runtime Fastify `onRoute` method/path 45/45; no stale routes |
+| Env/config | `PASS`: 25 canonical + 5 delivery keys, typed config; secrets в `.env.example` пусты |
 
-## Docker из clean checkout
+## Docker из clean checkout source commit
 
-| Проверка | Результат / evidence |
+| Проверка | Evidence |
 | --- | --- |
-| Docker Engine и `docker compose config --quiet` | `NOT_VERIFIED` |
-| `docker compose up --build` | `NOT_VERIFIED` |
-| Build time ≤300 s без первого pull | `NOT_VERIFIED` |
-| Migrations и повторный idempotent seed | `NOT_VERIFIED` |
-| Web/API/PostgreSQL/readiness | `NOT_VERIFIED` |
-| PostgreSQL без host ports | `NOT_VERIFIED` |
-| `build_sha` равен SHA clean checkout | `NOT_VERIFIED` |
-| Case/history/attachment после `down`/`up` | `NOT_VERIFIED` |
+| Engine/Compose | Docker Engine 29.4.1, Compose 5.1.3; `docker compose config --quiet` — exit 0 |
+| Build | `PASS`: `docker compose build --no-cache app` — 30.1 s, initial image pulls исключены; цель ≤300 s |
+| Startup | `PASS`: `docker compose up --build -d` — exit 0; migrations и seed successful |
+| Idempotent seed | `PASS`: повторный `migrate`, organization count и `created_at` до/после совпали |
+| Web/API/readiness | `PASS`: `/` 200, `/health/live` 200, `/health/ready` 200 (`database=up`, `migrations=current`, `application=initialized`) |
+| BUILD_SHA | `PASS`: `/api/v1/system/info.build_sha` = `4f719b0d9d2f40cee8ab16c61b86b40b63ca7d72` |
+| PostgreSQL port | `PASS`: container `5432/tcp` имеет host binding `null` |
+| Persistence | `PASS`: отдельная `submission_persistence_probe` сохранилась после `down`/`up --build`; readiness и BUILD_SHA повторно проверены |
 
-Предварительный runtime прогон на рабочем candidate tree с `BUILD_SHA=332ac4…` (не clean checkout
-финального commit): `docker compose build --no-cache app` — exit 0 за **30.2 s** после initial image
-pull; `docker compose up --build -d` — exit 0; migrate/seed — success; `GET /` — 200,
-`/health/live` — 200, `/health/ready` — 200 (`database=up`, `migrations=current`,
-`application=initialized`), `/api/v1/system/info` — базовый SHA; PostgreSQL host ports — null.
-Повторный `migrate` сохранил `organization` count и `created_at` (idempotency). Тестовая строка
-`submission_persistence_probe` сохранилась после `docker compose down` / `up`; после старта app
-readiness снова `ready`. Это доказывает сохранение DB volume в данном прогоне, но не является
-проверкой Case/history/attachment из live MAX сценария.
+Эта persistence probe подтверждает named DB volume. Case/history/attachment bytes и live MAX flow
+проверяются отдельно пользователем на production; локальный Docker smoke не выдаётся за эту проверку.
+Production до redeploy cleanup может возвращать application SHA `332ac4…`.
 
-Предварительный archive candidate из staged tree: 362 entries, запрещённых путей по checklist — 0.
-Gitleaks v8.30.1 по распакованному candidate archive: exit 0, `no leaks found` (2.59 MB).
-Скан полного staged repository tree дал один false positive в неизменённом
-`tests/support/postgres.mjs:18`: фиктивный ключ `TG012_POLICY` — имя тестового набора,
-не credential. Финальный ZIP и его checksum проверяются отдельно после commit.
+## Презентация и архив
 
-## Сдача
-
-| Проверка | Результат / evidence |
+| Проверка | Evidence |
 | --- | --- |
-| Secret scan всего submission tree | `NOT_VERIFIED` |
-| ZIP listing и SHA-256 | `NOT_VERIFIED` |
-| Финальный PDF | `MISSING`: найденные локальные PDF содержат `[FINAL_*]` placeholders |
-| Push, tag и remote SHA | `NOT_VERIFIED` |
-| Live MAX web/mobile и Bot notification | `NOT_VERIFIED` в рамках этого журнала; smoke ведёт пользователь |
+| PDF | `PASS`: `Хакатон MAX — Умный город — Two pizza.pdf`, 13 страниц; первый слайд содержит полный source SHA, старого SHA и `[FINAL_*]` placeholders нет |
+| Render | `PASS`: страница 1 визуально проверена; страницы 2–13 пиксельно совпадают с исходной PPTX после PowerPoint export при 72 DPI |
+| ZIP | `PASS`: `Хакатон MAX — Умный город — Two pizza.zip`, 363 entries, PDF в корне, 0 запрещённых путей, CRC `testzip() = None`, размер около 1 MB (<50 MB) |
+| Secret scan | `PASS`: Gitleaks v8.30.1 по распакованному ZIP, `no leaks found`, 0 secrets; итоговый SHA-256 фиксируется во внешнем отчёте |
+| Remote | Source branch и tag `submission-final-2026-09-30` совпали с `4f719b0…`; cleanup commit проверяется после push |
 
-Предыдущий delivery baseline (`310d9caa7f6eeed2a575aa92692cda53f776d33e`,
-источник `5045dd220b85bbd89038821aac110ec46c44a9d3`) сообщил PASS для 45 documented
-operations и структурных проверок на **другом source SHA**. Эти результаты не переносятся
-автоматически на application SHA выше. Финальную parity и Docker запуск нужно повторить.
+Полный staged repository tree прежнего commit дал один false positive в неизменённом
+`tests/support/postgres.mjs:18`: фиктивное имя test suite `TG012_POLICY`, не credential.
+Предыдущий ZIP source package при отдельном Gitleaks scan показал 0 secrets. Скан upload ZIP
+повторён после добавления PDF и обновления документации; после финального commit архив
+пересобирается из HEAD и проверяется ещё раз.
 
-При заполнении evidence указывать timestamp, полный commit SHA, точную команду и код возврата.
-Не сохранять в журнале `.env`, Bot Token, webhook/session/initData, DB URL, chat ID или PII.
+Секреты, `.env`, Bot Token, webhook/session/initData, DB URL, chat ID и PII в evidence не сохранять.

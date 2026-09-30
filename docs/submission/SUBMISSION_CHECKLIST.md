@@ -1,69 +1,61 @@
 # Checklist финальной сдачи
 
-Application source of truth: `332ac4aee174a8743324b82b38853b3a3751d2e9`.
-Production с этим application SHA проходит final smoke пользователя. Галочка ставится только после
-проверки именно submission candidate и записи evidence. Итоговый commit SHA появится после интеграции;
-его нельзя заранее записать внутрь того же commit.
+Application base SHA: `332ac4aee174a8743324b82b38853b3a3751d2e9`.
+FINAL_SUBMISSION_SHA проверенного source package: `4f719b0d9d2f40cee8ab16c61b86b40b63ca7d72`.
+Поверх него идёт один documentation-only cleanup commit; его SHA возвращают `git rev-parse HEAD`
+и отчёт к итоговому ZIP. Production всё ещё может показывать application SHA до redeploy.
 
-## Пакет исходников
+## Пакет
 
-- [ ] Branch `codex/final-submission-freeze` создан ровно от application SHA; application code не менялся.
-- [ ] Один submission commit, полный SHA, push без force, remote SHA совпадает.
-- [ ] Tag `submission-final-2026-09-30` создан только после успешных проверок.
-- [ ] Включены Dockerfile, compose.yaml, .dockerignore, .env.example, README.md, package.json,
-  package-lock.json, migrations, seed/demo data, OpenAPI, DATA-API, synthetic data docs,
-  limitations и verification runbook.
-- [ ] OpenAPI и DATA-API проходят schema/semantic validation и фактическую method/path/schema/auth/body
-  сверку с final runtime route registry; stale routes отсутствуют.
-- [ ] Secret scan всего submission tree: 0 Bot Token, webhook secret, production.env, root password,
-  SSH/private keys, private certificates, session/initData и реальных credentials.
-- [ ] `.env.example` содержит только пустые значения секретов и placeholders публичных URL.
-- [ ] Чистый ZIP `MAX_Smart_City_Two_pizza_<SHORT_SHA>.zip`: запрещённые локальные/build/temp файлы
-  исключены, список архива проверен, SHA-256 записан.
-- [ ] Финальная PDF-презентация приложена, технический первый слайд содержит Bot/Mini App/API URL,
-  repo/SHA и маршрут проверки. Пока финальный PDF не найден: [место для него](README.md).
+- [x] Source submission branch создана ровно от application SHA; application code не изменён.
+- [x] Source commit `4f719b0…` отправлен без force push; remote branch и tag
+  `submission-final-2026-09-30` указывают на этот SHA.
+- [x] Dockerfile, Compose, `.dockerignore`, `.env.example`, README, manifests/lockfile, migrations,
+  idempotent seed, OpenAPI, DATA-API, synthetic data docs, ограничения и runbook включены.
+- [x] OpenAPI 3.1 проходит официальную schema и semantic validation; DATA-API содержит 46 checks;
+  method/path parity с runtime `onRoute` — **PASS, 45/45**, stale routes нет.
+- [x] `.env.example` содержит только пустые значения секретов и placeholders публичных URL.
+- [x] Финальная PDF-презентация — [«Хакатон MAX — Умный город — Two pizza.pdf»](<../../Хакатон MAX — Умный город — Two pizza.pdf>).
+  13 слайдов; первый содержит Bot/Mini App/API URL, repo, полный SHA `4f719b0…` и маршрут проверки.
+- [x] ZIP `Хакатон MAX — Умный город — Two pizza.zip` содержит PDF в корне и исключает `.git`,
+  `node_modules`, `dist`, `.env`, production credentials, логи, временные файлы и старые презентации.
+- [x] ZIP открывается и занимает меньше 50 MB; повторный secret scan распакованного архива —
+  **PASS, 0 secrets**. SHA-256 передаётся рядом с файлом, вне архива.
 
-## Docker из clean checkout
+## Docker из clean checkout source commit
 
-- [ ] `docker compose config --quiet` проходит с локальным `.env`.
-- [ ] `docker compose up --build` завершает build, migrations, idempotent seed и поднимает web/API/PostgreSQL.
-- [ ] Время build ≤ 300 секунд без первоначального pull; записаны параметры машины/cache.
-- [ ] `/health/ready` возвращает 200 и реальные DB/migrations/application checks; `/health/live` 200.
-- [ ] `/api/v1/system/info.build_sha` равен SHA commit, из которого собран проверяемый образ.
-- [ ] `app` доступен на `127.0.0.1:${APP_PORT:-3000}`; PostgreSQL не имеет host `ports:`.
-- [ ] После `docker compose down` / `docker compose up --build` сохранены Case/history/attachment.
-- [ ] VPS CA mounted read-only, TLS verification включена, Caddy проксирует на loopback app.
+- [x] `docker compose config --quiet` и `docker compose up --build -d` завершились с exit 0.
+- [x] `docker compose build --no-cache app` занял **30.1 s** без первоначальных image pulls; лимит 300 s.
+- [x] Migrations и повторный idempotent seed успешны; контрольные count/created_at не изменились.
+- [x] Web — 200, `/health/live` — 200, `/health/ready` — `ready` с DB/migrations/application checks.
+- [x] `/api/v1/system/info.build_sha` = `4f719b0d9d2f40cee8ab16c61b86b40b63ca7d72`.
+- [x] App доступен только на loopback host port; PostgreSQL не публикует host port.
+- [x] **PERSISTENCE = PASS:** отдельная контрольная запись PostgreSQL сохранилась после
+  `docker compose down` / `docker compose up --build`; readiness и BUILD_SHA повторно проверены.
 
-## Демонстрация и доступность
+## Живая демонстрация и границы evidence
 
-- [ ] Bot [max.ru/t793_hakaton_max_bot](https://max.ru/t793_hakaton_max_bot) открывает Mini App
-  [157-22-231-21.sslip.io](https://157-22-231-21.sslip.io/) в MAX web и mobile.
-- [ ] Публичный API [157-22-231-21.sslip.io/api/v1](https://157-22-231-21.sslip.io/api/v1)
-  доступен по HTTPS на время экспертной проверки.
-- [ ] Signed MAX initData bootstrap и все четыре role views проходят без публикации tokens/initData.
-- [ ] Happy path до `COMPLETED` с замечанием и N+1 в том же Case; повтор DemoRun сохраняет историю.
-- [ ] Initial contractor rejection → B; same-executor rework; A→B authority handoff.
-- [ ] Реальное MAX уведомление после SubmitResult и attachment download в web/mobile подтверждены.
-- [ ] Проверено сохранение состояния после restart и fresh bootstrap того же эксперта.
-- [ ] Решение оставлено online на весь период экспертной проверки.
+- [ ] Пользователь завершает final smoke Bot → Mini App в MAX web/mobile, signed initData,
+  четыре role views, уведомление и attachment download. Локальный Docker smoke не заменяет эту проверку.
+- [ ] Пользователь подтверждает happy path до `COMPLETED`, замечание и N+1 того же Case,
+  contractor rejection → B, same-executor rework и fresh bootstrap в другом клиенте MAX.
+- [ ] Команда подтверждает production VPS CA mount, TLS/Caddy и доступность сервиса на весь период оценки.
+- [ ] Case/history/attachment bytes после production restart сверяются в пользовательском сценарии;
+  локальный persistence PASS выше относится к DB volume probe.
 
 ## Итоговое evidence
 
 | Поле | Значение |
 | --- | --- |
 | APPLICATION_BASE_SHA | `332ac4aee174a8743324b82b38853b3a3751d2e9` |
-| FINAL_SUBMISSION_SHA | `PENDING` |
-| PRODUCTION_APPLICATION_SHA | `332ac4aee174a8743324b82b38853b3a3751d2e9` |
-| BOT_LINK | `https://max.ru/t793_hakaton_max_bot` |
-| MINI_APP_HTTPS | `https://157-22-231-21.sslip.io/` |
-| API_BASE | `https://157-22-231-21.sslip.io/api/v1` |
-| DOCKER_BUILD_SECONDS | `NOT_VERIFIED` |
-| FINAL_ROUTE_PARITY | `NOT_VERIFIED` |
-| PERSISTENCE | `NOT_VERIFIED` |
-| SECRET_SCAN | `NOT_VERIFIED` |
-| FINAL_PDF | `MISSING` |
-| ZIP / ZIP_SHA256 | `PENDING` |
-| REMOTE_SHA_MATCH | `NOT_VERIFIED` |
+| FINAL_SUBMISSION_SHA (source package) | `4f719b0d9d2f40cee8ab16c61b86b40b63ca7d72` |
+| PRESENTATION_PDF | `Хакатон MAX — Умный город — Two pizza.pdf`, 13 слайдов |
+| DOCKER_BUILD | `PASS`, 30.1 s, clean checkout, no cache |
+| FINAL_ROUTE_PARITY | `PASS`, 45 runtime routes; 46 DATA-API checks |
+| PERSISTENCE | `PASS`, DB probe после `down`/`up` |
+| SECRET_SCAN | `PASS`, 0 secrets в submission ZIP |
+| REMOTE_SHA_MATCH | `PASS` для source commit и tag `submission-final-2026-09-30` |
+| ZIP | `Хакатон MAX — Умный город — Two pizza.zip`, присутствует; hash в сопроводительном отчёте |
 
-Секреты и персональные данные не записывать в evidence. Проверочный журнал —
-[VALIDATION.md](VALIDATION.md); пошаговый сценарий — [VERIFICATION.md](VERIFICATION.md).
+Точные команды, результаты и пределы проверки — в [VALIDATION.md](VALIDATION.md).
+Секреты, initData, session token, chat ID и персональные данные в evidence не сохранять.
